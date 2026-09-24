@@ -1,0 +1,859 @@
+(function () {
+  'use strict';
+  const core = globalThis.ChatGPTAutopilotCore;
+  const learning = globalThis.ChatGPTAutopilotLearning;
+  const reliability = globalThis.ChatGPTAutopilotReliability;
+  const extensionApi = globalThis.chrome || globalThis.browser;
+  const DEFAULT_PROMPT = 'Continúa autónomamente el desarrollo del proyecto desde el estado real más reciente. Antes de modificar nada: inspecciona el estado actual del repo, rama, issues, PRs, CI y revisiones. No te detengas después de cada paso; avanza mientras sea seguro, sin duplicar trabajo, y reporta solo hitos grandes.';
+  const PROMPT_SCHEMA_VERSION = 2;
+  const SCROLL_DEFAULTS = Object.freeze({
+    followScroll: true,
+    scrollStepMin: 90,
+    scrollStepMax: 320,
+    scrollPollMs: 220,
+    scrollStableChecks: 8,
+    scrollMaxSeconds: 45,
+    manualScrollPauseSeconds: 20,
+    autoReload: true,
+    reloadCooldownMinutes: 2,
+    periodicReload: false,
+    periodicReloadMinutes: 30,
+    reasoningLevel: 'high',
+    conversationMode: 'chat'
+  });
+  const restored = reliability.load(sessionStorage);
+  const runtimeSchemaVersion = 3;
+  const runtimeWasUpgraded = sessionStorage.getItem('chatgpt-autopilot-runtime-schema') !== String(runtimeSchemaVersion);
+  if (runtimeWasUpgraded) {
+    restored.consecutiveFailures = 0;
+    restored.circuitOpenUntil = 0;
+    restored.reloadAttempts = 0;
+    restored.reloadWindowStartedAt = 0;
+    reliability.save(sessionStorage, restored);
+    sessionStorage.setItem('chatgpt-autopilot-runtime-schema', String(runtimeSchemaVersion));
+    sessionStorage.removeItem('chatgpt-autopilot-last-reload');
+  }
+  const state = {
+    enabled: false,
+    waiting: false,
+    sawGeneration: false,
+    lastSentAt: restored.lastSentAt,
+    assistantCountBeforeSend: restored.assistantCountBeforeSend,
+    lastRecoveryAt: 0,
+    generationStartedAt: 0,
+    lastRecovery: null,
+    lastErrorCode: '',
+    lastErrorAt: 0,
+    lastReloadAt: runtimeWasUpgraded ? 0 : Number(sessionStorage.getItem('chatgpt-autopilot-last-reload')) || 0,
+    lastPeriodicReloadAt: Number(sessionStorage.getItem('chatgpt-autopilot-last-periodic-reload')) || Date.now(),
+    contentLoadedAt: Date.now(),
+    connectionFirstSeenAt: 0,
+    connectionCancelAt: 0,
+    conversationTransferAt: 0,
+    learned: learning.normalize(),
+    nextSendAt: 0,
+    busy: false,
+    status: 'Pausado',
+    manualScrollUntil: 0,
+    lastAutoScrollAt: 0,
+    autoScrolling: false,
+    autoScrollRun: 0,
+    lastReasoningCheckAt: 0,
+    lastReasoningUnavailableLogAt: 0,
+    lastConversationModeKey: '',
+    settings: { ...SCROLL_DEFAULTS },
+    pendingSignature: restored.pendingSignature,
+    consecutiveFailures: restored.consecutiveFailures,
+    circuitOpenUntil: restored.circuitOpenUntil,
+    reloadAttempts: restored.reloadAttempts,
+    reloadWindowStartedAt: restored.reloadWindowStartedAt
+  };
+  let cachedConfigPromise = null;
+
+  function log(event, details = {}) {
+    try {
+      const result = extensionApi.runtime.sendMessage({
+        type: 'autopilot:log', event, details
+      });
+      if (result?.catch) result.catch(() => {});
+    } catch (_error) {}
+  }
+
+  function noteManualScroll(event) {
+    if (event && event.isTrusted === false) return;
+    if (!state.enabled) return;
+    state.manualScrollUntil = Date.now()
+      + state.settings.manualScrollPauseSeconds * 1000;
+    state.autoScrollRun += 1;
+  }
+
+  function scrollableContainers(target) {
+    const found = [];
+    const add = element => {
+      if (!element || found.includes(element)) return;
+      if (element.scrollHeight > element.clientHeight + 4) found.push(element);
+    };
+    let current = target?.parentElement || null;
+    while (current && current !== document.documentElement) {
+      const style = getComputedStyle(current);
+      const overflowY = style.overflowY;
+      if ((overflowY === 'auto' || overflowY === 'scroll')
+          && current.scrollHeight > current.clientHeight + 4) add(current);
+      current = current.parentElement;
+    }
+    document.querySelectorAll(
+      'main, [role="main"], [data-scroll-root], [class*="overflow-y-auto"], [class*="overflow-y-scroll"]'
+    ).forEach(add);
+    add(document.scrollingElement || document.documentElement);
+    return found.sort((left, right) => {
+      const leftContains = target && left.contains(target) ? 1 : 0;
+      const rightContains = target && right.contains(target) ? 1 : 0;
+      return rightContains - leftContains;
+    });
+  }
+
+  const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+  const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+  async function naturalScrollToLatest() {
+    if (state.autoScrolling) return;
+    state.autoScrolling = true;
+    const run = ++state.autoScrollRun;
+    const options = state.settings;
+    const deadline = Date.now() + options.scrollMaxSeconds * 1000;
+    let stableChecks = 0;
+    let previousSignature = '';
+    try {
+      while (state.enabled && run === state.autoScrollRun && Date.now() < deadline) {
+        if (Date.now() < state.manualScrollUntil) break;
+        const messages = document.querySelectorAll('[data-message-author-role]');
+        const target = messages[messages.length - 1] || core.composer(document);
+        const containers = scrollableContainers(target);
+        if (!containers.length) break;
+        let moved = false;
+        for (const container of containers) {
+          const maximum = Math.max(0, container.scrollHeight - container.clientHeight);
+          const remaining = maximum - container.scrollTop;
+          if (remaining <= 1) continue;
+          const step = Math.min(options.scrollStepMax,
+            Math.max(options.scrollStepMin, remaining * 0.24));
+          container.dispatchEvent(new WheelEvent('wheel', {
+            deltaY: step, deltaMode: WheelEvent.DOM_DELTA_PIXEL, bubbles: true
+          }));
+          container.scrollTop = Math.min(maximum, container.scrollTop + step);
+          moved = true;
+        }
+        const targetBottom = target?.getBoundingClientRect?.().bottom || 0;
+        const visibleBottom = window.innerHeight - 130;
+        if (targetBottom > visibleBottom) {
+          window.scrollBy(0, Math.min(options.scrollStepMax,
+            Math.max(options.scrollStepMin, targetBottom - visibleBottom)));
+          moved = true;
+        }
+        if (moved) {
+          stableChecks = 0;
+          state.lastAutoScrollAt = Date.now();
+          await nextFrame();
+          continue;
+        }
+        await wait(options.scrollPollMs);
+        const signature = containers.map(container => [
+          Math.round(container.scrollHeight), Math.round(container.clientHeight),
+          Math.round(container.scrollTop)
+        ].join(':')).join('|') + `|${Math.round(target?.getBoundingClientRect?.().bottom || 0)}`;
+        stableChecks = signature === previousSignature ? stableChecks + 1 : 0;
+        previousSignature = signature;
+        if (stableChecks >= options.scrollStableChecks) break;
+      }
+    } finally {
+      state.autoScrolling = false;
+    }
+  }
+
+  function followLatest(force = false) {
+    if (!state.enabled || !state.settings.followScroll) return;
+    if (!force && Date.now() < state.manualScrollUntil) return;
+    if (!force && Date.now() - state.lastAutoScrollAt < 700) return;
+    naturalScrollToLatest().catch(error => {
+      log('scroll-failure', { message: String(error?.message || error) });
+    });
+  }
+
+  function setStatus(text, kind = 'idle') {
+    const changed = state.status !== text;
+    state.status = text;
+    let badge = document.getElementById('chatgpt-autopilot-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'chatgpt-autopilot-badge';
+      Object.assign(badge.style, {
+        position: 'fixed', left: '12px', bottom: '12px', zIndex: '2147483647',
+        display: 'flex', alignItems: 'center', gap: '9px', padding: '6px 7px 6px 10px',
+        borderRadius: '8px', font: '600 11px system-ui', pointerEvents: 'auto',
+        boxShadow: '0 4px 18px #0005'
+      });
+      const label = document.createElement('span');
+      label.id = 'chatgpt-autopilot-status-text';
+      const stop = document.createElement('button');
+      stop.id = 'chatgpt-autopilot-stop';
+      stop.type = 'button';
+      stop.textContent = 'STOP';
+      stop.title = 'Detener Autopilot en todas las pestañas';
+      Object.assign(stop.style, {
+        appearance: 'none', border: '1px solid #ffffff66', borderRadius: '6px',
+        background: '#111827', color: '#fff', padding: '5px 9px', cursor: 'pointer',
+        font: '800 10px system-ui', lineHeight: '1'
+      });
+      stop.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        extensionApi.storage.local.set({ masterEnabled: false });
+        log('front-stop', { source: 'status-badge' });
+        setEnabled(false);
+      });
+      badge.append(label, stop);
+      document.documentElement.appendChild(badge);
+    }
+    const label = badge.querySelector('#chatgpt-autopilot-status-text');
+    const stop = badge.querySelector('#chatgpt-autopilot-stop');
+    const labelText = `AUTOPILOT · ${text}`;
+    if (label && label.textContent !== labelText) label.textContent = labelText;
+    if (stop) stop.style.display = state.enabled ? 'inline-block' : 'none';
+    badge.style.background = kind === 'error' ? '#7f1d1d' : state.enabled ? '#166534' : '#374151';
+    badge.style.color = '#fff';
+    badge.style.display = state.enabled || kind === 'error' ? 'flex' : 'none';
+    if (changed) log('status', { status: text, kind, enabled: state.enabled });
+  }
+
+  function config() {
+    if (cachedConfigPromise) return cachedConfigPromise;
+    const defaults = {
+      prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION,
+      delaySeconds: 15, learning: learning.EMPTY, ...SCROLL_DEFAULTS
+    };
+    cachedConfigPromise = new Promise((resolve, reject) => {
+      try {
+        const result = extensionApi.storage.local.get(defaults, resolve);
+        if (result?.then) result.then(resolve, reject);
+      } catch (error) { reject(error); }
+    }).then(values => {
+      const prompt = core.normalize(values.prompt);
+      let selectedPrompt = prompt;
+      if (values.promptSchemaVersion !== PROMPT_SCHEMA_VERSION || prompt.length === 0) {
+        extensionApi.storage.local.set({
+          prompt: DEFAULT_PROMPT,
+          promptSchemaVersion: PROMPT_SCHEMA_VERSION
+        });
+        selectedPrompt = DEFAULT_PROMPT;
+      }
+      return {
+        ...values, prompt: selectedPrompt,
+        followScroll: values.followScroll !== false,
+        scrollStepMin: Math.max(30, Math.min(500, Number(values.scrollStepMin) || SCROLL_DEFAULTS.scrollStepMin)),
+        scrollStepMax: Math.max(60, Math.min(900, Number(values.scrollStepMax) || SCROLL_DEFAULTS.scrollStepMax)),
+        scrollPollMs: Math.max(80, Math.min(2000, Number(values.scrollPollMs) || SCROLL_DEFAULTS.scrollPollMs)),
+        scrollStableChecks: Math.max(2, Math.min(30, Number(values.scrollStableChecks) || SCROLL_DEFAULTS.scrollStableChecks)),
+        scrollMaxSeconds: Math.max(5, Math.min(180, Number(values.scrollMaxSeconds) || SCROLL_DEFAULTS.scrollMaxSeconds)),
+        manualScrollPauseSeconds: Math.max(0, Math.min(300,
+          Number.isFinite(Number(values.manualScrollPauseSeconds))
+            ? Number(values.manualScrollPauseSeconds) : SCROLL_DEFAULTS.manualScrollPauseSeconds)),
+        autoReload: values.autoReload !== false,
+        reloadCooldownMinutes: Math.max(1, Math.min(60, Number(values.reloadCooldownMinutes) || SCROLL_DEFAULTS.reloadCooldownMinutes)),
+        periodicReload: values.periodicReload === true,
+        periodicReloadMinutes: Math.max(5, Math.min(1440,
+          Number(values.periodicReloadMinutes) || SCROLL_DEFAULTS.periodicReloadMinutes)),
+        reasoningLevel: ['keep', 'high'].includes(values.reasoningLevel)
+          ? values.reasoningLevel : SCROLL_DEFAULTS.reasoningLevel,
+        conversationMode: ['chat', 'work'].includes(values.conversationMode)
+          ? values.conversationMode : SCROLL_DEFAULTS.conversationMode
+      };
+    });
+    cachedConfigPromise.catch(() => { cachedConfigPromise = null; });
+    return cachedConfigPromise;
+  }
+
+  function saveLearning(event, durationMs = 0, detail = {}) {
+    state.learned = learning.update(state.learned, event, durationMs, detail);
+    try {
+      const result = extensionApi.runtime.sendMessage({
+        type: 'autopilot:learning-event', event, durationMs, detail
+      });
+      if (result?.then) result.then(response => {
+        if (response?.learning) state.learned = learning.normalize(response.learning);
+      }).catch(() => {});
+    } catch (_error) {}
+  }
+
+  function runtimeSnapshot() {
+    return {
+      pendingSignature: state.pendingSignature,
+      assistantCountBeforeSend: state.assistantCountBeforeSend,
+      lastSentAt: state.lastSentAt,
+      consecutiveFailures: state.consecutiveFailures,
+      circuitOpenUntil: state.circuitOpenUntil,
+      reloadAttempts: state.reloadAttempts,
+      reloadWindowStartedAt: state.reloadWindowStartedAt
+    };
+  }
+
+  function persistRuntime() { reliability.save(sessionStorage, runtimeSnapshot()); }
+
+  function waitForUserMessage(prompt, beforeCount, timeoutMs = 8000) {
+    const expected = reliability.signature(prompt);
+    const started = Date.now();
+    return new Promise(resolve => {
+      const check = () => {
+        const appeared = core.userMessageCount(document) > beforeCount;
+        const exact = reliability.signature(core.lastUserMessageText(document)) === expected;
+        if (appeared && exact) return resolve(true);
+        if (Date.now() - started >= timeoutMs) return resolve(false);
+        setTimeout(check, 120);
+      };
+      check();
+    });
+  }
+
+  function recordErrorOnce(signal, minimumIntervalMs = 60000) {
+    if (state.lastErrorCode === signal.code
+        && Date.now() - state.lastErrorAt < minimumIntervalMs) return;
+    state.lastErrorCode = signal.code;
+    state.lastErrorAt = Date.now();
+    saveLearning('error', 0, signal);
+  }
+
+  async function openFreshConversation(button) {
+    const previousUrl = location.href;
+    button?.click?.();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await wait(250);
+      if (location.href !== previousUrl || !core.conversationLimitButton(document)) return true;
+    }
+    const newChatLink = [...document.querySelectorAll('a[href]')].find(link => {
+      const href = link.getAttribute('href');
+      const label = core.normalize(link.getAttribute('aria-label') || link.textContent || '');
+      return (href === '/' || href === 'https://chatgpt.com/')
+        && /nuevo chat|new chat/.test(label.toLowerCase());
+    });
+    if (newChatLink) {
+      newChatLink.click();
+      return true;
+    }
+    location.assign('https://chatgpt.com/');
+    return true;
+  }
+
+  function modelSelectorButton() {
+    return [...document.querySelectorAll('button,[role="button"]')].find(element => {
+      const label = core.normalize([
+        element.getAttribute('aria-label'), element.getAttribute('title'), element.textContent
+      ].filter(Boolean).join(' ')).toLowerCase();
+      const testId = (element.getAttribute('data-testid') || '').toLowerCase();
+      return /select chatgpt model|seleccionar modelo|cambiar modelo/.test(label)
+        || /^(alta|alto|high)$/.test(label)
+        || /model.*selector|selector.*model/.test(testId);
+    }) || null;
+  }
+
+  async function ensureConversationMode(mode) {
+    const desiredMode = mode === 'work' ? 'work' : 'chat';
+    const modeKey = `${location.pathname}:${desiredMode}`;
+    if (state.lastConversationModeKey === modeKey) return true;
+    const candidates = [...document.querySelectorAll('button,[role="tab"],[role="button"]')];
+    const desired = candidates.find(element =>
+      core.normalize(element.textContent || element.getAttribute('aria-label') || '').toLowerCase() === desiredMode);
+    if (!desired) return false;
+    const selected = desired.getAttribute('aria-selected') === 'true'
+      || desired.getAttribute('aria-pressed') === 'true'
+      || desired.dataset?.state === 'active';
+    if (!selected) {
+      desired.click();
+      await wait(500);
+    }
+    state.lastConversationModeKey = modeKey;
+    log('conversation-mode', { requested: desiredMode, result: selected ? 'already-selected' : 'selected' });
+    return true;
+  }
+
+  async function ensureReasoningLevel(level) {
+    if (level !== 'high') return 'preserved';
+    if (Date.now() - state.lastReasoningCheckAt < 5000) return 'recently-checked';
+    state.lastReasoningCheckAt = Date.now();
+    let selector = null;
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      selector = modelSelectorButton();
+      if (selector) break;
+      await wait(100);
+    }
+    if (!selector) {
+      if (Date.now() - state.lastReasoningUnavailableLogAt >= 300000) {
+        state.lastReasoningUnavailableLogAt = Date.now();
+        log('reasoning-level', { requested: level, result: 'selector-missing', fallback: 'preserve-current' });
+      }
+      return 'unavailable';
+    }
+    const selectorLabel = core.normalize(selector.textContent || selector.getAttribute('aria-label') || '');
+    if (/^(alta|alto|high)(\s|$)/i.test(selectorLabel)) return 'confirmed';
+    selector.click();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await wait(100);
+      const options = [...document.querySelectorAll(
+        '[role="menuitem"], [role="menuitemradio"], [role="option"], button'
+      )];
+      const high = options.find(element => {
+        const text = core.normalize(element.textContent || element.getAttribute('aria-label') || '');
+        return /^(alta|alto|high)(\s|$)/i.test(text);
+      });
+      if (!high) continue;
+      const selected = high.getAttribute('aria-checked') === 'true'
+        || high.getAttribute('aria-selected') === 'true'
+        || high.dataset?.state === 'checked';
+      if (!selected) high.click();
+      else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(500);
+      log('reasoning-level', { requested: level, result: selected ? 'already-selected' : 'selected' });
+      return 'confirmed';
+    }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    if (Date.now() - state.lastReasoningUnavailableLogAt >= 300000) {
+      state.lastReasoningUnavailableLogAt = Date.now();
+      log('reasoning-level', { requested: level, result: 'option-missing', fallback: 'preserve-current' });
+    }
+    return 'unavailable';
+  }
+
+  function waitForSendButton(timeoutMs = 10000) {
+    const started = Date.now();
+    return new Promise(resolve => {
+      const check = () => {
+        const button = core.sendButton(document);
+        if (core.canSend(button)) return resolve(button);
+        if (Date.now() - started >= timeoutMs) return resolve(null);
+        setTimeout(check, 100);
+      };
+      check();
+    });
+  }
+
+  function waitForComposerClear(timeoutMs = 3000) {
+    const started = Date.now();
+    return new Promise(resolve => {
+      const check = () => {
+        if (!core.composerText(core.composer(document))) return resolve(true);
+        if (Date.now() - started >= timeoutMs) return resolve(false);
+        setTimeout(check, 100);
+      };
+      check();
+    });
+  }
+
+  async function composerRemainsExact(field, prompt) {
+    const expected = core.normalize(prompt);
+    for (let check = 0; check < 6; check += 1) {
+      await new Promise(resolve => setTimeout(resolve, 150));
+      if (core.composerText(core.composer(document)) !== expected) return false;
+    }
+    return true;
+  }
+
+  async function sendPrompt(prompt) {
+    const field = core.composer(document);
+    if (!field) throw new Error('No encontré #prompt-textarea');
+    const signature = reliability.signature(prompt);
+    if (state.pendingSignature === signature) {
+      throw new Error('Ya existe un envío pendiente; se evitó un duplicado');
+    }
+    log('send-start', { promptLength: core.normalize(prompt).length, signature });
+    if (!core.replaceComposerText(field, prompt, document)) {
+      throw new Error('El campo no contiene exactamente el mensaje');
+    }
+    if (!await composerRemainsExact(field, prompt)) {
+      core.replaceComposerText(field, '', document);
+      throw new Error('ChatGPT modificó el mensaje; envío cancelado');
+    }
+    const button = await waitForSendButton();
+    if (!button) {
+      log('send-control-missing', {
+        controls: core.sendControlSnapshot(document),
+        composer: core.interfaceSnapshot(document)
+      });
+      const currentField = core.composer(document);
+      if (core.composerText(currentField) === core.normalize(prompt)) {
+        core.replaceComposerText(currentField, '', document);
+      }
+      throw new Error('El botón real de enviar no está disponible');
+    }
+    const currentField = core.composer(document);
+    if (core.composerText(currentField) !== core.normalize(prompt)) {
+      if (core.composerText(currentField) === core.composerText(field)) {
+        core.replaceComposerText(currentField, '', document);
+      }
+      throw new Error('El contenido cambió antes del envío');
+    }
+    const userCountBeforeSend = core.userMessageCount(document);
+    state.assistantCountBeforeSend = core.assistantMessageCount(document);
+    button.click();
+    const [cleared, appeared] = await Promise.all([
+      waitForComposerClear(8000),
+      waitForUserMessage(prompt, userCountBeforeSend, 8000)
+    ]);
+    if (!cleared || !appeared) {
+      throw new Error('ChatGPT no confirmó el mensaje dentro de la conversación');
+    }
+    state.lastSentAt = Date.now();
+    state.generationStartedAt = 0;
+    state.waiting = true;
+    state.sawGeneration = false;
+    state.pendingSignature = signature;
+    Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
+    persistRuntime();
+    log('send-confirmed', { promptLength: core.normalize(prompt).length, signature });
+    setStatus('Mensaje confirmado; esperando respuesta');
+  }
+
+  async function tick() {
+    if (!state.enabled || state.busy) return;
+    if (Date.now() < state.circuitOpenUntil
+        && core.stopButton(document)
+        && core.interruptedConnection(document)) {
+      Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
+      state.reloadAttempts = 0;
+      state.reloadWindowStartedAt = 0;
+      persistRuntime();
+      log('circuit-reset', { reason: 'active-interrupted-generation' });
+    }
+    if (Date.now() < state.circuitOpenUntil) {
+      setStatus(`Protección activa; reintento en ${Math.ceil((state.circuitOpenUntil - Date.now()) / 60000)} min`, 'error');
+      return;
+    }
+    state.busy = true;
+    try {
+      const currentConfig = await config();
+      const { prompt, delaySeconds } = currentConfig;
+      state.settings = { ...state.settings, ...currentConfig };
+      const signal = core.pageSignal(document);
+      const generating = Boolean(core.stopButton(document));
+      if (Date.now() - state.contentLoadedAt < 5000) {
+        setStatus('Inicializando la interfaz');
+        return;
+      }
+      const periodicReloadDue = currentConfig.periodicReload
+        && Date.now() - state.lastPeriodicReloadAt >= currentConfig.periodicReloadMinutes * 60000;
+      const composerIsEmpty = !core.composerText(core.composer(document));
+      if (periodicReloadDue && signal.code === 'ready' && !generating
+          && !state.waiting && !state.pendingSignature && composerIsEmpty) {
+        state.lastPeriodicReloadAt = Date.now();
+        sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));
+        log('recovery', { code: 'periodic-refresh', action: 'reload',
+          intervalMinutes: currentConfig.periodicReloadMinutes });
+        setStatus('Recarga periódica en momento seguro');
+        location.reload();
+        return;
+      }
+      if (signal.code !== 'ready') followLatest(true);
+      if (signal.code === 'safety-check') {
+        recordErrorOnce(signal, 300000);
+        state.waiting = true;
+        if (generating) state.sawGeneration = true;
+        setStatus('Comprobación adicional de seguridad; esperando sin intervenir');
+        return;
+      }
+      if (signal.code === 'authentication') {
+        recordErrorOnce(signal);
+        setStatus('Intervención necesaria: inicia sesión', 'error');
+        log('human-required', { code: signal.code });
+        return;
+      }
+      if (signal.code === 'rate-limit') {
+        if (Date.now() >= state.nextSendAt) {
+          recordErrorOnce(signal);
+          state.nextSendAt = Date.now() + learning.errorBackoffMs(state.learned, signal.code);
+        }
+        setStatus('Límite temporal: espera adaptativa', 'error');
+        return;
+      }
+      if (signal.code === 'conversation-limit') {
+        if (Date.now() - state.conversationTransferAt < 15000) return;
+        state.conversationTransferAt = Date.now();
+        state.waiting = false;
+        state.sawGeneration = false;
+        state.pendingSignature = '';
+        state.assistantCountBeforeSend = 0;
+        state.lastSentAt = 0;
+        Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
+        state.reloadAttempts = 0;
+        state.reloadWindowStartedAt = 0;
+        state.nextSendAt = Date.now() + 5000;
+        persistRuntime();
+        saveLearning('recovery');
+        log('recovery', { code: 'conversation-limit', action: 'new-chat' });
+        setStatus('Límite de conversación; abriendo un chat nuevo');
+        await openFreshConversation(signal.element);
+        return;
+      }
+      if (signal.code === 'connection') {
+        if (!state.connectionFirstSeenAt) state.connectionFirstSeenAt = Date.now();
+        const interruptedFor = Date.now() - state.connectionFirstSeenAt;
+        recordErrorOnce(signal);
+        if (generating && interruptedFor >= 120000 && !state.connectionCancelAt) {
+          const stop = core.stopButton(document);
+          if (stop) {
+            stop.click();
+            state.connectionCancelAt = Date.now();
+            state.lastRecovery = { code: 'connection', action: 'cancel-generation' };
+            saveLearning('recovery');
+            log('recovery', { code: 'connection', action: 'cancel-generation' });
+            setStatus('Conexión bloqueada; cancelación segura solicitada', 'error');
+            return;
+          }
+        }
+        const waitingForCancel = state.connectionCancelAt
+          && Date.now() - state.connectionCancelAt < 30000;
+        if (interruptedFor < (generating ? 120000 : 30000) || waitingForCancel) {
+          setStatus(`Conexión interrumpida; esperando reconexión (${Math.ceil(interruptedFor / 1000)} s)`, 'error');
+          return;
+        }
+      } else {
+        state.connectionFirstSeenAt = 0;
+        state.connectionCancelAt = 0;
+      }
+      const interfaceMissingLongEnough = signal.code === 'interface-missing'
+        && Date.now() - state.contentLoadedAt > 15000;
+      if (signal.code === 'interface-missing' && !interfaceMissingLongEnough) {
+        setStatus('Esperando que ChatGPT termine de cargar la interfaz');
+        return;
+      }
+      const isNewChatRoute = location.pathname === '/' || location.pathname === '';
+      if (interfaceMissingLongEnough && isNewChatRoute) {
+        recordErrorOnce({
+          code: 'interface-loading-new-chat',
+          ...core.interfaceSnapshot(document)
+        }, 300000);
+        setStatus('Chat nuevo todavía cargando; esperando sin recargar');
+        return;
+      }
+      const recoveryNeedsReload = signal.code === 'connection'
+        || (interfaceMissingLongEnough && !isNewChatRoute);
+      if (recoveryNeedsReload && !currentConfig.autoReload) {
+        setStatus(`Bloqueo ${signal.code}: recarga automática desactivada`, 'error');
+        return;
+      }
+      const reloadCooldownMs = currentConfig.reloadCooldownMinutes * 60000;
+      if (recoveryNeedsReload
+          && Date.now() - state.lastReloadAt > reloadCooldownMs) {
+        if (signal.code !== 'connection') recordErrorOnce(signal);
+        if (!reliability.canReload(runtimeSnapshot())) {
+          Object.assign(state, reliability.afterFailure(runtimeSnapshot()));
+          state.circuitOpenUntil = Date.now() + 600000;
+          persistRuntime();
+          setStatus('Protección activa: demasiadas recargas', 'error');
+          log('circuit-open', { code: signal.code, reason: 'reload-limit' });
+          return;
+        }
+        Object.assign(state, reliability.beforeReload(runtimeSnapshot()));
+        state.lastReloadAt = Date.now();
+        sessionStorage.setItem('chatgpt-autopilot-last-reload', String(state.lastReloadAt));
+        persistRuntime();
+        setStatus(`Recuperando ${signal.code}: recarga ${state.reloadAttempts}/${reliability.MAX_RELOADS}`, 'error');
+        log('recovery', { code: signal.code, action: 'reload', attempt: state.reloadAttempts });
+        location.reload();
+        return;
+      }
+      if (recoveryNeedsReload) {
+        const remainingSeconds = Math.max(1, Math.ceil(
+          (reloadCooldownMs - (Date.now() - state.lastReloadAt)) / 1000
+        ));
+        setStatus(`Bloqueo ${signal.code}: próxima recarga permitida en ${remainingSeconds} s`, 'error');
+        return;
+      }
+      if (generating) {
+        const activeField = core.composer(document);
+        if (core.composerText(activeField) === core.normalize(prompt)
+            && state.pendingSignature !== reliability.signature(prompt)) {
+          core.replaceComposerText(activeField, '', document);
+          log('draft-cleared', { reason: 'generation-active' });
+        }
+        if (!state.sawGeneration) {
+          state.generationStartedAt = Date.now();
+          if (state.lastSentAt > 0) {
+            saveLearning('startup', Date.now() - state.lastSentAt);
+          }
+        }
+        state.waiting = true;
+        state.sawGeneration = true;
+        followLatest();
+        setStatus('ChatGPT está respondiendo');
+        return;
+      }
+      if (state.waiting) {
+        const newAssistantMessage = core.assistantMessageCount(document) > state.assistantCountBeforeSend;
+        if (newAssistantMessage && !generating) state.sawGeneration = true;
+        if (!state.sawGeneration) {
+          const recovery = core.recoveryButton(document);
+          if (recovery && Date.now() - state.lastRecoveryAt > 10000) {
+            recovery.click();
+            state.lastRecoveryAt = Date.now();
+            saveLearning('recovery');
+            saveLearning('error', 0, { code: 'recoverable' });
+            state.lastRecovery = { code: 'recoverable', action: 'click-recovery' };
+            setStatus('Recuperando la respuesta');
+            log('recovery', { code: 'recoverable', action: 'click-recovery' });
+            return;
+          }
+          if (Date.now() - state.lastSentAt > learning.startupTimeoutMs(state.learned)) {
+            state.waiting = false;
+            state.nextSendAt = Date.now() + 1000;
+            setStatus('Respuesta ausente; reintentando continuación');
+            return;
+          }
+          setStatus('Esperando que inicie la respuesta');
+          return;
+        }
+        saveLearning('cycle', Date.now() - (state.generationStartedAt || state.lastSentAt));
+        if (state.lastRecovery) {
+          saveLearning('action-success', 0, state.lastRecovery);
+          state.lastRecovery = null;
+        }
+        state.waiting = false;
+        state.pendingSignature = '';
+        Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
+        persistRuntime();
+        state.nextSendAt = Date.now() + Math.max(5, Number(delaySeconds) || 15) * 1000;
+        followLatest();
+        setStatus('Respuesta terminada; preparando continuación');
+        return;
+      }
+      if (Date.now() < state.nextSendAt) return;
+      const recovery = core.recoveryButton(document);
+      if (recovery && Date.now() - state.lastRecoveryAt > 10000) {
+        recovery.click();
+        state.lastRecoveryAt = Date.now();
+        saveLearning('recovery');
+        saveLearning('error', 0, { code: 'recoverable' });
+        state.lastRecovery = { code: 'recoverable', action: 'click-recovery' };
+        state.waiting = true;
+        state.sawGeneration = false;
+        state.assistantCountBeforeSend = core.assistantMessageCount(document);
+        setStatus('Acción segura: reintentar/continuar');
+        log('recovery', { code: 'recoverable', action: 'click-recovery' });
+        return;
+      }
+      const field = core.composer(document);
+      if (!field) {
+        setStatus('Campo de mensaje no encontrado', 'error');
+        return;
+      }
+      const composerHasText = Boolean(core.composerText(field));
+      const resumableDraft = core.isOwnedDraft(field, prompt);
+      if (composerHasText && !resumableDraft) {
+        setStatus('Pausado: el campo contiene texto', 'error');
+        return;
+      }
+      if (resumableDraft) setStatus('Retomando borrador propio pendiente');
+      await ensureConversationMode(currentConfig.conversationMode);
+      const reasoningResult = await ensureReasoningLevel(currentConfig.reasoningLevel);
+      if (reasoningResult === 'unavailable') {
+        setStatus('Nivel Alto no verificable; continuando con el nivel actual');
+      }
+      await sendPrompt(prompt);
+    } catch (error) {
+      saveLearning('failure');
+      const failure = reliability.afterFailure(runtimeSnapshot());
+      Object.assign(state, failure);
+      state.nextSendAt = failure.retryAt;
+      persistRuntime();
+      log('failure', { message: String(error.message || error), failures: state.consecutiveFailures, retryAt: state.nextSendAt });
+      setStatus(state.circuitOpenUntil > Date.now()
+        ? 'Protección activa tras fallos repetidos'
+        : `${error.message || 'Error'}; reintento controlado`, 'error');
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  function setEnabled(enabled) {
+    state.enabled = Boolean(enabled);
+    log('enabled-change', { enabled: state.enabled });
+    if (state.enabled) {
+      state.contentLoadedAt = Date.now();
+      state.lastPeriodicReloadAt = Date.now();
+      sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));
+      state.circuitOpenUntil = 0;
+      state.consecutiveFailures = 0;
+      state.reloadAttempts = 0;
+      state.reloadWindowStartedAt = 0;
+      state.lastReloadAt = 0;
+      sessionStorage.removeItem('chatgpt-autopilot-last-reload');
+      persistRuntime();
+      const pendingStillPresent = state.pendingSignature
+        && reliability.signature(core.lastUserMessageText(document)) === state.pendingSignature;
+      if (pendingStillPresent) {
+        state.waiting = true;
+        state.sawGeneration = Boolean(core.stopButton(document));
+      } else if (state.pendingSignature) {
+        state.pendingSignature = '';
+        persistRuntime();
+      }
+      state.nextSendAt = state.waiting ? Number.POSITIVE_INFINITY : Date.now() + 1000;
+      state.manualScrollUntil = 0;
+      followLatest(true);
+      setStatus('Activo en esta pestaña');
+    } else {
+      setStatus('Pausado');
+    }
+  }
+
+  extensionApi.runtime.onMessage.addListener((message, _sender, reply) => {
+    if (message?.type === 'autopilot:set-enabled') setEnabled(message.enabled);
+    if (message?.type === 'autopilot:heartbeat') tick();
+    if (message?.type === 'autopilot:get-status') {
+      reply({ enabled: state.enabled, status: state.status });
+    } else reply({ ok: true, enabled: state.enabled, status: state.status });
+  });
+
+  extensionApi.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    const configurationChanged = Object.keys(changes).some(key =>
+      !['diagnosticLog', 'learning', 'masterEnabled'].includes(key));
+    if (configurationChanged) cachedConfigPromise = null;
+    if (changes.learning?.newValue) {
+      state.learned = learning.normalize(changes.learning.newValue);
+    }
+    if (changes.masterEnabled) setEnabled(Boolean(changes.masterEnabled.newValue));
+  });
+
+  extensionApi.storage.local.get({ masterEnabled: false, learning: learning.EMPTY }, values => {
+    state.learned = learning.normalize(values.learning);
+    setEnabled(Boolean(values.masterEnabled));
+  });
+
+  window.addEventListener('wheel', noteManualScroll, { passive: true });
+  window.addEventListener('touchmove', noteManualScroll, { passive: true });
+  setStatus('Pausado');
+  log('content-loaded', { version: '1.6.1', backgroundTabs: true, persistentState: true });
+  let mutationTimer = 0;
+  const mutationObserver = new MutationObserver(mutations => {
+    if (!state.enabled || mutationTimer) return;
+    const badge = document.getElementById('chatgpt-autopilot-badge');
+    const onlyBadgeChanged = badge && mutations.every(mutation =>
+      mutation.target === badge || badge.contains(mutation.target));
+    if (onlyBadgeChanged) return;
+    mutationTimer = setTimeout(() => {
+      mutationTimer = 0;
+      tick();
+    }, 750);
+  });
+  mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
+  const tickInterval = setInterval(tick, 2500);
+  const maintenanceInterval = setInterval(() => {
+    state.learned = learning.normalize(state.learned);
+    if (!state.enabled) cachedConfigPromise = null;
+  }, 300000);
+  window.addEventListener('pagehide', () => {
+    state.autoScrollRun += 1;
+    mutationObserver.disconnect();
+    clearTimeout(mutationTimer);
+    clearInterval(tickInterval);
+    clearInterval(maintenanceInterval);
+    cachedConfigPromise = null;
+  }, { once: true });
+})();
