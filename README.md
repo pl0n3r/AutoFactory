@@ -1,5 +1,7 @@
 # ChatGPT Autopilot Local — Chrome y Safari
 
+> Consulta [CHANGELOG.md](CHANGELOG.md) para conocer la historia completa desde el primer prototipo hasta la versión actual.
+
 Extensión local que supervisa chats de desarrollo y usa el DOM de ChatGPT. No usa capturas, coordenadas, posición de ventanas ni `pyautogui`.
 
 Su función es mantener trabajando cada pestaña habilitada: espera mientras ChatGPT responde, verifica que aparezca una respuesta, envía la continuación al terminar y recupera errores mediante **Reintentar** o **Continuar generando**. No pulsa aprobaciones, permisos, compras, selectores de modelo ni acciones destructivas.

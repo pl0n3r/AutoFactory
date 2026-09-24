@@ -1,0 +1,79 @@
+# Historial de versiones
+
+Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
+
+## 1.6.1 — 2026-09-23
+
+- Corrige la sustitución accidental de mensajes personalizados cortos por la plantilla predeterminada.
+- Acepta cualquier mensaje no vacío y conserva la protección frente a configuraciones antiguas.
+- Añade una prueba de regresión específica para el mensaje configurable.
+- Sincroniza y valida la misma implementación en Chrome y Safari.
+
+## 1.6.0 — 2026-09-23
+
+- Consolida el modo estable para Chrome y Safari.
+- Añade selector **Chat / Work**, con Chat como valor inicial.
+- Añade refresh periódico opcional y configurable, ejecutado solo cuando el chat está inactivo y el compositor está vacío.
+- Espera de forma segura las comprobaciones adicionales de ChatGPT sin cancelar, recargar, reenviar ni cambiar de modelo.
+- Limita la detección de avisos a la respuesta más reciente para que mensajes históricos no bloqueen el flujo.
+- Mejora rendimiento y memoria en conversaciones largas mediante caché de configuración, agrupación de mutaciones y limpieza de observadores y temporizadores.
+- Hace visibles los controles PLAY y STOP tanto en el popup como en el indicador de la página.
+- Conserva como máximo 300 eventos de diagnóstico durante siete días.
+
+## 1.4.3 — 2026-09-23
+
+- Refina la espera mientras ChatGPT está pensando para impedir escrituras y reintentos simultáneos.
+- Reduce falsos positivos cuando el botón de enviar cambia temporalmente durante una respuesta.
+- Mejora la estabilidad del ciclo en sesiones prolongadas.
+
+## 1.4.2 — 2026-09-23
+
+- Reconoce los controles compactos **Stop / Detener** como señal de generación activa.
+- Evita escribir mientras el modelo responde.
+- Retira únicamente el borrador exacto propiedad del piloto si ocurre una carrera con el inicio de una respuesta.
+
+## 1.4.1 — 2026-09-23
+
+- Amplía la detección del compositor para interfaces `textarea` y `contenteditable`.
+- Reconoce controles de envío modernos y espera a que React los habilite.
+- Evita recargas prematuras mientras un chat nuevo termina de montar su interfaz.
+
+## 1.4.0 — 2026-09-23
+
+- Rediseña el popup como panel de control con parámetros configurables.
+- Añade selección del nivel de razonamiento, incluido **Alto / High**.
+- Amplía el aprendizaje local con ciclos, fallos, recuperaciones, medias y percentiles.
+- Añade recarga ante bloqueo con cooldown configurable.
+- Introduce estado persistente por pestaña y supervisión de pestañas en segundo plano.
+
+## 1.2.2 — 2026-09-23
+
+- Detecta en español e inglés el límite de duración de una conversación.
+- Abre un chat nuevo y continúa automáticamente cuando ChatGPT exige migrar la conversación.
+- Mejora el desplazamiento progresivo y espera a que el contenido deje de crecer.
+
+## 1.2.0 — 2026-09-23
+
+- Añade diagnóstico exportable y clasificación local de errores.
+- Incorpora recuperación de conexiones interrumpidas, backoff y circuit breaker.
+- Añade el botón STOP dentro de la página para detener el piloto sin abrir el popup.
+- Confirma cada envío comprobando que el mensaje exacto aparezca en la conversación.
+
+## 1.1.2 — 2026-09-22
+
+- Sustituye la automatización por coordenadas por interacción con el DOM real de ChatGPT.
+- Añade soporte inicial para Chrome y la extensión web de Safari.
+- Introduce scroll automático, estado visible y controles globales de activación y pausa.
+
+## 1.0.0 — 2026-09-22
+
+- Primer prototipo local del piloto automático.
+- Inserta un mensaje de continuación y utiliza el control real de envío.
+- Supervisa una conversación y espera a que ChatGPT termine antes de continuar.
+
+## Política desde 1.6.1
+
+- Cada cambio publicable se registra aquí.
+- Cada versión se identifica en `manifest.json`, `package.json`, el popup y el evento `content-loaded`.
+- Las versiones publicadas en GitHub reciben una etiqueta `vX.Y.Z`.
+- Chrome y Safari deben compartir el mismo código web y pasar `npm test` antes de etiquetarse.
