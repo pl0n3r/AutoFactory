@@ -106,9 +106,11 @@ function popupScriptRefs(html) {
   const scripts = [];
   const tags = html.match(/<script\b[^>]*>/gi) || [];
   for (const tag of tags) {
-    const source = /\s+src\s*=\s*(["'])([^"']+)\1/i.exec(tag);
+    const doubleQuoted = /(?:^|\s)src\s*=\s*"([^"]+)"/i.exec(tag);
+    const singleQuoted = /(?:^|\s)src\s*=\s*'([^']+)'/i.exec(tag);
+    const source = doubleQuoted?.[1] ?? singleQuoted?.[1];
     if (!source) fail('popup script must declare local src');
-    scripts.push(assetName(source[2]));
+    scripts.push(assetName(source));
   }
   if (scripts.length === 0) fail('popup script missing');
   return scripts;
