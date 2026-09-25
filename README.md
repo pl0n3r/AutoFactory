@@ -10,7 +10,7 @@ Su función es mantener trabajando cada pestaña habilitada: espera mientras Cha
 
 Opera en todas las pestañas de ChatGPT habilitadas, incluso cuando están detrás de otra ventana. Un heartbeat del proceso de fondo reactiva la supervisión periódica; el scroll visual solo se mueve en la pestaña visible.
 
-## Versión 1.6.3
+## Versión 1.6.4
 
 - Distingue el selector de razonamiento del selector general del modelo y, cuando es necesario, abre Thinking/Pensando antes de elegir Alto/High.
 
@@ -40,7 +40,8 @@ Opera en todas las pestañas de ChatGPT habilitadas, incluso cuando están detr�
 - Añade un selector Chat/Work en el popup, usa Chat de forma predeterminada y aplica el modo elegido mediante el control real de ChatGPT antes de continuar.
 - Detecta comprobaciones adicionales de seguridad en español e inglés y espera sin cancelar, reenviar, recargar ni cambiar automáticamente de modelo.
 - Limita esa detección a la respuesta más reciente para que un aviso histórico no bloquee ciclos posteriores.
-- Ofrece refresh periódico opcional, con intervalo de 5 minutos a 24 horas, y solo recarga cuando no existe una respuesta, envío o borrador pendiente.
+- Ofrece refresh periódico activado por defecto cada 15 minutos, configurable entre 5 minutos y 24 horas, y solo recarga cuando no existe una respuesta, envío o borrador pendiente.
+- Usa un minuto como cooldown predeterminado de recuperación y muestra ciclos, recuperaciones, errores, uptime y próxima recarga en el indicador de la página.
 
 ## Memoria adaptativa local
 

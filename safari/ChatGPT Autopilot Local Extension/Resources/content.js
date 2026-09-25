@@ -15,9 +15,9 @@
     scrollMaxSeconds: 45,
     manualScrollPauseSeconds: 20,
     autoReload: true,
-    reloadCooldownMinutes: 2,
-    periodicReload: false,
-    periodicReloadMinutes: 30,
+    reloadCooldownMinutes: 1,
+    periodicReload: true,
+    periodicReloadMinutes: 15,
     reasoningLevel: 'high',
     conversationMode: 'chat'
   });
@@ -188,12 +188,17 @@
       badge.id = 'chatgpt-autopilot-badge';
       Object.assign(badge.style, {
         position: 'fixed', left: '12px', bottom: '12px', zIndex: '2147483647',
-        display: 'flex', alignItems: 'center', gap: '9px', padding: '6px 7px 6px 10px',
+        display: 'flex', alignItems: 'center', gap: '9px', padding: '7px 8px 7px 11px',
         borderRadius: '8px', font: '600 11px system-ui', pointerEvents: 'auto',
         boxShadow: '0 4px 18px #0005'
       });
+      const summary = document.createElement('span');
+      Object.assign(summary.style, { display: 'flex', flexDirection: 'column', gap: '2px' });
       const label = document.createElement('span');
       label.id = 'chatgpt-autopilot-status-text';
+      const metrics = document.createElement('span');
+      metrics.id = 'chatgpt-autopilot-metrics';
+      Object.assign(metrics.style, { fontSize: '9px', opacity: '.78', letterSpacing: '.04em' });
       const stop = document.createElement('button');
       stop.id = 'chatgpt-autopilot-stop';
       stop.type = 'button';
@@ -211,13 +216,22 @@
         log('front-stop', { source: 'status-badge' });
         setEnabled(false);
       });
-      badge.append(label, stop);
+      summary.append(label, metrics);
+      badge.append(summary, stop);
       document.documentElement.appendChild(badge);
     }
     const label = badge.querySelector('#chatgpt-autopilot-status-text');
+    const metrics = badge.querySelector('#chatgpt-autopilot-metrics');
     const stop = badge.querySelector('#chatgpt-autopilot-stop');
     const labelText = `AUTOPILOT · ${text}`;
     if (label && label.textContent !== labelText) label.textContent = labelText;
+    if (metrics) {
+      const uptimeMinutes = Math.max(0, Math.floor((Date.now() - state.contentLoadedAt) / 60000));
+      const refreshMinutes = state.settings.periodicReload
+        ? Math.max(0, Math.ceil((state.lastPeriodicReloadAt + state.settings.periodicReloadMinutes * 60000 - Date.now()) / 60000))
+        : null;
+      metrics.textContent = `CYC ${state.learned.cycles || 0} · REC ${state.learned.recoveries || 0} · ERR ${state.learned.failures || 0} · UP ${uptimeMinutes}m${refreshMinutes === null ? '' : ` · REF ${refreshMinutes}m`}`;
+    }
     if (stop) stop.style.display = state.enabled ? 'inline-block' : 'none';
     badge.style.background = kind === 'error' ? '#7f1d1d' : state.enabled ? '#166534' : '#374151';
     badge.style.color = '#fff';
@@ -866,7 +880,7 @@
   window.addEventListener('wheel', noteManualScroll, { passive: true });
   window.addEventListener('touchmove', noteManualScroll, { passive: true });
   setStatus('Pausado');
-  log('content-loaded', { version: '1.6.3', backgroundTabs: true, persistentState: true });
+  log('content-loaded', { version: '1.6.4', backgroundTabs: true, persistentState: true });
   let mutationTimer = 0;
   const mutationObserver = new MutationObserver(mutations => {
     if (!state.enabled || mutationTimer) return;
@@ -881,6 +895,7 @@
   });
   mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
   const tickInterval = setInterval(tick, 2500);
+  const telemetryInterval = setInterval(() => { if (state.enabled) setStatus(state.status); }, 30000);
   const maintenanceInterval = setInterval(() => {
     state.learned = learning.normalize(state.learned);
     if (!state.enabled) cachedConfigPromise = null;
@@ -891,6 +906,7 @@
     clearTimeout(mutationTimer);
     clearInterval(tickInterval);
     clearInterval(maintenanceInterval);
+    clearInterval(telemetryInterval);
     cachedConfigPromise = null;
   }, { once: true });
 })();

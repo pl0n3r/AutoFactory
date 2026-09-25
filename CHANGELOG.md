@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.4 — 2026-09-25
+
+- Activa por defecto la recarga periódica cada 15 minutos y fija en un minuto el cooldown de recuperación.
+- Migra una vez las instalaciones existentes a los nuevos valores predeterminados.
+- Añade al indicador de página ciclos, recuperaciones, errores, uptime y cuenta regresiva de refresh.
+
 ## 1.6.3 — 2026-09-25
 
 - Separa el control de razonamiento del selector general del modelo.
