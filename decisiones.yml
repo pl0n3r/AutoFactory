@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "review_round_limit": 3,
+  "decisions": [
+    {
+      "id": "D-054",
+      "status": "active",
+      "text": "Migraciones aditivas automáticas con backup previo en post-deploy; restauraciones y rollback deben fallar cerrado. Aplica a productos con base de datos, no implica BD en AutoFactory."
+    },
+    {
+      "id": "D-055",
+      "status": "active",
+      "text": "Durante fase construccion se permiten escrituras autónomas en producción con trazabilidad y backup; SQL destructivo o borrado irreversible requiere autorización explícita. No implica habilitar runtime remoto AutoFactory."
+    },
+    {
+      "id": "D-056",
+      "status": "active",
+      "text": "Los releases se publican mediante el kit Factory; para AutoFactory la entrega es un artefacto de extensión versionado, con smoke Chrome/Safari y versión anterior instalable."
+    },
+    {
+      "id": "D-057",
+      "status": "active",
+      "text": "Todo Issue y PR debe tener exactamente una etiqueta de tipo, una de prioridad y una de estado."
+    },
+    {
+      "id": "D-058",
+      "status": "active",
+      "text": "Cada tarea declara y aplica los roles profesionales que exige; la automatización no genera trabajo manual para el dueño."
+    },
+    {
+      "id": "D-059",
+      "status": "active",
+      "text": "Hostinger: leer y diagnosticar es libre; cambiar DNS, bases, cron o deploy exige backup previo y registro en Issue; borrar sitios, bases de datos o archivos requiere autorización explícita del dueño, incluso cuando haya copias recuperables; ningún agente compra, renueva o cambia planes/pagos."
+    },
+    {
+      "id": "D-060",
+      "status": "active",
+      "text": "AutoFactory es una extensión Chrome/Safari, no un producto web. CI de main verde no equivale a smoke de instalación ni a producción VERDE."
+    },
+    {
+      "id": "D-061",
+      "status": "active",
+      "text": "El puente con ControlBot permanece sin tráfico real, pairing o tratamientos reales hasta consentimiento autenticado, controles de seguridad y puerta legal ControlBot#20; go-live no se presume por merge."
+    },
+    {
+      "id": "D-062",
+      "status": "active",
+      "text": "Preservar paridad de fuentes web Chrome/Safari, release reversible y datos de diagnóstico minimizados, sin registrar textos de chats, tokens ni IDs de conversación."
+    }
+  ]
+}
