@@ -23,6 +23,7 @@ const validConsent = () => ({
     snapshot: async () => { snapshots += 1; return synthetic(); },
     deliver: async value => { deliveries.push(value); },
     now: () => time,
+    profileAlias: 'sample-profile',
     ...overrides
   });
 
