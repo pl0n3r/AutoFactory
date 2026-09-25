@@ -17,6 +17,11 @@
       throw new TypeError('Invalid command receipt collection');
     }
     const ids = new Set();
+    for (let index = 0; index < value.length; index++) {
+      if (!Object.hasOwn(value, index)) {
+        throw new TypeError('Invalid command receipt collection');
+      }
+    }
     return value.map(receipt => {
       if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) ||
           Object.keys(receipt).length !== 3 ||
