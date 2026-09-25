@@ -37,7 +37,8 @@ const manyAnnotations = Array.from({ length: 45 }, (_, index) => ({
 }));
 const bounded = render(check, manyAnnotations, manyAnnotations.length);
 assert.match(bounded, /Showing 30 of 45 retrieved annotations/);
-assert.equal((bounded.match(/^- `src\\/snake_case_/gm) || []).length, 30);
+assert.equal(bounded.split('\n').filter(line =>
+  line.startsWith('- `src/snake_case_')).length, 30);
 assert.ok(!bounded.includes('snake\\\\_case'),
   'code spans must not contain Markdown escapes');
 
