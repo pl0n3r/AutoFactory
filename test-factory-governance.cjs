@@ -82,3 +82,4 @@ assert.throws(() => validateGovernance(
   )
 ), /extension must not require HTTP deployment or server health/);
 console.log('Factory governance: versioned nucleus, decisions and no-go-live gate verified');
+require('./test-extension-integrity.cjs');
