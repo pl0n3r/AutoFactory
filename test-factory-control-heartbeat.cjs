@@ -121,5 +121,7 @@ const validConsent = () => ({
 
   heartbeat = build({ now: () => Infinity });
   assert.equal(await heartbeat.tick(), 'failed');
+  heartbeat = build({ now: () => { throw Error('private clock token'); } });
+  assert.equal(await heartbeat.tick(), 'failed');
   console.log('Factory Control heartbeat: consent, 60s cadence, revocation and safe failures pass');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -41,7 +41,12 @@
     async function tick() {
       if (stopped) return 'stopped';
       if (inFlight) return 'busy';
-      const started = now();
+      let started;
+      try {
+        started = now();
+      } catch (_error) {
+        return 'failed';
+      }
       if (!Number.isSafeInteger(started) || started < 0) return 'failed';
       if (lastAttemptAt !== null && started - lastAttemptAt < MIN_INTERVAL_MS) {
         return 'throttled';
