@@ -354,6 +354,32 @@
     }) || null;
   }
 
+  function controlText(element) {
+    return core.normalize([
+      element?.getAttribute?.('aria-label'), element?.getAttribute?.('title'),
+      element?.getAttribute?.('data-testid'), element?.textContent
+    ].filter(Boolean).join(' ')).toLowerCase();
+  }
+
+  function highOption() {
+    return [...document.querySelectorAll('[role="menuitem"],[role="menuitemradio"],[role="option"],button')]
+      .find(element => /^(alta|alto|high)(\s|$)/i.test(core.normalize(
+        element.textContent || element.getAttribute('aria-label') || '')));
+  }
+
+  function thinkingOption() {
+    return [...document.querySelectorAll('[role="menuitem"],[role="menuitemradio"],[role="option"],button')]
+      .find(element => /^(pensando|thinking)(\s|$)/i.test(core.normalize(
+        element.textContent || element.getAttribute('aria-label') || '')));
+  }
+
+  function reasoningSelectorButton() {
+    const candidates = [...document.querySelectorAll('button,[role="button"]')];
+    return candidates.find(element => /^(alta|alto|high)(\s|$)/i.test(controlText(element)))
+      || candidates.find(element => /reasoning|effort|thinking.*(level|time)|nivel.*razonamiento/.test(controlText(element)))
+      || null;
+  }
+
   async function ensureConversationMode(mode) {
     const desiredMode = mode === 'work' ? 'work' : 'chat';
     const modeKey = `${location.pathname}:${desiredMode}`;
@@ -380,7 +406,7 @@
     state.lastReasoningCheckAt = Date.now();
     let selector = null;
     for (let attempt = 0; attempt < 15; attempt += 1) {
-      selector = modelSelectorButton();
+      selector = reasoningSelectorButton() || modelSelectorButton();
       if (selector) break;
       await wait(100);
     }
@@ -396,13 +422,7 @@
     selector.click();
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await wait(100);
-      const options = [...document.querySelectorAll(
-        '[role="menuitem"], [role="menuitemradio"], [role="option"], button'
-      )];
-      const high = options.find(element => {
-        const text = core.normalize(element.textContent || element.getAttribute('aria-label') || '');
-        return /^(alta|alto|high)(\s|$)/i.test(text);
-      });
+      const high = highOption();
       if (!high) continue;
       const selected = high.getAttribute('aria-checked') === 'true'
         || high.getAttribute('aria-selected') === 'true'
@@ -412,6 +432,23 @@
       await wait(500);
       log('reasoning-level', { requested: level, result: selected ? 'already-selected' : 'selected' });
       return 'confirmed';
+    }
+    const thinking = thinkingOption();
+    if (thinking) {
+      thinking.click();
+      await wait(500);
+      const reasoningSelector = reasoningSelectorButton();
+      if (reasoningSelector && !/^(alta|alto|high)(\s|$)/i.test(controlText(reasoningSelector))) {
+        reasoningSelector.click();
+        await wait(300);
+      }
+      const high = highOption() || reasoningSelectorButton();
+      if (high && /^(alta|alto|high)(\s|$)/i.test(controlText(high))) {
+        if (!/^(alta|alto|high)(\s|$)/i.test(controlText(reasoningSelector))) high.click();
+        await wait(500);
+        log('reasoning-level', { requested: level, result: 'selected-after-thinking' });
+        return 'confirmed';
+      }
     }
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     if (Date.now() - state.lastReasoningUnavailableLogAt >= 300000) {
@@ -829,7 +866,7 @@
   window.addEventListener('wheel', noteManualScroll, { passive: true });
   window.addEventListener('touchmove', noteManualScroll, { passive: true });
   setStatus('Pausado');
-  log('content-loaded', { version: '1.6.2', backgroundTabs: true, persistentState: true });
+  log('content-loaded', { version: '1.6.3', backgroundTabs: true, persistentState: true });
   let mutationTimer = 0;
   const mutationObserver = new MutationObserver(mutations => {
     if (!state.enabled || mutationTimer) return;

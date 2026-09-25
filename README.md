@@ -10,9 +10,15 @@ Su función es mantener trabajando cada pestaña habilitada: espera mientras Cha
 
 Opera en todas las pestañas de ChatGPT habilitadas, incluso cuando están detrás de otra ventana. Un heartbeat del proceso de fondo reactiva la supervisión periódica; el scroll visual solo se mueve en la pestaña visible.
 
+## Versión 1.6.3
+
+- Distingue el selector de razonamiento del selector general del modelo y, cuando es necesario, abre Thinking/Pensando antes de elegir Alto/High.
+
 ## Versión 1.6.2
 
 - Minimiza el diagnóstico: las rutas de chat se guardan por categoría (`/c/:id`), sin identificadores, y solo se retienen campos técnicos permitidos. Las entradas antiguas se anonimizan al exportar y al escribir un evento nuevo. El botón BORRAR LOG elimina la copia local.
+
+## Versión 1.6.1
 
 - Respeta mensajes personalizados de cualquier longitud. Solo restaura la plantilla predeterminada cuando el campo está vacío o pertenece a un esquema antiguo.
 

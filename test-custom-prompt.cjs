@@ -10,3 +10,8 @@ assert.match(content, /prompt\.length === 0/);
 assert.doesNotMatch(content, /prompt\.length < 220/);
 
 console.log('Mensaje personalizado: cualquier texto no vacío se conserva y se envía');
+
+assert.match(content, /function reasoningSelectorButton\(\)/);
+assert.match(content, /selected-after-thinking/);
+assert.match(content, /reasoningSelectorButton\(\) \|\| modelSelectorButton\(\)/);
+console.log('Razonamiento: Alto se busca antes del selector general y admite Thinking como paso intermedio');

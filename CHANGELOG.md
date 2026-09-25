@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.3 — 2026-09-25
+
+- Separa el control de razonamiento del selector general del modelo.
+- Verifica Alto/High de forma explícita y usa Thinking/Pensando como paso intermedio cuando la interfaz lo exige.
+- Evita registrar un cambio exitoso si solo se abrió el selector equivocado.
+
 ## 1.6.2 — 2026-09-25
 
 - Sustituye rutas con identificador de conversación por `/c/:id` en el log local.
