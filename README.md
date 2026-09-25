@@ -10,7 +10,9 @@ Su función es mantener trabajando cada pestaña habilitada: espera mientras Cha
 
 Opera en todas las pestañas de ChatGPT habilitadas, incluso cuando están detrás de otra ventana. Un heartbeat del proceso de fondo reactiva la supervisión periódica; el scroll visual solo se mueve en la pestaña visible.
 
-## Versión 1.6.1
+## Versión 1.6.2
+
+- Minimiza el diagnóstico: las rutas de chat se guardan por categoría (`/c/:id`), sin identificadores, y solo se retienen campos técnicos permitidos. Las entradas antiguas se anonimizan al exportar y al escribir un evento nuevo. El botón BORRAR LOG elimina la copia local.
 
 - Respeta mensajes personalizados de cualquier longitud. Solo restaura la plantilla predeterminada cuando el campo está vacío o pertenece a un esquema antiguo.
 
@@ -46,7 +48,7 @@ También mantiene un historial agregado de errores por tipo y acciones que termi
 
 ## Log de diagnóstico
 
-El service worker conserva hasta 300 eventos de los últimos siete días: fecha, pestaña/ventana, ruta del chat, estado, tipo de error, acción y resultado. No guarda mensajes ni contenido del chat. **COPIAR LOG** produce un JSON listo para compartir; **BORRAR LOG** elimina el historial local.
+El service worker conserva hasta 300 eventos de los últimos siete días: fecha, pestaña/ventana, ruta del chat, estado, tipo de error, acción y resultado. No guarda mensajes ni contenido del chat; en esta versión también anonimiza IDs de chat y excluye mensajes libres de error. **COPIAR LOG** anonimiza también entradas anteriores y produce un JSON listo para compartir; **BORRAR LOG** elimina el historial local.
 
 ## Instalar en Chrome
 

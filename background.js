@@ -78,24 +78,75 @@
       } catch (error) { reject(error); }
     });
   }
+  // Only route categories and allowlisted diagnostics may leave the background worker.
+  // The exported local log must not contain chat identifiers, free-text errors or tokens.
+  const DIAGNOSTIC_EVENTS = new Set([
+    'scroll-failure', 'front-stop', 'status', 'conversation-mode', 'reasoning-level',
+    'send-start', 'send-control-missing', 'send-confirmed', 'circuit-reset',
+    'recovery', 'human-required', 'circuit-open', 'draft-cleared', 'failure',
+    'enabled-change', 'content-loaded'
+  ]);
+  const DIAGNOSTIC_TEXT = new Set([
+    'code', 'action', 'kind', 'requested', 'result', 'fallback', 'reason',
+    'source', 'version'
+  ]);
+  const DIAGNOSTIC_BOOLEAN = new Set(['enabled', 'backgroundTabs', 'persistentState']);
+  const DIAGNOSTIC_NUMBER = new Set(['promptLength', 'attempt', 'intervalMinutes']);
+
+  function safeDetails(details) {
+    if (!details || typeof details !== 'object' || Array.isArray(details)) return {};
+    const clean = {};
+    for (const [key, value] of Object.entries(details)) {
+      if (DIAGNOSTIC_TEXT.has(key) && typeof value === 'string' &&
+          /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) clean[key] = value;
+      else if (DIAGNOSTIC_BOOLEAN.has(key) && typeof value === 'boolean') clean[key] = value;
+      else if (DIAGNOSTIC_NUMBER.has(key) && Number.isSafeInteger(value) &&
+          value >= 0 && value <= 10000000) clean[key] = value;
+    }
+    return clean;
+  }
+
+  function safeRoute(path) {
+    if (typeof path !== 'string') return '/other';
+    if (path === '/') return '/';
+    if (/^\/c\/[^/]+\/?$/.test(path)) return '/c/:id';
+    return '/other';
+  }
+
+  function safeEntry(entry) {
+    const time = Date.parse(entry?.at || '');
+    return {
+      at: Number.isFinite(time) ? new Date(time).toISOString() : new Date().toISOString(),
+      event: DIAGNOSTIC_EVENTS.has(entry?.event) ? entry.event : 'unknown',
+      tabId: Number.isSafeInteger(entry?.tabId) && entry.tabId >= 0 ? entry.tabId : null,
+      windowId: Number.isSafeInteger(entry?.windowId) && entry.windowId >= 0 ? entry.windowId : null,
+      path: safeRoute(entry?.path),
+      details: safeDetails(entry?.details)
+    };
+  }
+
   function append(entry, sender) {
     writeQueue = writeQueue.then(async () => {
       const { diagnosticLog = [] } = await storageGet({ diagnosticLog: [] });
-      const url = sender?.tab?.url || '';
-      const safePath = url.startsWith('https://chatgpt.com/')
-        ? new URL(url).pathname : '';
-      const retainedLog = diagnosticLog.filter(item => {
-        const timestamp = Date.parse(item?.at || '');
-        return Number.isFinite(timestamp) && Date.now() - timestamp <= MAX_LOG_AGE_MS;
-      });
-      retainedLog.push({
+      let path = '/other';
+      try {
+        const url = new URL(sender?.tab?.url || '');
+        if (url.origin === 'https://chatgpt.com') path = url.pathname;
+      } catch (_error) {}
+      const retainedLog = (Array.isArray(diagnosticLog) ? diagnosticLog : [])
+        .filter(item => {
+          const timestamp = Date.parse(item?.at || '');
+          return Number.isFinite(timestamp) && Date.now() - timestamp <= MAX_LOG_AGE_MS;
+        })
+        .map(safeEntry);
+      retainedLog.push(safeEntry({
         at: new Date().toISOString(),
-        event: String(entry.event || 'unknown'),
-        tabId: sender?.tab?.id ?? null,
-        windowId: sender?.tab?.windowId ?? null,
-        path: safePath,
-        details: entry.details && typeof entry.details === 'object' ? entry.details : {}
-      });
+        event: entry?.event,
+        tabId: sender?.tab?.id,
+        windowId: sender?.tab?.windowId,
+        path,
+        details: entry?.details
+      }));
       await storageSet({ diagnosticLog: retainedLog.slice(-MAX_ENTRIES) });
     }).catch(() => {});
   }
@@ -126,7 +177,7 @@
     }
     if (message?.type === 'autopilot:get-log') {
       writeQueue.then(() => storageGet({ diagnosticLog: [] }))
-        .then(({ diagnosticLog }) => reply({ entries: diagnosticLog }))
+        .then(({ diagnosticLog }) => reply({ entries: (Array.isArray(diagnosticLog) ? diagnosticLog : []).slice(-MAX_ENTRIES).map(safeEntry) }))
         .catch(error => reply({ entries: [], error: error.message }));
       return true;
     }
