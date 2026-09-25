@@ -80,6 +80,17 @@ const validConsent = () => ({
   assert.equal(await heartbeat.tick(), 'denied');
   assert.equal(deliveries.length, 2);
 
+  // Reauthentication/storage may take long enough for consent to expire.
+  consent = { ...validConsent(), expiresAt: time + 100 };
+  let consentReads = 0;
+  heartbeat = build({ loadVerifiedConsent: async () => {
+    consentReads += 1;
+    if (consentReads === 2) time += 100;
+    return structuredClone(consent);
+  } });
+  assert.equal(await heartbeat.tick(), 'denied');
+  assert.equal(deliveries.length, 2);
+  time = 100000;
   consent = validConsent();
   heartbeat = build({
     loadVerifiedConsent: async () => { throw Error('private API token and alias'); }
