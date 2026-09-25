@@ -28,7 +28,7 @@ assert.match(render(check, [], 0), /does \*\*not\*\* mean there are no Sonar fin
 assert.ok(render(check, [{ path: 'a.js', start_line: 9,
   title: 'Rule S123', message: 'Avoid returning null' }], 1)
   .includes('a.js:9'));
-assert.equal(code('snake_case`file.js\\nnext', 200), 'snake_case file.js next');
+assert.equal(code('snake_case`file.js\nnext', 200), 'snake_case file.js next');
 const manyAnnotations = Array.from({ length: 45 }, (_, index) => ({
   path: 'src/snake_case_' + index + '.js',
   start_line: index + 1,
