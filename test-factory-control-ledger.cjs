@@ -132,6 +132,8 @@ const memory = () => {
   }), /storage unavailable/);
   assert.equal(browserCalls, 1);
   failGet = false;
+  await assert.rejects(browserStore.save(Array(1)), /receipt collection/);
+  await assert.rejects(browserStore.save([undefined]), /receipt/);
   await assert.rejects(browserStore.save([{ id: 'bad', state: 'done', code: 'ok', text: 'secret' }]), /receipt/);
   assert.equal(JSON.stringify(persisted).includes('secret'), false);
   persisted[KEY] = [{ id: 'bad-id', state: 'done', code: 'ok', text: 'private' }];
