@@ -73,6 +73,10 @@ Un ID pendiente tras una interrupción responde `not_ready`; un ID ya
 terminado responde `already_handled`. Nunca guarda `payload.text`,
 secretos ni mensajes de excepciones.
 
+El ledger valida que la lista cargada sea densa y que cada recibo sea válido;
+si el adaptador entrega arrays dispersos/corruptos falla antes del guardado de
+`pending` y antes del handler, independientemente del adapter Chrome.
+
 El historial tiene capacidad máxima configurable (por defecto 256), y
 **falla cerrado al llenarse**: jamás elimina recibos en silencio, pues
 esa eliminación permitiría volver a ejecutar un ID antiguo. La rotación
