@@ -55,8 +55,9 @@
         const payload = protocol.heartbeat(await snapshot());
         if (payload.profileAlias !== consent.profileAlias || stopped) return 'denied';
         // A revocation while the snapshot was gathered must prevent delivery.
-        const current = now();
         const latest = await loadVerifiedConsent();
+        // Check the clock AFTER storage resolves, immediately before delivery.
+        const current = now();
         if (!Number.isSafeInteger(current) || current < started ||
             !permitted(latest, current) ||
             latest.profileAlias !== profileAlias || stopped) return 'denied';
