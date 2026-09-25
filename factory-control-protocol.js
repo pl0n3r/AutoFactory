@@ -92,6 +92,10 @@
     if (!ACTIONS.has(input.action)) throw new TypeError('Unsupported command action');
     const target = input.target === 'all' ? 'all' : tabId(input.target);
     const action = input.action;
+    // Only pause/resume may broadcast. A remote message must name one tab.
+    if (target === 'all' && action !== 'pause' && action !== 'resume') {
+      throw new TypeError('Broadcast is restricted to pause and resume');
+    }
     let payload = null;
     if (action === 'send_message' || action === 'set_prompt') {
       object(input.payload, 'payload');
