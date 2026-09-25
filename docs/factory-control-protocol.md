@@ -87,3 +87,31 @@ interrumpido tras guardar `pending` puede no haber invocado el handler;
 el dueño o el futuro servidor deben reconciliar la operación antes de
 decidir una nueva orden. Autenticación, autorización, opt-in y control
 de destinos siguen siendo responsabilidad del runtime posterior.
+
+## Almacenamiento persistible en Chrome (slice 3, aún sin runtime)
+
+`factory-control-chrome-storage.js` exporta `createChromeReceiptStore({local, runtime})`.
+Un futuro service worker podrá pasar explícitamente `chrome.storage.local` y
+`chrome.runtime` como dependencias del ledger existente. No se carga el
+módulo desde `manifest.json` ni se registra un handler remoto en este corte.
+
+Se usa **solo** la clave `factoryControlCommandReceiptsV1`: cada recibo
+contiene exactamente `id`, `state` y `code`, con límites para IDs y
+códigos. El adaptador rechaza colecciones inválidas, duplicadas o demasiado
+grandes antes de guardar o de devolverlas al ledger. Nunca almacena
+`payload.text`, aliases, URLs de chats, llaves ni mensajes de excepción.
+Los errores de `chrome.runtime.lastError` se convierten en un código
+genérico de fallo de almacenamiento, sin exponer detalles potencialmente
+sensibles. Si falla el guardado del marcador `pending`, el ledger **no**
+invoca el handler. Si encuentra `pending` de una sesión anterior, mantiene
+`not_ready` hasta reconciliación, sin reejecución silenciosa.
+
+**Límites de garantía:** el callback de `chrome.storage.local.set` confirma
+el resultado de la operación para el almacenamiento local, no una
+transacción distribuida ni entrega exactamente una vez. El ledger serializa
+llamadas de **una instancia**; no excluye simultaneidad de dos workers o
+perfiles contra el mismo almacenamiento sin un mecanismo de bloqueo/CAS.
+El servicio futuro debe reconciliar IDs pendientes, autenticar y autorizar
+cada orden, acotar el historial y gestionar su rotación con seguridad.
+Nada de esto habilita tráfico real ni modifica permisos del navegador.
+La puerta legal `pl0n3r/ControlBot#20` continúa sin resolver.
