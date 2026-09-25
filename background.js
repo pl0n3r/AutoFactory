@@ -177,7 +177,7 @@
     }
     if (message?.type === 'autopilot:get-log') {
       writeQueue.then(() => storageGet({ diagnosticLog: [] }))
-        .then(({ diagnosticLog }) => reply({ entries: diagnosticLog }))
+        .then(({ diagnosticLog }) => reply({ entries: (Array.isArray(diagnosticLog) ? diagnosticLog : []).slice(-MAX_ENTRIES).map(safeEntry) }))
         .catch(error => reply({ entries: [], error: error.message }));
       return true;
     }
