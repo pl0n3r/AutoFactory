@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.2 — 2026-09-25
+
+- Sustituye rutas con identificador de conversación por `/c/:id` en el log local.
+- Restringe detalles de diagnóstico a metadatos técnicos permitidos y anonimiza entradas anteriores en la exportación.
+- Refuerza pruebas contra filtración de rutas, tokens, mensajes de excepción y datos anidados, tanto para Chrome como para Safari.
+
 ## 1.6.1 — 2026-09-23
 
 - Corrige la sustitución accidental de mensajes personalizados cortos por la plantilla predeterminada.

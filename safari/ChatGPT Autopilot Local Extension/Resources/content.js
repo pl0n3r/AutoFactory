@@ -829,7 +829,7 @@
   window.addEventListener('wheel', noteManualScroll, { passive: true });
   window.addEventListener('touchmove', noteManualScroll, { passive: true });
   setStatus('Pausado');
-  log('content-loaded', { version: '1.6.1', backgroundTabs: true, persistentState: true });
+  log('content-loaded', { version: '1.6.2', backgroundTabs: true, persistentState: true });
   let mutationTimer = 0;
   const mutationObserver = new MutationObserver(mutations => {
     if (!state.enabled || mutationTimer) return;
