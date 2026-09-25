@@ -26,6 +26,13 @@
         throw new TypeError('Invalid persisted command ledger');
       }
       const ids = new Set();
+      // Array.prototype.map skips holes, so reject them before any pending receipt
+      // is written or a command handler can run.
+      for (let index = 0; index < receipts.length; index++) {
+        if (!Object.hasOwn(receipts, index)) {
+          throw new TypeError('Invalid persisted command ledger');
+        }
+      }
       return receipts.map(receipt => {
         if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) ||
             Object.keys(receipt).some(key => !['id', 'state', 'code'].includes(key)) ||

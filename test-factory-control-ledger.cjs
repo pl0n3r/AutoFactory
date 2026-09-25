@@ -77,6 +77,24 @@ const memory = () => {
     calls += 1;
   }), /receipt/);
   assert.equal(calls, 1);
+  // A storage adapter other than Chrome may return a sparse array. Even if
+  // its save() accepts undefined slots, the handler must never run.
+  for (const malformed of [
+    Array(1),
+    [{ id: 'existing', state: 'done', code: 'ok' }, ,]
+  ]) {
+    let persistedWrites = 0;
+    const malformedLedger = createLedger({
+      load: async () => malformed,
+      save: async () => { persistedWrites += 1; }
+    });
+    await assert.rejects(malformedLedger.execute(command('sparse'), async () => {
+      calls += 1;
+      return { ok: true, code: 'ok' };
+    }), /Invalid persisted command ledger/);
+    assert.equal(persistedWrites, 0);
+    assert.equal(calls, 1);
+  }
   await assert.rejects(ledger.execute({ id: 'invalid', action: 'delete_account', target: 9 }, async () => {}), /Unsupported/);
   // MV3-ready adapter: callback failures must prevent all external effects.
   let persisted = {};
