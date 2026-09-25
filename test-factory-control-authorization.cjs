@@ -76,3 +76,4 @@ const { createCommandAuthorizer } = require('./factory-control-authorization.js'
   assert.throws(() => createCommandAuthorizer({}), /required/);
   console.log('Factory Control authorization: opt-in, expiry, revocation, tab scope and fail closed');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+require('./test-factory-control-heartbeat.cjs');
