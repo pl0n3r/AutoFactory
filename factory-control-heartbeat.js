@@ -28,10 +28,11 @@
       consent.expiresAt > time && consent.expiresAt <= time + MAX_CONSENT_MS;
   }
 
-  function createHeartbeatCoordinator({ loadVerifiedConsent, snapshot, deliver, now } = {}) {
+  function createHeartbeatCoordinator({ loadVerifiedConsent, snapshot, deliver, now, profileAlias } = {}) {
     if (!protocol || typeof protocol.heartbeat !== 'function' ||
         typeof loadVerifiedConsent !== 'function' || typeof snapshot !== 'function' ||
-        typeof deliver !== 'function' || typeof now !== 'function') {
+        typeof deliver !== 'function' || typeof now !== 'function' ||
+        !alias(profileAlias)) {
       throw new TypeError('Heartbeat requires verified consent, snapshot, delivery and clock');
     }
     let stopped = false;
@@ -49,7 +50,8 @@
       lastAttemptAt = started; // Failures must not start a retry storm.
       try {
         const consent = await loadVerifiedConsent();
-        if (!permitted(consent, started) || stopped) return 'denied';
+        if (!permitted(consent, started) || consent.profileAlias !== profileAlias ||
+            stopped) return 'denied';
         const payload = protocol.heartbeat(await snapshot());
         if (payload.profileAlias !== consent.profileAlias || stopped) return 'denied';
         // A revocation while the snapshot was gathered must prevent delivery.
@@ -57,7 +59,7 @@
         const latest = await loadVerifiedConsent();
         if (!Number.isSafeInteger(current) || current < started ||
             !permitted(latest, current) ||
-            latest.profileAlias !== consent.profileAlias || stopped) return 'denied';
+            latest.profileAlias !== profileAlias || stopped) return 'denied';
         await deliver(payload);
         return 'sent';
       } catch (_error) {
