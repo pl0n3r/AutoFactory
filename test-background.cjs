@@ -1,4 +1,14 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const safari = path.join(__dirname, 'safari', 'ChatGPT Autopilot Local Extension', 'Resources');
+for (const file of ['background.js', 'content.js', 'manifest.json']) {
+  assert.equal(
+    fs.readFileSync(path.join(safari, file), 'utf8'),
+    fs.readFileSync(path.join(__dirname, file), 'utf8'),
+    'Safari mirror diverged: ' + file
+  );
+}
 const store = { diagnosticLog: [{
   at: new Date().toISOString(), event: 'legacy-private-free-text',
   tabId: 1, windowId: 2, path: '/c/old-secret',
