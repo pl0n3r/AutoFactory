@@ -6,21 +6,51 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  publish:
+  preflight:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 20
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Verify tag matches manifest
-        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./manifest.json').version")"
+      - name: Verify exact tag and Chrome/Safari/package/lock versions
+        run: node scripts/verify-release-metadata.cjs "$GITHUB_REF_NAME"
+      - name: Verify tagged commit is current main
+        run: |
+          set -euo pipefail
+          git show-ref --verify --quiet refs/remotes/origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse refs/remotes/origin/main)"
+
+  publish:
+    needs: preflight
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Recheck current main immediately before packaging
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.commit.sha')"
       - name: Package Chrome and Safari
         run: python3 scripts/package-release.py
       - name: Publish GitHub Release

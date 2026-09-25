@@ -56,3 +56,4 @@ assert.throws(() => protocol.acknowledgement({ id: '1', ok: true, code: 'failed'
 assert.throws(() => protocol.acknowledgement({ id: '1', ok: true, code: 'ok', message: 'private' }), /unsupported/);
 console.log('Factory Control protocol: heartbeat, command and ACK allowlists correct');
 require('./test-factory-governance.cjs');
+require('./test-release-workflow.cjs');
