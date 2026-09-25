@@ -27,7 +27,7 @@ Exporta `VERSION=1` y tres funciones que **rechazan** campos desconocidos:
   conversación, correo, token ni texto del chat.
 - `command({id, action, target, payload?})`: solo
   `pause|resume|open_chat|set_prompt|set_mode|send_message`.
-  El destino es `all` o un ID numérico de pestaña. `set_mode`
+  El destino es `all` **solo para pausar/reanudar**, o un ID numérico de pestaña para las demás acciones. `set_mode`
   admite `chat|work`; `set_prompt` y `send_message` admiten texto
   no vacío de hasta 16 000 caracteres. El texto de una orden no puede
   incorporarse al latido, ACK ni registro de diagnóstico.
