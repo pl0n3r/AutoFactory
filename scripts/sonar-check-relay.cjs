@@ -17,6 +17,11 @@ function plain(value, limit = 260) {
       '*': '\\*', '_': '\\_', '[': '\\[', ']': '\\]', '@': '＠'
     })[character] || character);
 }
+function code(value, limit = 260) {
+  return String(value ?? '').slice(0, limit)
+    .replace(/[\r\n\t`]+/g, ' ');
+}
+
 function isSonarCheck(check) {
   return Boolean(check && check.name === CHECK_NAME &&
     check.app?.slug === SONAR_APP && check.status === 'completed' &&
@@ -37,17 +42,18 @@ function render(check, annotations, count) {
     '## SonarCloud · GitHub check annotations',
     '',
     '**Check SHA:** `' + check.head_sha + '`',
-    '**Conclusion:** `' + plain(check.conclusion, 30) + '`',
+    '**Conclusion:** `' + code(check.conclusion, 30) + '`',
     '**Check ID:** `' + check.id + '`',
     ''
   ];
   if (!annotations.length) {
     lines.push('No GitHub annotations were returned for this check. This does **not** mean there are no Sonar findings. The Sonar dashboard or an authenticated diagnostic is still needed.');
   } else {
-    lines.push('Showing ' + annotations.length + ' of ' + count +
+    const shown = Math.min(annotations.length, MAX_ANNOTATIONS);
+    lines.push('Showing ' + shown + ' of ' + count +
       ' retrieved annotations (up to ' + MAX_ANNOTATIONS + '):', '');
     for (const annotation of annotations.slice(0, MAX_ANNOTATIONS)) {
-      const file = plain(annotation.path || 'unknown', 200);
+      const file = code(annotation.path || 'unknown', 200);
       const line = Number.isSafeInteger(annotation.start_line) &&
         annotation.start_line > 0 ? ':' + annotation.start_line : '';
       lines.push('- `' + file + line + '` · **' +
@@ -148,4 +154,4 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
-module.exports = { plain, isSonarCheck, choosePR, render, runRelay };
+module.exports = { plain, code, isSonarCheck, choosePR, render, runRelay };

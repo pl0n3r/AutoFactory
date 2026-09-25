@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { plain, isSonarCheck, choosePR, render, runRelay } =
+const { plain, code, isSonarCheck, choosePR, render, runRelay } =
   require('./scripts/sonar-check-relay.cjs');
 
 const SHA = 'a'.repeat(40);
@@ -28,6 +28,18 @@ assert.match(render(check, [], 0), /does \*\*not\*\* mean there are no Sonar fin
 assert.ok(render(check, [{ path: 'a.js', start_line: 9,
   title: 'Rule S123', message: 'Avoid returning null' }], 1)
   .includes('a.js:9'));
+assert.equal(code('snake_case`file.js\\nnext', 200), 'snake_case file.js next');
+const manyAnnotations = Array.from({ length: 45 }, (_, index) => ({
+  path: 'src/snake_case_' + index + '.js',
+  start_line: index + 1,
+  title: 'Rule ' + index,
+  message: 'Message ' + index
+}));
+const bounded = render(check, manyAnnotations, manyAnnotations.length);
+assert.match(bounded, /Showing 30 of 45 retrieved annotations/);
+assert.equal((bounded.match(/^- `src\\/snake_case_/gm) || []).length, 30);
+assert.ok(!bounded.includes('snake\\\\_case'),
+  'code spans must not contain Markdown escapes');
 
 const calls = [];
 let lastComment;
