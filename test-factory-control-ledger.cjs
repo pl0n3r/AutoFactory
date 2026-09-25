@@ -170,3 +170,4 @@ const memory = () => {
   console.log('Chrome receipt store: durable, duplicate-safe, fail-closed and data-minimized');
   console.log('Factory Control ledger: concurrent duplicates, restart, failure isolation, pending, capacity and corruption pass');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+require('./test-factory-control-authorization.cjs');
