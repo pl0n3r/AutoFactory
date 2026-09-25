@@ -3,9 +3,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SAFARI_RESOURCES = path.join(
+const SAFARI_RESOURCES = [
   'safari', 'ChatGPT Autopilot Local Extension', 'Resources'
-);
+];
 const EXPECTED_PERMISSIONS = ['activeTab', 'alarms', 'storage', 'tabs'];
 const EXPECTED_HOSTS = ['https://chatgpt.com/*'];
 
@@ -39,10 +39,10 @@ function regularFile(root, relative, io) {
   }
   return io.readFileSync(current);
 }
-function regularDirectory(root, relative, io) {
-  const safe = assetName(relative);
+function regularDirectory(root, segments, io) {
+  const safe = segments.join('/');
   let current = root;
-  for (const part of safe.split('/')) {
+  for (const part of segments) {
     current = path.join(current, part);
     let info;
     try {
