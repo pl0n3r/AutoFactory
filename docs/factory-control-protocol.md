@@ -60,3 +60,30 @@ npm test
 `npm test` incorpora la nueva prueba con el resto del suite cuando
 están instaladas las dependencias. Para revertir esta fase basta revertir
 el PR: aún no modifica el runtime de Chrome/Safari ni los permisos.
+
+
+## Protección contra reintentos (slice 2)
+
+`factory-control-ledger.js` añade `createLedger({load, save, maxEntries})`,
+con un almacenamiento asíncrono inyectado que **debe ser durable** para
+sobrevivir a suspensiones del service worker MV3. `execute(command, handler)`
+valida el comando del contrato v1, persiste un recibo `pending` **antes**
+de invocar el handler, y guarda únicamente `{id, state, code}`.
+Un ID pendiente tras una interrupción responde `not_ready`; un ID ya
+terminado responde `already_handled`. Nunca guarda `payload.text`,
+secretos ni mensajes de excepciones.
+
+El historial tiene capacidad máxima configurable (por defecto 256), y
+**falla cerrado al llenarse**: jamás elimina recibos en silencio, pues
+esa eliminación permitiría volver a ejecutar un ID antiguo. La rotación
+solo puede realizarse en un protocolo posterior coordinado con el servidor,
+después de confirmar una frontera segura de órdenes ya descartadas.
+
+**Garantía exacta:** no repetición por ID retenido en una sola instancia
+con almacenamiento durable y guardado exitoso. No garantiza entrega
+exactamente una vez ni exclusión mutua entre múltiples instancias
+independientes usando almacenamiento sin compare-and-swap. Un proceso
+interrumpido tras guardar `pending` puede no haber invocado el handler;
+el dueño o el futuro servidor deben reconciliar la operación antes de
+decidir una nueva orden. Autenticación, autorización, opt-in y control
+de destinos siguen siendo responsabilidad del runtime posterior.
