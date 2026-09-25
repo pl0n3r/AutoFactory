@@ -119,3 +119,34 @@ El servicio futuro debe reconciliar IDs pendientes, autenticar y autorizar
 cada orden, acotar el historial y gestionar su rotación con seguridad.
 Nada de esto habilita tráfico real ni modifica permisos del navegador.
 La puerta legal `pl0n3r/ControlBot#20` continúa sin resolver.
+
+
+## Preflight local por perfil y acción (slice 4, aún sin runtime)
+
+`factory-control-authorization.js` exporta
+`createCommandAuthorizer({loadVerifiedGrant, now})`. El consumidor futuro
+deberá autenticar la procedencia de cada orden, verificar criptográficamente
+el emparejamiento y recién entonces proporcionar
+`loadVerifiedGrant(): Promise<grant>` desde almacenamiento local confiable.
+El `grant` puro contiene exactamente
+`{profileAlias, expiresAt, revoked, actions, tabIds, broadcast}`, sin
+llave, correo, URL ni texto de chat. No se crea, guarda ni transmite una
+concesión en este corte. La presencia de un objeto con esos campos **no**
+demuestra una firma ni una sesión; ese límite pertenece al runtime y al
+servidor futuros.
+
+`authorize(command, {profileAlias, enabledTabIds})` reutiliza el validador
+del protocolo y rechaza cualquier concesión ausente, corrupta, revocada,
+expirada (o con vencimiento mayor a 24 horas), de otro perfil o sin acción
+autorizada. Una orden para un tab numérico necesita permiso para ese tab
+**y** que esté habilitado localmente. `target: "all"` requiere permiso
+`broadcast: true` explícito y el protocolo solo lo admite para pausar o
+reanudar, nunca para enviar mensajes ni cambiar prompts o modos.
+Todo rechazo tiene texto fijo `Command not authorized`: ni el prompt,
+ni el alias, ni una excepción del adapter se incorporan al diagnóstico.
+
+Un test independiente del almacenamiento y del navegador se integra en
+`npm test` a través de `test-factory-control-ledger.cjs`. La autorización
+puramente local **no** sustituye la verificación del dueño, antifalsificación,
+revocación server-side, integridad de órdenes, controles de sesión o
+consentimiento legal. La puerta ControlBot#20 mantiene no-go-live.
