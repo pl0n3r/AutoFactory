@@ -23,7 +23,9 @@ Exporta `VERSION=1` y tres funciones que **rechazan** campos desconocidos:
   alias cortos sin formato de correo, hasta 40 pestañas, identificadores enteros
   únicos, indicador `enabled`, estado
   `paused|waiting|generating|sending|error|limit|requires_login`,
-  y código de evento alfanumérico corto o `null`. No acepta URL, ruta de
+  y código de evento alfanumérico corto o `null`. Rechaza arrays de
+  pestañas dispersos antes de emitir un latido para no producir un estado
+  parcial. No acepta URL, ruta de
   conversación, correo, token ni texto del chat.
 - `command({id, action, target, payload?})`: solo
   `pause|resume|open_chat|set_prompt|set_mode|send_message`.
