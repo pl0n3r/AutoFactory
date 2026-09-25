@@ -18,6 +18,12 @@ assert.throws(() => protocol.heartbeat({ ...heartbeat(), accountAlias: 'name@exa
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), token: 'secret' }), /unsupported/);
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), lastEvent: 'chat text: private' }), /event/);
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), tabs: Array(41).fill({ tabId: 1, enabled: true, state: 'waiting' }) }), /tabs/);
+assert.deepEqual(protocol.heartbeat({ ...heartbeat(), tabs: [] }).tabs, []);
+assert.throws(() => protocol.heartbeat({ ...heartbeat(), tabs: Array(1) }), /Sparse tab/);
+assert.throws(() => protocol.heartbeat({ ...heartbeat(), tabs: [
+  { tabId: 7, enabled: true, state: 'waiting' }, ,
+  { tabId: 9, enabled: true, state: 'paused' }
+] }), /Sparse tab/);
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), tabs: [...heartbeat().tabs, ...heartbeat().tabs] }), /Duplicate/);
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), tabs: [{ tabId: 1, enabled: true, state: 'unknown' }] }), /metadata/);
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), tabs: [{ tabId: 1, enabled: true, state: 'waiting', chatText: 'private' }] }), /unsupported/);

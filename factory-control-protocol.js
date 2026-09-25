@@ -57,6 +57,12 @@
     if (!Array.isArray(input.tabs) || input.tabs.length > 40) {
       throw new TypeError('Too many tabs or missing tabs');
     }
+    // Array.prototype.map skips holes and would emit a partial heartbeat.
+    for (let index = 0; index < input.tabs.length; index++) {
+      if (!Object.hasOwn(input.tabs, index)) {
+        throw new TypeError('Sparse tab metadata');
+      }
+    }
     const seen = new Set();
     const tabs = input.tabs.map(tab => {
       object(tab, 'tab');
