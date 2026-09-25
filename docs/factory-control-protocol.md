@@ -157,7 +157,7 @@ consentimiento legal. La puerta ControlBot#20 mantiene no-go-live.
 ## Coordinador de latido (slice 5, sin transporte activo)
 
 `factory-control-heartbeat.js` ofrece
-`createHeartbeatCoordinator({loadVerifiedConsent, snapshot, deliver, now})`
+`createHeartbeatCoordinator({loadVerifiedConsent, snapshot, deliver, now, profileAlias})`
 y el método `tick()`. No está cargado desde el manifest, no programa alarmas,
 no configura URL ni realiza HTTP por sí mismo. El futuro adaptador deberá
 inyectar un `deliver` autenticado y respetar la puerta legal ControlBot#20.
@@ -165,6 +165,9 @@ inyectar un `deliver` autenticado y respetar la puerta legal ControlBot#20.
 Cada intento requiere una concesión **obtenida de una fuente ya verificada**
 con exactamente `{profileAlias, enabled, revoked, expiresAt}`, opt-in
 `enabled: true`, no revocada y vigente por un máximo de 24 horas. El
+`profileAlias` local confiable se suministra al crear el coordinador; se
+compara con la concesión **antes** de invocar `snapshot` y de nuevo antes de
+`deliver`. El
 coordinador no crea ni certifica consentimientos o identidades y no
 persistirá datos nuevos. Consulta la concesión antes de pedir el snapshot
 y la verifica otra vez después, antes de entregar, para detectar revocación
