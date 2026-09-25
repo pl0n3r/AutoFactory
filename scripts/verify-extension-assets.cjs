@@ -134,10 +134,12 @@ function validateExtensionTree(root, io = fs) {
       !validStringList(manifest.host_permissions, EXPECTED_HOSTS)) {
     fail('unexpected permission or host before legal go-live');
   }
+  const popupScripts = popupScriptRefs(
+    regularFile(root, manifest.action.default_popup, io).toString('utf8')
+  );
   const files = [...new Set([
-    ...assetRefs(manifest),
-    ...popupScriptRefs(regularFile(root, manifest.action.default_popup, io)
-      .toString('utf8'))
+    ...popupScripts,
+    ...assetRefs(manifest)
   ])];
   const safariRoot = regularDirectory(root, SAFARI_RESOURCES, io);
   for (const file of files) {
