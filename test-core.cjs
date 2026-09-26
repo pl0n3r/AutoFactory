@@ -71,3 +71,12 @@ assert.equal(core.reasoningLevelFromText('Medium'), 'medium');
 assert.equal(core.reasoningLevelFromText('Media'), 'medium');
 assert.equal(core.reasoningLevelFromText('High'), 'high');
 console.log('Razonamiento: reconoce el nivel actual Medium/Media/High');
+assert.equal(core.reasoningLevelFromText('Esfuerzo de razonamiento Media'), 'medium');
+assert.equal(core.reasoningSliderTarget('high', 0, 2), 2);
+console.log('Razonamiento: detecta el selector compuesto y calcula el máximo del slider');
+{
+  const doc = page('<div data-reasoning-slider="true" role="menuitem"><span role="slider" aria-valuenow="1" aria-valuemin="0" aria-valuemax="2"></span></div>');
+  const slider = doc.querySelector('[role="slider"]');
+  assert.equal(core.reasoningSliderControl(slider).getAttribute('role'), 'menuitem');
+}
+console.log('Razonamiento: dirige las teclas al control interactivo del slider');

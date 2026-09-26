@@ -181,10 +181,22 @@
   }
   function reasoningLevelFromText(value) {
     const text = normalize(value).toLowerCase();
-    if (/^(alta|alto|high)(\s|$)/.test(text)) return 'high';
-    if (/^(media|medio|medium)(\s|$)/.test(text)) return 'medium';
-    if (/^(baja|bajo|low)(\s|$)/.test(text)) return 'low';
+    if (/(^|\s)(alta|alto|high)(\s|$)/.test(text)) return 'high';
+    if (/(^|\s)(media|medio|medium)(\s|$)/.test(text)) return 'medium';
+    if (/(^|\s)(baja|bajo|low)(\s|$)/.test(text)) return 'low';
     return '';
+  }
+  function reasoningSliderTarget(level, minimum, maximum) {
+    const min = Number(minimum);
+    const max = Number(maximum);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return null;
+    if (level === 'high') return max;
+    if (level === 'low') return min;
+    if (level === 'medium') return Math.round((min + max) / 2);
+    return null;
+  }
+  function reasoningSliderControl(slider) {
+    return slider?.closest?.('[data-reasoning-slider="true"], [aria-keyshortcuts*="ArrowRight"]') || slider || null;
   }
   function composerText(element) {
     if (!element) return '';
@@ -248,6 +260,8 @@
     pageSignal,
     normalize,
     reasoningLevelFromText,
+    reasoningSliderTarget,
+    reasoningSliderControl,
     composerText,
     isOwnedDraft,
     replaceComposerText,

@@ -394,6 +394,27 @@
       || null;
   }
 
+  async function setReasoningSlider(level) {
+    const slider = document.querySelector('[role="slider"][aria-valuemin][aria-valuemax]');
+    if (!slider) return false;
+    const target = core.reasoningSliderTarget(
+      level, slider.getAttribute('aria-valuemin'), slider.getAttribute('aria-valuemax')
+    );
+    if (target === null) return false;
+    let current = Number(slider.getAttribute('aria-valuenow'));
+    if (current === target) return true;
+    const control = core.reasoningSliderControl(slider);
+    control.focus();
+    const key = current < target ? 'ArrowRight' : 'ArrowLeft';
+    for (let attempt = 0; attempt < 4 && current !== target; attempt += 1) {
+      control.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true }));
+      control.dispatchEvent(new KeyboardEvent('keyup', { key, code: key, bubbles: true }));
+      await wait(150);
+      current = Number(slider.getAttribute('aria-valuenow'));
+    }
+    return current === target;
+  }
+
   async function ensureConversationMode(mode) {
     const desiredMode = mode === 'work' ? 'work' : 'chat';
     const modeKey = `${location.pathname}:${desiredMode}`;
@@ -436,6 +457,12 @@
     selector.click();
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await wait(100);
+      if (await setReasoningSlider(level)) {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await wait(300);
+        log('reasoning-level', { requested: level, result: 'selected-slider' });
+        return 'confirmed';
+      }
       const high = highOption();
       if (!high) continue;
       const selected = high.getAttribute('aria-checked') === 'true'
@@ -880,7 +907,7 @@
   window.addEventListener('wheel', noteManualScroll, { passive: true });
   window.addEventListener('touchmove', noteManualScroll, { passive: true });
   setStatus('Pausado');
-  log('content-loaded', { version: '1.6.5', backgroundTabs: true, persistentState: true });
+  log('content-loaded', { version: '1.6.6', backgroundTabs: true, persistentState: true });
   let mutationTimer = 0;
   const mutationObserver = new MutationObserver(mutations => {
     if (!state.enabled || mutationTimer) return;

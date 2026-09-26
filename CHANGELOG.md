@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.6 — 2026-09-26
+
+- Soporta el nuevo selector de esfuerzo de ChatGPT basado en slider.
+- Lleva Media/Medium a Alta/High mediante el control de teclado real y verifica el nivel máximo.
+- Añade pruebas para el texto compuesto, el objetivo del slider y su control interactivo.
+
 ## 1.6.5 — 2026-09-26
 
 - Reconoce Medium/Media/Medio y Low/Baja/Bajo como estados válidos del selector de razonamiento.
