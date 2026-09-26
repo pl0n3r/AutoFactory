@@ -66,3 +66,8 @@ assert.equal(learning.errorBackoffMs(memory, 'connection'), 30000);
 for (let i = 0; i < 80; i += 1) memory = learning.update(memory, 'startup', 1000 + i);
 assert.equal(memory.startupSamplesMs.length, 50);
 console.log('Memoria adaptativa: métricas, percentil y límite de 50 muestras correctos');
+
+assert.equal(core.reasoningLevelFromText('Medium'), 'medium');
+assert.equal(core.reasoningLevelFromText('Media'), 'medium');
+assert.equal(core.reasoningLevelFromText('High'), 'high');
+console.log('Razonamiento: reconoce el nivel actual Medium/Media/High');

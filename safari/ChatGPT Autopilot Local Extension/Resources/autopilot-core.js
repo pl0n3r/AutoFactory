@@ -179,6 +179,13 @@
   function normalize(value) {
     return String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').trim();
   }
+  function reasoningLevelFromText(value) {
+    const text = normalize(value).toLowerCase();
+    if (/^(alta|alto|high)(\s|$)/.test(text)) return 'high';
+    if (/^(media|medio|medium)(\s|$)/.test(text)) return 'medium';
+    if (/^(baja|bajo|low)(\s|$)/.test(text)) return 'low';
+    return '';
+  }
   function composerText(element) {
     if (!element) return '';
     return normalize('value' in element ? element.value : element.innerText || element.textContent);
@@ -240,6 +247,7 @@
     additionalSafetyCheck,
     pageSignal,
     normalize,
+    reasoningLevelFromText,
     composerText,
     isOwnedDraft,
     replaceComposerText,

@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.5 — 2026-09-26
+
+- Reconoce Medium/Media/Medio y Low/Baja/Bajo como estados válidos del selector de razonamiento.
+- Permite cambiar de Medium a High sin confundir el control con el selector general del modelo.
+- Añade una prueba de regresión para los niveles localizados.
+
 ## 1.6.4 — 2026-09-25
 
 - Activa por defecto la recarga periódica cada 15 minutos y fija en un minuto el cooldown de recuperación.

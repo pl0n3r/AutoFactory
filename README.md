@@ -10,7 +10,7 @@ Su función es mantener trabajando cada pestaña habilitada: espera mientras Cha
 
 Opera en todas las pestañas de ChatGPT habilitadas, incluso cuando están detrás de otra ventana. Un heartbeat del proceso de fondo reactiva la supervisión periódica; el scroll visual solo se mueve en la pestaña visible.
 
-## Versión 1.6.4
+## Versión 1.6.5
 
 - Distingue el selector de razonamiento del selector general del modelo y, cuando es necesario, abre Thinking/Pensando antes de elegir Alto/High.
 

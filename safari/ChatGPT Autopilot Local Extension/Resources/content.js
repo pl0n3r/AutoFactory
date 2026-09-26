@@ -389,7 +389,7 @@
 
   function reasoningSelectorButton() {
     const candidates = [...document.querySelectorAll('button,[role="button"]')];
-    return candidates.find(element => /^(alta|alto|high)(\s|$)/i.test(controlText(element)))
+    return candidates.find(element => Boolean(core.reasoningLevelFromText(controlText(element))))
       || candidates.find(element => /reasoning|effort|thinking.*(level|time)|nivel.*razonamiento/.test(controlText(element)))
       || null;
   }
@@ -880,7 +880,7 @@
   window.addEventListener('wheel', noteManualScroll, { passive: true });
   window.addEventListener('touchmove', noteManualScroll, { passive: true });
   setStatus('Pausado');
-  log('content-loaded', { version: '1.6.4', backgroundTabs: true, persistentState: true });
+  log('content-loaded', { version: '1.6.5', backgroundTabs: true, persistentState: true });
   let mutationTimer = 0;
   const mutationObserver = new MutationObserver(mutations => {
     if (!state.enabled || mutationTimer) return;
