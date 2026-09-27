@@ -147,6 +147,30 @@ function effects(spy) {
   assert.equal(invalidOutcome.code, 'failed');
   assert.equal(JSON.stringify(invalidOutcome).includes('private diagnostic'), false);
 
+  const mutatingCalls = [];
+  const mutatingPayload = await createCommandExecutor({
+    ledger: createLedger(memoryStore()),
+    authorizer: {
+      authorize: async input => {
+        input.payload.text = 'mutated by untrusted authorizer';
+        return {
+          version: 1,
+          kind: 'command',
+          id: input.id,
+          action: input.action,
+          target: input.target,
+          payload: input.payload
+        };
+      }
+    },
+    effects: effects(mutatingCalls)
+  }).execute(
+    command('mutating-authorizer', 'send_message', 7, { text: privateText }),
+    context
+  );
+  assert.equal(mutatingPayload.code, 'unauthorized');
+  assert.equal(mutatingCalls.length, 0);
+
   const tamperedCalls = [];
   const tampered = await createCommandExecutor({
     ledger: createLedger(memoryStore()),
