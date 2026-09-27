@@ -29,3 +29,9 @@ const sanitized = learning.normalize({ startupSamplesMs: [1200, Date.now()], res
 assert.deepEqual(sanitized.startupSamplesMs, [1200]);
 assert.deepEqual(sanitized.responseSamplesMs, [3000]);
 console.log('Learning: muestras temporales imposibles descartadas');
+
+assert.equal(reliability.sendAccepted({ composerCleared: true, messageAppeared: false, generationStarted: true }), true);
+assert.equal(reliability.sendAccepted({ composerCleared: true, messageAppeared: true, generationStarted: false }), true);
+assert.equal(reliability.sendAccepted({ composerCleared: false, messageAppeared: true, generationStarted: true }), false);
+assert.equal(reliability.sendAccepted({ composerCleared: true, messageAppeared: false, generationStarted: false }), false);
+console.log('Envío: acepta generación iniciada sin exigir mensaje virtualizado y evita falsos positivos');

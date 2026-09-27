@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.7 — 2026-09-26
+
+- Evita falsos errores de envío cuando ChatGPT virtualiza el mensaje en conversaciones largas.
+- Confirma el envío si el compositor queda vacío y aparece el mensaje exacto o comienza la generación real.
+- Conserva la protección contra mensajes duplicados y añade una prueba de regresión.
+
 ## 1.6.6 — 2026-09-26
 
 - Soporta el nuevo selector de esfuerzo de ChatGPT basado en slider.

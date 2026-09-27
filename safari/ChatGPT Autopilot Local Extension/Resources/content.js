@@ -327,6 +327,18 @@
     });
   }
 
+  function waitForGenerationStart(timeoutMs = 8000) {
+    const started = Date.now();
+    return new Promise(resolve => {
+      const check = () => {
+        if (core.stopButton(document)) return resolve(true);
+        if (Date.now() - started >= timeoutMs) return resolve(false);
+        setTimeout(check, 120);
+      };
+      check();
+    });
+  }
+
   function recordErrorOnce(signal, minimumIntervalMs = 60000) {
     if (state.lastErrorCode === signal.code
         && Date.now() - state.lastErrorAt < minimumIntervalMs) return;
@@ -570,17 +582,20 @@
     const userCountBeforeSend = core.userMessageCount(document);
     state.assistantCountBeforeSend = core.assistantMessageCount(document);
     button.click();
-    const [cleared, appeared] = await Promise.all([
+    const [cleared, appeared, generationStarted] = await Promise.all([
       waitForComposerClear(8000),
-      waitForUserMessage(prompt, userCountBeforeSend, 8000)
+      waitForUserMessage(prompt, userCountBeforeSend, 8000),
+      waitForGenerationStart(8000)
     ]);
-    if (!cleared || !appeared) {
+    if (!reliability.sendAccepted({
+      composerCleared: cleared, messageAppeared: appeared, generationStarted
+    })) {
       throw new Error('ChatGPT no confirmó el mensaje dentro de la conversación');
     }
     state.lastSentAt = Date.now();
     state.generationStartedAt = 0;
     state.waiting = true;
-    state.sawGeneration = false;
+    state.sawGeneration = generationStarted;
     state.pendingSignature = signature;
     Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
     persistRuntime();
@@ -907,7 +922,7 @@
   window.addEventListener('wheel', noteManualScroll, { passive: true });
   window.addEventListener('touchmove', noteManualScroll, { passive: true });
   setStatus('Pausado');
-  log('content-loaded', { version: '1.6.6', backgroundTabs: true, persistentState: true });
+  log('content-loaded', { version: '1.6.7', backgroundTabs: true, persistentState: true });
   let mutationTimer = 0;
   const mutationObserver = new MutationObserver(mutations => {
     if (!state.enabled || mutationTimer) return;

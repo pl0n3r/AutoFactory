@@ -46,6 +46,9 @@
     if (next.consecutiveFailures >= MAX_FAILURES) next.circuitOpenUntil = now + 300000;
     return { ...next, retryAt: now + backoffMs(next.consecutiveFailures) };
   }
+  function sendAccepted({ composerCleared, messageAppeared, generationStarted } = {}) {
+    return composerCleared === true && (messageAppeared === true || generationStarted === true);
+  }
   function afterSuccess(value) {
     return { ...normalize(value), consecutiveFailures: 0, circuitOpenUntil: 0 };
   }
@@ -66,5 +69,5 @@
       || current.reloadAttempts < MAX_RELOADS
     );
   }
-  return { SESSION_KEY, MAX_FAILURES, MAX_RELOADS, signature, normalize, load, save, backoffMs, afterFailure, afterSuccess, beforeReload, canReload };
+  return { SESSION_KEY, MAX_FAILURES, MAX_RELOADS, signature, normalize, load, save, backoffMs, sendAccepted, afterFailure, afterSuccess, beforeReload, canReload };
 });
