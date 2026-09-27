@@ -26,3 +26,4 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: node test-workflow-hardening.cjs
+      - run: node test-release-evidence.cjs
