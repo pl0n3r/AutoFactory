@@ -33,15 +33,6 @@
       samePayload(expected.payload, actual.payload);
   }
 
-  function rawCommand(command) {
-    return {
-      id: command.id,
-      action: command.action,
-      target: command.target,
-      payload: command.payload
-    };
-  }
-
   function effectCommand(command) {
     const payload = command.payload === null
       ? null
@@ -77,7 +68,12 @@
       return ledger.execute(input, async command => {
         let approved;
         try {
-          approved = await authorizer.authorize(rawCommand(command), context);
+          approved = await authorizer.authorize({
+            id: command.id,
+            action: command.action,
+            target: command.target,
+            payload: command.payload
+          }, context);
         } catch (_error) {
           // Persist unauthorized as a terminal receipt so the same command ID
           // cannot become executable later merely because a grant changes.
