@@ -14,7 +14,7 @@ function memoryStore() {
   };
 }
 
-function command(id, action = 'send_message', target = 7, payload) {
+function command(id, action = 'send_message', target = 7, payload = undefined) {
   const value = { id, action, target };
   if (payload !== undefined) value.payload = payload;
   return value;
