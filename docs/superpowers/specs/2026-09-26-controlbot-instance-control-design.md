@@ -61,7 +61,7 @@ El agente expone un canal limitado a loopback o mensajería nativa del navegador
 
 ### Remoto
 
-El agente abre una conexión saliente persistente TLS al relay. Cada mensaje está firmado, contiene `commandId`, `instanceId`, acción, emisión y vencimiento. El relay no puede ampliar permisos ni convertir una orden dirigida en global.
+El agente usa HTTPS saliente con polling acotado y backoff hacia el relay, compatible con Hostinger shared hosting y sin WebSockets ni procesos permanentes en el servidor. Cada mensaje está firmado, contiene `commandId`, `instanceId`, acción, emisión y vencimiento. El relay no puede ampliar permisos ni convertir una orden dirigida en global.
 
 ## Protocolo
 
