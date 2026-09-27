@@ -4,7 +4,7 @@
   "private": true,
   "description": "Local Chrome and Safari extension that safely continues ChatGPT workflows.",
   "scripts": {
-    "test": "node --check popup.js && node --check content.js && node --check factory-control-protocol.js && node test-core.cjs && node test-interruption.cjs && node test-reliability.cjs && node test-background.cjs && node test-custom-prompt.cjs && node test-factory-control.cjs && node test-factory-control-ledger.cjs"
+    "test": "node --check popup.js && node --check content.js && node --check factory-control-protocol.js && node --check factory-control-executor.js && node test-core.cjs && node test-interruption.cjs && node test-reliability.cjs && node test-background.cjs && node test-custom-prompt.cjs && node test-factory-control.cjs && node test-factory-control-ledger.cjs && node test-factory-control-executor.cjs"
   },
   "devDependencies": {
     "jsdom": "^27.0.0"
