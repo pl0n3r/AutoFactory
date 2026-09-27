@@ -188,3 +188,42 @@ el runtime tendrá que inyectar `AbortSignal` y coordinar su revocación.
 Los resultados son solo `sent|denied|failed|busy|throttled|stopped`.
 `sent` significa que el adaptador inyectado resolvió su promesa, **no**
 que ControlBot haya confirmado un latido real en producción.
+
+
+## Ejecutor autorizado e idempotente (slice 6, aún sin runtime)
+
+`factory-control-executor.js` compone los contratos ya existentes sin añadir
+transporte, permisos ni integración con la extensión. El futuro runtime inyectará
+un `ledger`, un `authorizer` y exactamente seis handlers de efectos
+(`pause|resume|open_chat|set_prompt|set_mode|send_message`).
+
+`execute(input, context)` delega primero en el ledger, que persiste el receipt
+`pending` antes de cualquier efecto. Dentro de ese guard, el executor solicita
+autorización usando la forma cruda del comando y exige que el resultado autorizado
+coincida exactamente con el comando normalizado por el ledger. Si la autorización
+falla o intenta alterar ID, acción, destino o payload, el resultado es
+`unauthorized` y se persiste como receipt terminal. Así, reutilizar después el
+mismo command ID no puede volverlo ejecutable solo porque cambió un grant.
+
+Los efectos reciben una copia congelada del comando autorizado. No pueden mutar el
+objeto que usa el ledger para producir el ACK. Excepciones del adapter y outcomes
+inválidos se colapsan al código `failed`; no se incluyen mensajes de excepción,
+payloads, aliases, tokens ni texto de chat en ACKs o receipts. `target: "all"`
+sigue limitado por el protocolo a `pause` y `resume`.
+
+Este corte **no** implementa los efectos reales, no toca `background.js`,
+`content.js`, manifests, permisos, Chrome/Safari runtime, pairing, HTTPS ni
+endpoints. Tampoco cambia la versión instalable: el módulo permanece aislado
+hasta que ControlBot#20 autorice la puerta legal y exista un transporte autenticado.
+
+Evidencia específica:
+
+```sh
+node --check factory-control-executor.js
+node test-factory-control-executor.cjs
+npm test
+```
+
+Las regresiones cubren ejecución única, replay tras denegación, broadcast permitido
+y prohibido, excepción con secreto, outcome inválido y un authorizer que intenta
+cambiar el destino del comando.
