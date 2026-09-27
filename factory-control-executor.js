@@ -72,7 +72,7 @@
             id: command.id,
             action: command.action,
             target: command.target,
-            payload: command.payload
+            payload: command.payload === null ? null : { ...command.payload }
           }, context);
         } catch (_error) {
           // Persist unauthorized as a terminal receipt so the same command ID
