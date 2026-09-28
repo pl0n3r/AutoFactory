@@ -3,6 +3,7 @@ const protocol = require('./factory-control-protocol.js');
 const heartbeat = () => ({
   profileAlias: 'chrome-pipe', accountAlias: 'dev-main',
   tabs: [{ tabId: 9, enabled: true, state: 'generating' }],
+  accountState: { state: 'unknown', resetAt: null },
   lastEvent: 'cycle-complete'
 });
 
@@ -14,6 +15,24 @@ assert.deepEqual(protocol.heartbeat(heartbeat()), {
   lastEvent: 'cycle-complete'
 });
 assert.equal(protocol.heartbeat({ ...heartbeat(), lastEvent: undefined }).lastEvent, null);
+assert.deepEqual(
+  protocol.heartbeat({
+    ...heartbeat(),
+    accountState: { state: 'limit', resetAt: 1900000000000 }
+  }).accountState,
+  { state: 'limit', resetAt: 1900000000000 }
+);
+for (const accountState of [
+  { state: 'ready', resetAt: 1900000000000 },
+  { state: 'requires_login', resetAt: 1 },
+  { state: 'limit', resetAt: 0 },
+  { state: 'limit', resetAt: 'later' },
+  { state: 'made_up', resetAt: null },
+  { state: 'limit' },
+  { state: 'limit', resetAt: null, message: 'private chat text' }
+]) {
+  assert.throws(() => protocol.heartbeat({ ...heartbeat(), accountState }), /account state|unsupported/i);
+}
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), accountAlias: 'name@example.com' }), /alias/);
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), token: 'secret' }), /unsupported/);
 assert.throws(() => protocol.heartbeat({ ...heartbeat(), lastEvent: 'chat text: private' }), /event/);
