@@ -222,10 +222,119 @@
     return Object.freeze({ execute });
   }
 
+
+  function checkedInvocation(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        typeof value.ok !== 'boolean' || typeof value.code !== 'string') {
+      throw new TypeError('transport invocation is invalid');
+    }
+    if (value.ok === false) {
+      exactObject(value, ['ok', 'code'], 'transport invocation');
+      if (!['unauthorized', 'failed'].includes(value.code)) {
+        throw new TypeError('transport invocation is invalid');
+      }
+      return value;
+    }
+    exactObject(value, ['ok', 'code', 'response'], 'transport invocation');
+    if (value.code !== 'authorized' || !value.response ||
+        typeof value.response !== 'object' || Array.isArray(value.response) ||
+        !Number.isSafeInteger(value.response.status) ||
+        !Object.hasOwn(value.response, 'body')) {
+      throw new TypeError('transport invocation is invalid');
+    }
+    return value;
+  }
+
+  function createAuthenticatedTransportClient({ transport, invoker } = {}) {
+    if (!transport || typeof transport.heartbeatRequest !== 'function' ||
+        typeof transport.nextCommandRequest !== 'function' ||
+        typeof transport.acknowledgementRequest !== 'function' ||
+        typeof transport.commandResponse !== 'function' ||
+        !invoker || typeof invoker.execute !== 'function') {
+      throw new TypeError('Authenticated transport dependencies are required');
+    }
+    const heartbeatRequest = transport.heartbeatRequest.bind(transport);
+    const nextCommandRequest = transport.nextCommandRequest.bind(transport);
+    const acknowledgementRequest = transport.acknowledgementRequest.bind(transport);
+    const commandResponse = transport.commandResponse.bind(transport);
+    const execute = invoker.execute.bind(invoker);
+
+    function failed(code = 'failed') {
+      return Object.freeze({ ok: false, code });
+    }
+    async function invoke(profileAlias, request) {
+      return checkedInvocation(await execute(Object.freeze({
+        profileAlias,
+        request
+      })));
+    }
+
+    async function sendHeartbeat(input) {
+      try {
+        const snapshot = structuredClone(input);
+        const profileAlias = alias(snapshot.profileAlias);
+        const request = heartbeatRequest(snapshot);
+        const result = await invoke(profileAlias, request);
+        if (!result.ok) return failed(result.code);
+        if (![200, 204].includes(result.response.status)) return failed();
+        return Object.freeze({ ok: true, code: 'sent' });
+      } catch (_error) { // NOSONAR: public facade intentionally collapses validation/adapter details.
+        return failed();
+      }
+    }
+
+    async function nextCommand(input) {
+      try {
+        const snapshot = structuredClone(input);
+        exactObject(snapshot, ['profileAlias', 'cursor'], 'next command client input');
+        const profileAlias = alias(snapshot.profileAlias);
+        const request = nextCommandRequest(snapshot);
+        const result = await invoke(profileAlias, request);
+        if (!result.ok) return failed(result.code);
+        if (result.response.status === 204) {
+          return Object.freeze({
+            ok: true,
+            code: 'empty',
+            cursor: request.query.cursor,
+            command: null
+          });
+        }
+        if (result.response.status !== 200) return failed();
+        const parsed = commandResponse(result.response.body);
+        return Object.freeze({
+          ok: true,
+          code: 'command',
+          cursor: parsed.cursor,
+          command: parsed.command
+        });
+      } catch (_error) { // NOSONAR: public facade intentionally collapses validation/adapter details.
+        return failed();
+      }
+    }
+
+    async function sendAck(input) {
+      try {
+        const snapshot = structuredClone(input);
+        exactObject(snapshot, ['profileAlias', 'ack'], 'ack client input');
+        const profileAlias = alias(snapshot.profileAlias);
+        const request = acknowledgementRequest(snapshot.ack);
+        const result = await invoke(profileAlias, request);
+        if (!result.ok) return failed(result.code);
+        if (![200, 204].includes(result.response.status)) return failed();
+        return Object.freeze({ ok: true, code: 'sent' });
+      } catch (_error) { // NOSONAR: public facade intentionally collapses validation/adapter details.
+        return failed();
+      }
+    }
+
+    return Object.freeze({ sendHeartbeat, nextCommand, sendAck });
+  }
+
   return Object.freeze({
     ORIGIN,
     DEFAULT_LONG_POLL_MS,
     createTransportContract,
-    createCredentialBoundInvoker
+    createCredentialBoundInvoker,
+    createAuthenticatedTransportClient
   });
 });

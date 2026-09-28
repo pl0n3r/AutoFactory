@@ -434,3 +434,33 @@ Este slice no añade persistencia ni campos a `datos.yml`, no incorpora proveedo
 concreto, no hace DNS/HTTP y no toca manifest/background. D-061 sigue bloqueando
 tráfico real y go-live hasta consentimiento verificable, autenticación y revisión
 de seguridad end-to-end.
+
+
+## Cliente autenticado de transporte (slice 15, composición pura)
+
+`createAuthenticatedTransportClient({transport, invoker})` une el contrato de
+descriptores con el invoker credential-bound sin implementar red. Captura las
+funciones inyectadas al construir la fachada y snapshottea cada input antes de
+validarlo, por lo que una mutación del caller durante un `await` no cambia el
+descriptor ya autorizado.
+
+La fachada expone solo tres operaciones cerradas:
+
+- `sendHeartbeat(payload)`: genera el descriptor heartbeat fijo y acepta como
+  entrega únicamente HTTP 200/204;
+- `nextCommand({profileAlias,cursor})`: genera el long-poll fijo; HTTP 204
+  produce `empty` y HTTP 200 debe pasar por `commandResponse` antes de
+  devolver un comando normalizado;
+- `sendAck({profileAlias,ack})`: genera el descriptor ACK fijo y acepta solo
+  HTTP 200/204.
+
+El caller no puede suministrar origen, path, método, token, credential id ni
+headers. Los bodies de heartbeat/ACK no se devuelven al caller. Errores,
+statuses inesperados, responses adulteradas o excepciones se colapsan a
+`{ok:false,code:"failed"}`; una falta de credencial puede propagarse solo como
+`unauthorized`.
+
+Este slice sigue sin `fetch`, DNS, AbortController, alarms, background,
+manifest, host permissions ni tráfico real. No cambia `datos.yml`. D-061
+continúa bloqueando activación y go-live hasta completar consentimiento,
+autenticación y revisión de seguridad end-to-end.
