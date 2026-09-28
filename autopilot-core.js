@@ -155,6 +155,12 @@
     }
     return documentTextMatches(doc, pattern, 420);
   }
+  function providerAlerts(doc = document) {
+    return [...doc.querySelectorAll('[role="alert"], [data-testid*="error"]')]
+      .map(element => normalize(element.innerText || element.textContent))
+      .filter(Boolean);
+  }
+
   function pageSignal(doc = document) {
     const recovery = recoveryButton(doc);
     if (recovery) return { code: 'recoverable', action: 'click-recovery', element: recovery };
@@ -164,8 +170,7 @@
       return { code: 'authentication', action: 'human' };
     }
     if (additionalSafetyCheck(doc)) return { code: 'safety-check', action: 'wait' };
-    const alerts = [...doc.querySelectorAll('[role="alert"], [data-testid*="error"]')]
-      .map(element => normalize(element.innerText || element.textContent)).join(' ').toLowerCase();
+    const alerts = providerAlerts(doc).join(' ').toLowerCase();
     if (/rate limit|too many requests|límite de (uso|mensajes)|try again later/.test(alerts)) {
       return { code: 'rate-limit', action: 'wait' };
     }
@@ -175,6 +180,13 @@
     }
     if (!composer(doc)) return { code: 'interface-missing', action: 'reload' };
     return { code: 'ready', action: 'continue' };
+  }
+  function providerAccountSignal(doc = document) {
+    const signal = pageSignal(doc);
+    const alertText = signal.code === 'rate-limit'
+      ? providerAlerts(doc).join(' ').slice(0, 500)
+      : null;
+    return Object.freeze({ signalCode: signal.code, alertText });
   }
   function normalize(value) {
     return String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').trim();
@@ -258,6 +270,7 @@
     interruptedConnection,
     additionalSafetyCheck,
     pageSignal,
+    providerAccountSignal,
     normalize,
     reasoningLevelFromText,
     reasoningSliderTarget,
