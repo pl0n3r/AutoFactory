@@ -274,8 +274,9 @@
     async function sendHeartbeat(input) {
       try {
         const snapshot = structuredClone(input);
+        const profileAlias = alias(snapshot.profileAlias);
         const request = heartbeatRequest(snapshot);
-        const result = await invoke(request.body.profileAlias, request);
+        const result = await invoke(profileAlias, request);
         if (!result.ok) return failed(result.code);
         if (![200, 204].includes(result.response.status)) return failed();
         return Object.freeze({ ok: true, code: 'sent' });
