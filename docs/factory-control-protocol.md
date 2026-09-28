@@ -163,13 +163,15 @@ no configura URL ni realiza HTTP por sí mismo. El futuro adaptador deberá
 inyectar un `deliver` autenticado y respetar la puerta legal ControlBot#20.
 
 Cada intento requiere una concesión **obtenida de una fuente ya verificada**
-con exactamente `{profileAlias, enabled, revoked, expiresAt}`, opt-in
-`enabled: true`, no revocada y vigente por un máximo de 24 horas. El
+con exactamente `{profileAlias, purpose, enabled, revoked, expiresAt}`, propósito
+fijo `purpose: "heartbeat"`, opt-in `enabled: true`, no revocada y vigente por
+un máximo de 24 horas. El
 `profileAlias` local confiable se suministra al crear el coordinador; se
 compara con la concesión **antes** de invocar `snapshot` y de nuevo antes de
 `deliver`. El
 coordinador no crea ni certifica consentimientos o identidades y no
-persistirá datos nuevos. Consulta la concesión antes de pedir el snapshot
+persistirá datos nuevos. Un grant de otro propósito —incluido
+`response_return`— se rechaza aunque esté habilitado y vigente. Consulta la concesión antes de pedir el snapshot
 y la verifica otra vez después, antes de entregar, para detectar revocación
 durante la captura. Si falla, no llama a `deliver`.
 

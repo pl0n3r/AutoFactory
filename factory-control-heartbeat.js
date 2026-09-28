@@ -11,6 +11,7 @@
 
   const MIN_INTERVAL_MS = 60000;
   const MAX_CONSENT_MS = 86400000;
+  const PURPOSE = 'heartbeat';
 
   function alias(value) {
     return typeof value === 'string' && value.trim() === value &&
@@ -20,10 +21,11 @@
   function permitted(consent, time) {
     return consent && typeof consent === 'object' &&
       !Array.isArray(consent) &&
-      Object.keys(consent).length === 4 &&
-      ['profileAlias', 'enabled', 'revoked', 'expiresAt']
+      Object.keys(consent).length === 5 &&
+      ['profileAlias', 'purpose', 'enabled', 'revoked', 'expiresAt']
         .every(field => Object.hasOwn(consent, field)) &&
-      alias(consent.profileAlias) && consent.enabled === true &&
+      alias(consent.profileAlias) && consent.purpose === PURPOSE &&
+      consent.enabled === true &&
       consent.revoked === false && Number.isSafeInteger(consent.expiresAt) &&
       consent.expiresAt > time && consent.expiresAt <= time + MAX_CONSENT_MS;
   }
@@ -82,5 +84,5 @@
     }
     return Object.freeze({ tick, stop });
   }
-  return Object.freeze({ MIN_INTERVAL_MS, createHeartbeatCoordinator });
+  return Object.freeze({ PURPOSE, MIN_INTERVAL_MS, createHeartbeatCoordinator });
 });
