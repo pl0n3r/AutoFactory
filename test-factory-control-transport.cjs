@@ -229,5 +229,24 @@ function bridge(options = {}) {
     { ok: false, code: 'failed' }
   );
 
+  const deceptiveBody = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async () => ({ id: 'credential-tojson-001', expiresAt: NOW + 60_000 })
+    },
+    now: () => NOW,
+    invoke: async ({ credentialId }) => ({
+      status: 200,
+      body: {
+        credentialId,
+        accepted: true,
+        toJSON() { return { accepted: true }; }
+      }
+    })
+  });
+  assert.deepEqual(
+    await deceptiveBody.execute({ profileAlias: 'perfil-1', request: heartbeat }),
+    { ok: true, code: 'authorized', response: { status: 200, body: { accepted: true } } }
+  );
+
   console.log('factory-control transport contract: ok');
 })().catch(error => { console.error(error); process.exitCode = 1; });
