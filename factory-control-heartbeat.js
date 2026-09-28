@@ -46,7 +46,7 @@
     if (ownKeys.length !== expectedKeys.length ||
         !ownKeys.every(key => typeof key === 'string' && expectedKeys.includes(key)) ||
         !expectedKeys.every(key => Object.hasOwn(input, key) &&
-          Object.propertyIsEnumerable(input, key))) {
+          Object.prototype.propertyIsEnumerable.call(input, key))) {
       throw new TypeError('Heartbeat snapshot input is invalid');
     }
     const providerKeys = Reflect.ownKeys(input.providerSignal || {});
@@ -55,7 +55,7 @@
           ['signalCode', 'alertText'].includes(key)) ||
         !['signalCode', 'alertText'].every(key =>
           Object.hasOwn(input.providerSignal || {}, key) &&
-          Object.propertyIsEnumerable(input.providerSignal || {}, key))) {
+          Object.prototype.propertyIsEnumerable.call(input.providerSignal || {}, key))) {
       throw new TypeError('Heartbeat snapshot provider signal is invalid');
     }
     const snapshot = structuredClone(input);
