@@ -171,7 +171,7 @@ function bridge(options = {}) {
   );
   assert.equal(seen.length, 1);
   assert.equal(seen[0].credentialId, 'credential-transport-001');
-  assert.equal(seen[0].request, heartbeat);
+  assert.deepEqual(seen[0].request, heartbeat);
   assert.equal(JSON.stringify(await bound.execute({
     profileAlias: 'perfil-2', request: transport.nextCommandRequest({
       profileAlias: 'perfil-2', cursor: null
