@@ -8,7 +8,7 @@ const pkg = require('./package.json');
 const root = __dirname;
 const command = pkg.scripts?.test;
 assert.equal(typeof command, 'string', 'package.json must define scripts.test');
-const commands = command.split(' && ');
+const commands = new Set(command.split(' && '));
 
 const files = fs.readdirSync(root);
 const modules = files
@@ -20,14 +20,14 @@ const tests = files
 
 for (const file of modules) {
   assert.ok(
-    commands.includes(`node --check ${file}`),
+    commands.has(`node --check ${file}`),
     `npm test must syntax-check ${file}`
   );
 }
 
 for (const file of tests) {
   assert.ok(
-    commands.includes(`node ${file}`),
+    commands.has(`node ${file}`),
     `npm test must execute ${file}`
   );
 }
