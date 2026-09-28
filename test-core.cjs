@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 const core = require('./autopilot-core.js');
 const learning = require('./learning.js');
+const { classifyProviderPageSignal } = require('./factory-control-account-state.js');
 
 function page(html) {
   const dom = new JSDOM(html, { pretendToBeVisual: true });
@@ -42,12 +43,77 @@ function page(html) {
   assert.deepEqual(core.pageSignal(doc), { code: 'interface-missing', action: 'reload' });
 }
 {
+  const doc = page(
+    '<div id="prompt-textarea" contenteditable="true"></div>' +
+    '<div role="alert">Has alcanzado el límite de uso. Inténtalo de nuevo a las 16:45. private@example.test token=never-log</div>'
+  );
+  assert.deepEqual(core.pageSignal(doc), { code: 'rate-limit', action: 'wait' });
+  const providerSignal = core.providerAccountSignal(doc);
+  assert.equal(providerSignal.signalCode, 'rate-limit');
+  assert.equal(providerSignal.alertText.length <= 500, true);
+  assert.equal(providerSignal.alertText.includes('16:45'), true);
+  assert.deepEqual(
+    classifyProviderPageSignal(
+      providerSignal,
+      () => new Date(2030, 0, 1, 15, 0, 0, 0).getTime()
+    ),
+    {
+      state: 'limit',
+      resetAt: new Date(2030, 0, 1, 16, 45, 0, 0).getTime()
+    }
+  );
+  const classified = JSON.stringify(classifyProviderPageSignal(
+    providerSignal,
+    () => new Date(2030, 0, 1, 15, 0, 0, 0).getTime()
+  ));
+  for (const forbidden of ['private@example.test', 'token', 'never-log']) {
+    assert.equal(classified.includes(forbidden), false);
+  }
+}
+{
+  const doc = page(
+    '<div id="prompt-textarea" contenteditable="true"></div>' +
+    '<div role="alert">Maintenance window at 4:30 PM.</div>' +
+    '<div role="alert">Has alcanzado el límite de uso. Inténtalo de nuevo a las 16:45.</div>'
+  );
+  const signal = core.providerAccountSignal(doc);
+  assert.equal(signal.signalCode, 'rate-limit');
+  assert.equal(signal.alertText.includes('16:45'), true);
+  assert.equal(signal.alertText.includes('4:30 PM'), false);
+  assert.deepEqual(
+    classifyProviderPageSignal(
+      signal,
+      () => new Date(2030, 0, 1, 15, 0, 0, 0).getTime()
+    ),
+    {
+      state: 'limit',
+      resetAt: new Date(2030, 0, 1, 16, 45, 0, 0).getTime()
+    }
+  );
+}
+{
+  const doc = page('<div role="alert">Network error secret@example.test</div>');
+  assert.deepEqual(
+    core.providerAccountSignal(doc),
+    { signalCode: 'connection', alertText: null }
+  );
+}
+{
+  const doc = page(
+    '<div id="prompt-textarea" contenteditable="true"></div>' +
+    '<div role="alert">Límite de uso ' + 'x'.repeat(900) + '</div>'
+  );
+  const signal = core.providerAccountSignal(doc);
+  assert.equal(signal.signalCode, 'rate-limit');
+  assert.equal(signal.alertText.length, 500);
+}
+{
   const visible = page('<main></main>');
   assert.equal(core.isPageVisible(visible), true);
   Object.defineProperty(visible, 'visibilityState', { value: 'hidden' });
   assert.equal(core.isPageVisible(visible), false);
 }
-console.log('DOM core: 6 escenarios correctos');
+console.log('DOM core: señales de página y estado de cuenta efímero correctos');
 
 let memory = learning.normalize();
 memory = learning.update(memory, 'startup', 2000);

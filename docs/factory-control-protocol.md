@@ -603,3 +603,27 @@ congela también este objeto anidado antes de entregar el descriptor al invoker.
 `no_remote_transmission_or_persistence_until_D-061`. Esto documenta el dato
 futuro; no afirma que exista recolección, persistencia o transmisión activa.
 D-061 mantiene bloqueados runtime, pairing real, permisos, red y go-live.
+
+
+## Señal efímera del proveedor para estado de cuenta (slice 23)
+
+`autopilot-core.providerAccountSignal(document)` ofrece una vía separada del
+`pageSignal()` usado por la automatización existente. Devuelve exactamente
+`{signalCode,alertText}`, compatible con
+`classifyProviderPageSignal(...)`.
+
+La separación es deliberada: `content.js` envía el objeto de `pageSignal()`
+al flujo local de learning mediante `recordErrorOnce()`; por eso
+`pageSignal()` **no** incorpora texto libre. Solo
+`providerAccountSignal()` puede exponer texto, únicamente cuando la señal es
+`rate-limit`. Si existen varias alertas simultáneas, selecciona **solo** la
+primera alerta cuyo propio texto coincide con el patrón cerrado de rate-limit;
+una hora presente únicamente en otra alerta no puede influir en `resetAt`.
+El texto seleccionado se limita a 500 caracteres y se usa para clasificación
+inmediata en memoria. Para `ready|authentication|connection` y cualquier otra
+señal, `alertText` es `null`.
+
+El helper no se invoca desde `content.js`, background ni manifest en este
+slice. No persiste, registra ni transmite la alerta; el resultado normalizado
+del clasificador sigue siendo solo `{state,resetAt}`. D-061 continúa bloqueando
+runtime remoto, permisos, pairing real, red y go-live.
