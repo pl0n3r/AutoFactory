@@ -3,7 +3,6 @@
 const assert = require('node:assert/strict');
 const protocol = require('./factory-control-protocol.js');
 const {
-  ORIGIN,
   DEFAULT_LONG_POLL_MS,
   createTransportContract
 } = require('./factory-control-transport.js');
@@ -61,10 +60,21 @@ function bridge(options = {}) {
     ok: true,
     code: 'ok'
   });
-  assert.equal(ack.origin, 'https://control.condorapp.com.co');
-  assert.equal(ack.path, '/v1/bridge/commands/ack');
-  assert.equal(ack.method, 'POST');
-  assert.equal(ack.body.kind, 'ack');
+  assert.deepEqual(ack, {
+    origin: 'https://control.condorapp.com.co',
+    method: 'POST',
+    path: '/v1/bridge/commands/ack',
+    timeoutMs: 10000,
+    authScope: 'profile',
+    query: null,
+    body: {
+      version: 1,
+      kind: 'ack',
+      id: 'command-001',
+      ok: true,
+      code: 'ok'
+    }
+  });
 
   const response = transport.commandResponse({
     cursor: 'cursor:002',
