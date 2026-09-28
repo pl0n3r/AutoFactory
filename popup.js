@@ -14,21 +14,130 @@ async function save(){ const values={prompt:fields.prompt.value.trim()||DEFAULT_
 function renderConversationMode(mode){selectedConversationMode=mode==='work'?'work':'chat';for(const value of ['chat','work']){const button=$(`mode-${value}`);const selected=value===selectedConversationMode;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));}}
 for(const mode of ['chat','work'])$(`mode-${mode}`).addEventListener('click',async()=>{renderConversationMode(mode);await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{conversationMode:mode});});
 async function matchingTabs(){ return apiCall(extensionApi.tabs.query.bind(extensionApi.tabs),{url:['https://chatgpt.com/*']}); }
-async function broadcast(enabled){ const tabs=await matchingTabs(); await Promise.all(tabs.map(tab=>new Promise(resolve=>{ try{const result=extensionApi.tabs.sendMessage(tab.id,{type:'autopilot:set-enabled',enabled},()=>resolve());if(result?.then)result.then(resolve,resolve);}catch(_e){resolve();}}))); }
+async function broadcast(enabled) {
+  const tabs = await matchingTabs();
+  const sends = tabs.map(tab => new Promise((resolve, reject) => {
+    const result = extensionApi.tabs.sendMessage(
+      tab.id,
+      { type: 'autopilot:set-enabled', enabled },
+      () => resolve()
+    );
+    if (result?.then) result.then(resolve, reject);
+  }));
+  // Best-effort fan-out: one unavailable tab must not block the others.
+  await Promise.allSettled(sends);
+}
 async function runtimeMessage(payload){ return apiCall(extensionApi.runtime.sendMessage.bind(extensionApi.runtime),payload); }
-async function message(payload){ const tab=await activeTab(); if(!tab?.id||!String(tab.url||'').startsWith('https://chatgpt.com/')) throw new Error('Abre primero una pestaña de chatgpt.com'); return new Promise((resolve,reject)=>{try{extensionApi.tabs.sendMessage(tab.id,payload,response=>{const error=extensionApi.runtime.lastError;if(error)return reject(new Error('Recarga esta pestaña para cargar Autopilot'));if(!response)return reject(new Error('La pestaña no respondió; recárgala'));resolve(response);});}catch(_e){reject(new Error('Recarga esta pestaña para cargar Autopilot'));}}); }
+async function message(payload) {
+  const tab = await activeTab();
+  if (!tab?.id || !String(tab.url || '').startsWith('https://chatgpt.com/')) {
+    throw new Error('Abre primero una pestaña de chatgpt.com');
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      extensionApi.tabs.sendMessage(tab.id, payload, response => {
+        const error = extensionApi.runtime.lastError;
+        if (error) {
+          reject(new Error('Recarga esta pestaña para cargar Autopilot'));
+          return;
+        }
+        if (!response) {
+          reject(new Error('La pestaña no respondió; recárgala'));
+          return;
+        }
+        resolve(response);
+      });
+    } catch (_error) {
+      // Browser transport details may expose extension internals; return a stable user-safe error.
+      reject(new Error('Recarga esta pestaña para cargar Autopilot'));
+    }
+  });
+}
 function showStatus(text,enabled){const status=$('status');status.textContent=text;status.classList.toggle('active',enabled===true);status.classList.toggle('paused',enabled===false);}
 async function refresh(){try{const result=await message({type:'autopilot:get-status'});showStatus(`${result.enabled?'ACTIVO':'PAUSADO'} · ${result.status}`,result.enabled);}catch(error){showStatus(`v${extensionVersion} · ${error.message}`);}}
 const cleanSamples=(values,maximum)=>(Array.isArray(values)?values:[]).filter(value=>Number.isFinite(value)&&value>0&&value<=maximum);
 const average=(values,maximum)=>{const clean=cleanSamples(values,maximum);return clean.length?clean.reduce((a,b)=>a+b,0)/clean.length:0;};
 const percentile=(values,ratio,maximum)=>{const clean=cleanSamples(values,maximum).sort((a,b)=>a-b);return clean.length?clean[Math.min(clean.length-1,Math.floor(clean.length*ratio))]:0;};
-const duration=ms=>ms?`${(ms/1000).toFixed(ms<10000?1:0)} s`:'—';
-function renderLearning(data={}){const errors=Object.entries(data.errorsByCode||{}).sort((a,b)=>b[1]-a[1]);const actions=Object.entries(data.actionSuccess||{}).sort((a,b)=>b[1]-a[1]);$('cycles').textContent=data.cycles||0;$('recoveries').textContent=data.recoveries||0;$('failures').textContent=data.failures||0;const response=data.responseSamplesMs||[],startup=data.startupSamplesMs||[];$('learning-details').innerHTML=`<b>Inicio medio:</b> ${duration(average(startup,600000))} · <b>p90:</b> ${duration(percentile(startup,.9,600000))}<br><b>Respuesta media:</b> ${duration(average(response,21600000))} · <b>p90:</b> ${duration(percentile(response,.9,21600000))}<br><b>Errores:</b> ${errors.length?errors.slice(0,5).map(([k,v])=>`${k} (${v})`).join(', '):'ninguno'}<br><b>Recuperaciones exitosas:</b> ${actions.length?actions.slice(0,4).map(([k,v])=>`${k} (${v})`).join(', '):'aún sin datos'}`;}
+function duration(ms) {
+  if (!ms) {
+    return '—';
+  }
+  const precision = ms < 10000 ? 1 : 0;
+  return `${(ms / 1000).toFixed(precision)} s`;
+}
+function appendMetricLine(container, label, value) {
+  if (container.childNodes.length > 0) container.append(document.createElement('br'));
+  const heading = document.createElement('b');
+  heading.textContent = label;
+  container.append(heading, document.createTextNode(' ' + value));
+}
+function metricTopEntries(map, empty, limit) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return empty;
+  const entries = Object.entries(map);
+  if (!entries.length) return empty;
+  entries.sort((a,b) => b[1] - a[1]);
+  return entries.slice(0,limit).map(([key,count]) => key + ' (' + count + ')').join(', ');
+}
+function renderLearning(data={}) {
+  let state = {};
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    state = data;
+  }
+  $('cycles').textContent = state.cycles || 0;
+  $('recoveries').textContent = state.recoveries || 0;
+  $('failures').textContent = state.failures || 0;
+  const details = $('learning-details');
+  details.replaceChildren();
+  appendMetricLine(details, 'Inicio medio:',
+    duration(average(state.startupSamplesMs,600000)) + ' · p90: ' + duration(percentile(state.startupSamplesMs,.9,600000)));
+  appendMetricLine(details, 'Respuesta media:',
+    duration(average(state.responseSamplesMs,21600000)) + ' · p90: ' + duration(percentile(state.responseSamplesMs,.9,21600000)));
+  appendMetricLine(details, 'Errores:', metricTopEntries(state.errorsByCode, 'ninguno', 5));
+  appendMetricLine(details, 'Recuperaciones exitosas:',
+    metricTopEntries(state.actionSuccess, 'aún sin datos', 4));
+}
 function refreshLearning(){extensionApi.storage.local.get({learning:{}},values=>renderLearning(values.learning));}
 $('start').addEventListener('click',async()=>{try{await save();await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{masterEnabled:true});await broadcast(true);await refresh();}catch(error){$('status').textContent=error.message;}});
 $('stop').addEventListener('click',async()=>{try{await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{masterEnabled:false});await broadcast(false);await refresh();}catch(error){$('status').textContent=error.message;}});
-async function copyText(text){try{await navigator.clipboard.writeText(text);return;}catch(_e){}const field=document.createElement('textarea');field.value=text;document.body.appendChild(field);field.select();document.execCommand('copy');field.remove();}
+function copyTextLegacy(text) {
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  document.body.appendChild(field);
+  field.select();
+  try {
+    if (!document.execCommand('copy')) { // NOSONAR: compatibility fallback for extension popups without clipboardWrite.
+      throw new Error('No pude acceder al portapapeles');
+    }
+  } finally {
+    field.remove();
+  }
+}
+async function copyText(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (_error) {
+      // Clipboard API can lose transient activation after async diagnostic reads.
+    }
+  }
+  copyTextLegacy(text);
+}
 $('copy-log').addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:get-log'});await copyText(JSON.stringify({exportedAt:new Date().toISOString(),extensionVersion,learning:(await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),{learning:{}})).learning,entries:result.entries||[]},null,2));$('status').textContent=`DIAGNÓSTICO COPIADO · ${(result.entries||[]).length} eventos`;}catch(error){$('status').textContent=`No pude copiar: ${error.message}`;}});
 $('clear-log').addEventListener('click',async()=>{try{await runtimeMessage({type:'autopilot:clear-log'});$('status').textContent='LOG BORRADO';}catch(error){$('status').textContent=`No pude borrar: ${error.message}`;}});
 extensionApi.storage.local.get(DEFAULTS,values=>{if(values.settingsDefaultVersion!==SETTINGS_DEFAULT_VERSION){values={...values,settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,reloadCooldownMinutes:1,periodicReload:true,periodicReloadMinutes:15};extensionApi.storage.local.set({settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,reloadCooldownMinutes:1,periodicReload:true,periodicReloadMinutes:15});}const savedPrompt=String(values.prompt||'').trim();const valid=values.promptSchemaVersion===PROMPT_SCHEMA_VERSION&&savedPrompt.length>0;fields.prompt.value=valid?savedPrompt:DEFAULT_PROMPT;fields.delaySeconds.value=values.delaySeconds;fields.reasoningLevel.value=values.reasoningLevel||'high';renderConversationMode(values.conversationMode);fields.followScroll.checked=values.followScroll!==false;fields.scrollStepMin.value=values.scrollStepMin;fields.scrollStepMax.value=values.scrollStepMax;fields.scrollPollMs.value=values.scrollPollMs;fields.scrollStableChecks.value=values.scrollStableChecks;fields.scrollMaxSeconds.value=values.scrollMaxSeconds;fields.manualScrollPauseSeconds.value=values.manualScrollPauseSeconds;fields.autoReload.checked=values.autoReload!==false;fields.reloadCooldownMinutes.value=values.reloadCooldownMinutes;fields.periodicReload.checked=values.periodicReload===true;fields.periodicReloadMinutes.value=values.periodicReloadMinutes;showStatus(values.masterEnabled?'ACTIVO · todas las pestañas':'PAUSADO · todas las pestañas',values.masterEnabled);refreshLearning();refresh();});
-extensionApi.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.learning)renderLearning(changes.learning.newValue||{});if(area==='local'&&changes.masterEnabled)showStatus(changes.masterEnabled.newValue?'ACTIVO · todas las pestañas':'PAUSADO · todas las pestañas',Boolean(changes.masterEnabled.newValue));});setInterval(refreshLearning,5000);
+extensionApi.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.learning) {
+    renderLearning(changes.learning.newValue || {});
+  }
+  if (area === 'local' && changes.masterEnabled) {
+    const text = changes.masterEnabled.newValue
+      ? 'ACTIVO · todas las pestañas'
+      : 'PAUSADO · todas las pestañas';
+    showStatus(text, Boolean(changes.masterEnabled.newValue));
+  }
+});
+setInterval(refreshLearning, 5000);
