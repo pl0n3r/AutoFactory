@@ -66,6 +66,30 @@ function contract(grant, overrides = {}) {
   assert.deepEqual(getterResult, { allowed: false, code: 'failed' });
   assert.equal(JSON.stringify(getterResult).includes(getterSecret), false);
 
+  let aliasReads = 0;
+  let loadedAlias = null;
+  const changingGetterInput = {};
+  Object.defineProperty(changingGetterInput, 'profileAlias', {
+    enumerable: true,
+    get() {
+      aliasReads += 1;
+      return aliasReads === 1 ? 'perfil-1' : 'mail@example.com';
+    }
+  });
+  const changingGetter = createResponseConsent({
+    now: () => NOW,
+    loadVerifiedConsent: async ({ profileAlias }) => {
+      loadedAlias = profileAlias;
+      return valid;
+    }
+  });
+  assert.deepEqual(
+    await changingGetter.authorize(changingGetterInput),
+    { allowed: true, code: 'allowed' }
+  );
+  assert.equal(aliasReads, 1);
+  assert.equal(loadedAlias, 'perfil-1');
+
   let clockCalls = 0;
   const delayedExpiry = createResponseConsent({
     now: () => {
