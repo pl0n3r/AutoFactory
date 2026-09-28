@@ -535,6 +535,14 @@ function bridge(options = {}) {
     }),
     { ok: false, code: 'failed', cursor: null }
   );
+  assert.deepEqual(
+    await pump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: null,
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7, 7] }
+    }),
+    { ok: false, code: 'failed', cursor: null }
+  );
 
   const waiting = pump.runOnce({
     profileAlias: 'perfil-1',
@@ -548,6 +556,14 @@ function bridge(options = {}) {
       context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
     }),
     { ok: false, code: 'busy', cursor: 'cursor:second' }
+  );
+  assert.deepEqual(
+    await pump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: { secret: 'must-not-reflect' },
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'busy', cursor: null }
   );
   releasePoll();
   assert.deepEqual(await waiting, { ok: true, code: 'empty', cursor: 'cursor:wait' });
