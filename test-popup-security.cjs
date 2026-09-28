@@ -1,10 +1,7 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
+const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-const root = __dirname;
-const safari = path.join(root, 'safari', 'ChatGPT Autopilot Local Extension', 'Resources');
+const root = __dirname, safari = path.join(root, 'safari', 'ChatGPT Autopilot Local Extension', 'Resources');
 assert.equal(fs.readFileSync(path.join(safari, 'popup.js'), 'utf8'),
   fs.readFileSync(path.join(root, 'popup.js'), 'utf8'),
   'Safari must use the identical secure popup renderer');
@@ -13,8 +10,7 @@ const dom = new JSDOM(fs.readFileSync(path.join(root, 'popup.html'), 'utf8'), {
   url: 'https://extension.test/', runScripts: 'outside-only'
 });
 const { window } = dom;
-let executed = false;
-let legacyCopyCalls = 0;
+let executed = false, legacyCopyCalls = 0;
 window.__unsafeExecution = () => { executed = true; };
 window.setInterval = () => 0;
 window.document.execCommand = command => {
