@@ -128,6 +128,7 @@
         );
         return safeResult(true, 'paired', credential);
       } catch (_error) {
+        // Collapse pairing/storage adapter failures to the fixed public result.
         return safeResult(false, 'failed');
       }
     }
@@ -147,6 +148,7 @@
         if (revoked === false) return safeResult(false, 'not_found');
         return safeResult(false, 'failed');
       } catch (_error) {
+        // Collapse remote/store adapter failures; never expose handle or exception text.
         return safeResult(false, 'failed');
       }
     }
@@ -156,8 +158,8 @@
 
 
   function checkedPairingResult(value) {
-    const paired = value && value.code === 'paired';
-    const successful = value && ['paired', 'revoked'].includes(value.code);
+    const paired = value?.code === 'paired';
+    const successful = ['paired', 'revoked'].includes(value?.code);
     const fields = paired ? ['ok', 'code', 'credential'] : ['ok', 'code'];
     if (!exactKeys(value, fields) || typeof value.ok !== 'boolean' ||
         !RESULT_CODES.includes(value.code) || value.ok !== successful ||
