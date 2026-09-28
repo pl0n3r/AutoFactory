@@ -1,5 +1,10 @@
 const assert = require('node:assert/strict');
-const { PURPOSE, createHeartbeatCoordinator, MIN_INTERVAL_MS } = require('./factory-control-heartbeat.js');
+const {
+  PURPOSE,
+  buildHeartbeatSnapshot,
+  createHeartbeatCoordinator,
+  MIN_INTERVAL_MS
+} = require('./factory-control-heartbeat.js');
 
 const synthetic = () => ({
   profileAlias: 'sample-profile', accountAlias: 'synthetic-local',
@@ -12,6 +17,53 @@ const validConsent = () => ({
 
 (async () => {
   assert.equal(PURPOSE, 'heartbeat');
+
+  const snapshotNow = new Date(2030, 0, 1, 15, 0, 0, 0).getTime();
+  const snapshotBase = {
+    profileAlias: 'sample-profile',
+    accountAlias: 'synthetic-local',
+    tabs: [{ tabId: 7, enabled: true, state: 'waiting' }],
+    lastEvent: 'cycle-complete'
+  };
+  assert.deepEqual(
+    buildHeartbeatSnapshot({
+      ...snapshotBase,
+      providerSignal: { signalCode: 'authentication', alertText: null }
+    }, () => snapshotNow),
+    {
+      version: 1,
+      kind: 'heartbeat',
+      ...snapshotBase,
+      accountState: { state: 'requires_login', resetAt: null }
+    }
+  );
+  const limitedSnapshot = buildHeartbeatSnapshot({
+    ...snapshotBase,
+    tabs: [{ tabId: 7, enabled: true, state: 'limit' }],
+    providerSignal: {
+      signalCode: 'rate-limit',
+      alertText: 'Límite de uso. Inténtalo de nuevo a las 16:45. private@example.test token=never-reflect'
+    }
+  }, () => snapshotNow);
+  assert.deepEqual(limitedSnapshot.accountState, {
+    state: 'limit',
+    resetAt: new Date(2030, 0, 1, 16, 45, 0, 0).getTime()
+  });
+  const serializedLimitedSnapshot = JSON.stringify(limitedSnapshot);
+  for (const forbidden of ['private@example.test', 'token', 'never-reflect', 'alertText']) {
+    assert.equal(serializedLimitedSnapshot.includes(forbidden), false);
+  }
+  assert.deepEqual(
+    buildHeartbeatSnapshot({
+      ...snapshotBase,
+      providerSignal: { signalCode: 'conversation-limit', alertText: null }
+    }, () => snapshotNow).accountState,
+    { state: 'unknown', resetAt: null }
+  );
+  assert.throws(
+    () => buildHeartbeatSnapshot({ ...snapshotBase }, () => snapshotNow),
+    /provider signal/
+  );
   assert.equal(MIN_INTERVAL_MS, 60000);
   assert.throws(() => createHeartbeatCoordinator({}), /requires/);
 

@@ -2,11 +2,14 @@
   const api = factory(
     typeof module === 'object' && module.exports
       ? require('./factory-control-protocol.js')
-      : root.ChatGPTAutopilotFactoryProtocol
+      : root.ChatGPTAutopilotFactoryProtocol,
+    typeof module === 'object' && module.exports
+      ? require('./factory-control-account-state.js')
+      : root.ChatGPTAutopilotFactoryAccountState
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ChatGPTAutopilotFactoryHeartbeat = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (protocol) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (protocol, accountState) {
   'use strict';
 
   const MIN_INTERVAL_MS = 60000;
@@ -28,6 +31,27 @@
       consent.enabled === true &&
       consent.revoked === false && Number.isSafeInteger(consent.expiresAt) &&
       consent.expiresAt > time && consent.expiresAt <= time + MAX_CONSENT_MS;
+  }
+
+  function buildHeartbeatSnapshot(input, now = Date.now) {
+    if (!protocol || typeof protocol.heartbeat !== 'function' ||
+        !accountState || typeof accountState.classifyProviderPageSignal !== 'function') {
+      throw new TypeError('Heartbeat snapshot dependencies are required');
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      throw new TypeError('Heartbeat snapshot input is invalid');
+    }
+    const snapshot = structuredClone(input);
+    if (!Object.hasOwn(snapshot, 'providerSignal')) {
+      throw new TypeError('Heartbeat snapshot provider signal is required');
+    }
+    const providerSignal = snapshot.providerSignal;
+    delete snapshot.providerSignal;
+    const classified = accountState.classifyProviderPageSignal(providerSignal, now);
+    return Object.freeze(protocol.heartbeat({
+      ...snapshot,
+      accountState: classified
+    }));
   }
 
   function createHeartbeatCoordinator({ loadVerifiedConsent, snapshot, deliver, now, profileAlias } = {}) {
@@ -84,5 +108,10 @@
     }
     return Object.freeze({ tick, stop });
   }
-  return Object.freeze({ PURPOSE, MIN_INTERVAL_MS, createHeartbeatCoordinator });
+  return Object.freeze({
+    PURPOSE,
+    MIN_INTERVAL_MS,
+    buildHeartbeatSnapshot,
+    createHeartbeatCoordinator
+  });
 });

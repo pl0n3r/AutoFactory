@@ -627,3 +627,21 @@ El helper no se invoca desde `content.js`, background ni manifest en este
 slice. No persiste, registra ni transmite la alerta; el resultado normalizado
 del clasificador sigue siendo solo `{state,resetAt}`. D-061 continúa bloqueando
 runtime remoto, permisos, pairing real, red y go-live.
+
+## Composición local de señal de cuenta (slice 23, sin runtime remoto)
+
+`factory-control-heartbeat.js` expone
+`buildHeartbeatSnapshot({profileAlias,accountAlias,tabs,lastEvent,providerSignal}, now)`.
+El helper reutiliza `classifyProviderPageSignal()` y después
+`protocol.heartbeat()`; no define un wire format paralelo.
+
+`providerSignal.alertText` puede existir solo durante la clasificación local del
+caso `rate-limit`. El resultado final contiene únicamente
+`accountState:{state,resetAt}`; el texto, correo, token u otros fragmentos del
+aviso no se reflejan. Señales fuera del vocabulario del clasificador se reducen a
+`unknown/null`.
+
+Este helper no lee DOM, no se carga desde `content.js` ni `background.js`, no
+persiste la señal y no activa transporte. El paso futuro de runtime deberá inyectar
+la señal efímera desde `providerAccountSignal()` únicamente cuando D-061 y las
+puertas restantes permitan la composición real.
