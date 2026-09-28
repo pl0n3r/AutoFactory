@@ -29,21 +29,21 @@
     }
 
     async function authorize(input) {
-      if (!exactObject(input, ['profileAlias']) || !alias(input.profileAlias)) {
-        return decision(false, 'invalid');
-      }
-
       try {
+        if (!exactObject(input, ['profileAlias']) || !alias(input.profileAlias)) {
+          return decision(false, 'invalid');
+        }
+
+        const profileAlias = input.profileAlias;
+        const grant = await loadVerifiedConsent({ profileAlias });
         const nowMs = now();
         if (!Number.isSafeInteger(nowMs)) return decision(false, 'failed');
-
-        const grant = await loadVerifiedConsent({ profileAlias: input.profileAlias });
         if (!exactObject(grant, [
           'profileAlias', 'purpose', 'enabled', 'revoked', 'expiresAt'
         ])) return decision(false, 'denied');
 
         if (!alias(grant.profileAlias) ||
-            grant.profileAlias !== input.profileAlias ||
+            grant.profileAlias !== profileAlias ||
             grant.purpose !== PURPOSE ||
             grant.enabled !== true ||
             grant.revoked !== false ||
