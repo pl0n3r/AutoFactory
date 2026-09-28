@@ -20,9 +20,11 @@ function fixture(overrides = {}) {
     }),
     consumeVerifiedChallenge: async ({ challengeId, profileAlias, code }) => {
       calls.push({ kind: 'consume', challengeId, profileAlias, code });
-      if (code !== '123456' || used || revoked) return false;
+      if (revoked) return 'revoked';
+      if (used) return 'replayed';
+      if (code !== '123456') return 'invalid';
       used = true;
-      return true;
+      return 'consumed';
     },
     issueOpaqueCredential: async ({ challengeId, profileAlias }) => {
       calls.push({ kind: 'issue', challengeId, profileAlias });
@@ -99,6 +101,33 @@ function fixture(overrides = {}) {
   }
 
   {
+    const { contract } = fixture({
+      now: (() => {
+        let calls = 0;
+        return () => {
+          calls += 1;
+          if (calls === 1) throw new Error('clock unavailable');
+          return NOW;
+        };
+      })()
+    });
+    assert.deepEqual(
+      await contract.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'failed' }
+    );
+  }
+
+  {
+    const { contract } = fixture({
+      consumeVerifiedChallenge: async () => 'expired'
+    });
+    assert.deepEqual(
+      await contract.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'expired' }
+    );
+  }
+
+  {
     const secret = 'super-secret-pairing-token';
     const { contract } = fixture({
       consumeVerifiedChallenge: async () => { throw new Error(secret); }
@@ -130,7 +159,12 @@ function fixture(overrides = {}) {
   }
 
   {
+    let clockCalls = 0;
     const { contract } = fixture({
+      now: () => {
+        clockCalls += 1;
+        return clockCalls === 1 ? NOW : NOW + 30 * 60 * 60 * 1000;
+      },
       issueOpaqueCredential: async ({ profileAlias }) => ({
         credentialId: 'credential-001',
         profileAlias,
