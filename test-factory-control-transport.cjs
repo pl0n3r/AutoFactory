@@ -14,6 +14,19 @@ function bridge(options = {}) {
   return createTransportContract({ protocol, ...options });
 }
 
+function readyActivation() {
+  return {
+    evaluate: async () => Object.freeze({ allowed: true, code: 'ready' })
+  };
+}
+
+function authenticatedClient(options = {}) {
+  return createAuthenticatedTransportClient({
+    activation: readyActivation(),
+    ...options
+  });
+}
+
 (async () => {
   const transport = bridge();
 
@@ -282,10 +295,114 @@ function bridge(options = {}) {
   );
 
 
+  assert.throws(
+    () => createAuthenticatedTransportClient({
+      transport,
+      invoker: { execute: async () => ({ ok: false, code: 'failed' }) }
+    }),
+    /dependencies/
+  );
+
+  let blockedInvocations = 0;
+  const blockedClient = authenticatedClient({
+    transport,
+    activation: {
+      evaluate: async ({ profileAlias }) => {
+        assert.equal(profileAlias, 'perfil-1');
+        return { allowed: false, code: 'legal_blocked' };
+      }
+    },
+    invoker: {
+      execute: async () => {
+        blockedInvocations += 1;
+        return { ok: true, code: 'authorized', response: { status: 204, body: null } };
+      }
+    }
+  });
+  assert.deepEqual(
+    await blockedClient.sendHeartbeat({
+      profileAlias: 'perfil-1',
+      accountAlias: 'cuenta-1',
+      tabs: [],
+      lastEvent: 'idle'
+    }),
+    { ok: false, code: 'unauthorized' }
+  );
+  assert.deepEqual(
+    await blockedClient.nextCommand({ profileAlias: 'perfil-1', cursor: null }),
+    { ok: false, code: 'unauthorized' }
+  );
+  assert.deepEqual(
+    await blockedClient.sendAck({
+      profileAlias: 'perfil-1',
+      ack: { id: 'command-gated-1', ok: true, code: 'ok' }
+    }),
+    { ok: false, code: 'unauthorized' }
+  );
+  assert.equal(blockedInvocations, 0);
+
+  let malformedInvocations = 0;
+  const malformedGateClient = authenticatedClient({
+    transport,
+    activation: {
+      evaluate: async () => ({ allowed: true, code: 'legal_blocked' })
+    },
+    invoker: {
+      execute: async () => {
+        malformedInvocations += 1;
+        return { ok: true, code: 'authorized', response: { status: 204, body: null } };
+      }
+    }
+  });
+  assert.deepEqual(
+    await malformedGateClient.nextCommand({ profileAlias: 'perfil-1', cursor: null }),
+    { ok: false, code: 'failed' }
+  );
+  assert.equal(malformedInvocations, 0);
+
+  let activationCalls = 0;
+  const reevaluatedClient = authenticatedClient({
+    transport,
+    activation: {
+      evaluate: async () => {
+        activationCalls += 1;
+        return { allowed: true, code: 'ready' };
+      }
+    },
+    invoker: {
+      execute: async () => ({
+        ok: true,
+        code: 'authorized',
+        response: { status: 204, body: null }
+      })
+    }
+  });
+  assert.deepEqual(
+    await reevaluatedClient.sendHeartbeat({
+      profileAlias: 'perfil-1',
+      accountAlias: 'cuenta-1',
+      tabs: [],
+      lastEvent: 'idle'
+    }),
+    { ok: true, code: 'sent' }
+  );
+  assert.deepEqual(
+    await reevaluatedClient.nextCommand({ profileAlias: 'perfil-1', cursor: null }),
+    { ok: true, code: 'empty', cursor: null, command: null }
+  );
+  assert.deepEqual(
+    await reevaluatedClient.sendAck({
+      profileAlias: 'perfil-1',
+      ack: { id: 'command-gated-2', ok: true, code: 'ok' }
+    }),
+    { ok: true, code: 'sent' }
+  );
+  assert.equal(activationCalls, 3);
+
   const clientSeen = [];
   let releaseClient;
   const clientGate = new Promise(resolve => { releaseClient = resolve; });
-  const client = createAuthenticatedTransportClient({
+  const client = authenticatedClient({
     transport,
     invoker: {
       execute: async input => {
@@ -341,7 +458,7 @@ function bridge(options = {}) {
     }
   );
 
-  const emptyClient = createAuthenticatedTransportClient({
+  const emptyClient = authenticatedClient({
     transport,
     invoker: {
       execute: async () => ({
@@ -361,7 +478,7 @@ function bridge(options = {}) {
     { ok: true, code: 'sent' }
   );
 
-  const badStatusClient = createAuthenticatedTransportClient({
+  const badStatusClient = authenticatedClient({
     transport,
     invoker: {
       execute: async () => ({
@@ -379,7 +496,7 @@ function bridge(options = {}) {
     { ok: false, code: 'failed' }
   );
 
-  const mismatchClient = createAuthenticatedTransportClient({
+  const mismatchClient = authenticatedClient({
     transport: {
       ...transport,
       heartbeatRequest: input => ({
@@ -399,7 +516,7 @@ function bridge(options = {}) {
     { ok: false, code: 'failed' }
   );
 
-  const secretClient = createAuthenticatedTransportClient({
+  const secretClient = authenticatedClient({
     transport,
     invoker: {
       execute: async () => { throw new Error('credential-client-secret private'); }
@@ -412,6 +529,79 @@ function bridge(options = {}) {
   assert.deepEqual(secretClientResult, { ok: false, code: 'failed' });
   assert.equal(JSON.stringify(secretClientResult).includes('credential-client-secret'), false);
 
+
+  let gateSequence = 0;
+  let gatedTransportInvocations = 0;
+  const gateDropsBeforeAckClient = authenticatedClient({
+    transport,
+    activation: {
+      evaluate: async () => {
+        gateSequence += 1;
+        return gateSequence === 1
+          ? { allowed: true, code: 'ready' }
+          : { allowed: false, code: 'legal_blocked' };
+      }
+    },
+    invoker: {
+      execute: async ({ request }) => {
+        gatedTransportInvocations += 1;
+        if (request.path !== '/v1/bridge/commands/next') {
+          throw new Error('ACK transport must stay gated');
+        }
+        return {
+          ok: true,
+          code: 'authorized',
+          response: {
+            status: 200,
+            body: {
+              cursor: 'cursor:gate-next',
+              command: { id: 'command-gate-1', action: 'pause', target: 7 }
+            }
+          }
+        };
+      }
+    }
+  });
+  const gateDropsBeforeAckPump = createCommandPump({
+    client: gateDropsBeforeAckClient,
+    executor: {
+      execute: async commandValue => ({
+        version: 1,
+        kind: 'ack',
+        id: commandValue.id,
+        ok: true,
+        code: 'ok'
+      })
+    }
+  });
+  assert.deepEqual(
+    await gateDropsBeforeAckPump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:gate-before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'ack_failed', cursor: 'cursor:gate-before' }
+  );
+  assert.equal(gateSequence, 2);
+  assert.equal(gatedTransportInvocations, 1);
+
+  const mutableActivation = readyActivation();
+  const capturedActivationClient = authenticatedClient({
+    transport,
+    activation: mutableActivation,
+    invoker: {
+      execute: async () => ({
+        ok: true,
+        code: 'authorized',
+        response: { status: 204, body: null }
+      })
+    }
+  });
+  mutableActivation.evaluate = async () => ({ allowed: false, code: 'legal_blocked' });
+  assert.deepEqual(
+    await capturedActivationClient.nextCommand({ profileAlias: 'perfil-1', cursor: null }),
+    { ok: true, code: 'empty', cursor: null, command: null }
+  );
 
   const pumpEvents = [];
   const seenIds = new Set();

@@ -249,12 +249,29 @@
     return value;
   }
 
-  function createAuthenticatedTransportClient({ transport, invoker } = {}) {
+  function checkedActivation(value) {
+    exactObject(value, ['allowed', 'code'], 'activation decision');
+    if (typeof value.allowed !== 'boolean' || typeof value.code !== 'string') {
+      throw new TypeError('activation decision is invalid');
+    }
+    if (value.allowed === true) {
+      if (value.code !== 'ready') throw new TypeError('activation decision is invalid');
+      return 'ready';
+    }
+    if (['unpaired', 'consent_denied', 'legal_blocked'].includes(value.code)) {
+      return 'unauthorized';
+    }
+    if (['invalid', 'failed'].includes(value.code)) return 'failed';
+    throw new TypeError('activation decision is invalid');
+  }
+
+  function createAuthenticatedTransportClient({ transport, invoker, activation } = {}) {
     if (!transport || typeof transport.heartbeatRequest !== 'function' ||
         typeof transport.nextCommandRequest !== 'function' ||
         typeof transport.acknowledgementRequest !== 'function' ||
         typeof transport.commandResponse !== 'function' ||
-        !invoker || typeof invoker.execute !== 'function') {
+        !invoker || typeof invoker.execute !== 'function' ||
+        !activation || typeof activation.evaluate !== 'function') {
       throw new TypeError('Authenticated transport dependencies are required');
     }
     const heartbeatRequest = transport.heartbeatRequest.bind(transport);
@@ -262,11 +279,16 @@
     const acknowledgementRequest = transport.acknowledgementRequest.bind(transport);
     const commandResponse = transport.commandResponse.bind(transport);
     const execute = invoker.execute.bind(invoker);
+    const evaluateActivation = activation.evaluate.bind(activation);
 
     function failed(code = 'failed') {
       return Object.freeze({ ok: false, code });
     }
     async function invoke(profileAlias, request) {
+      const activationCode = checkedActivation(
+        await evaluateActivation(Object.freeze({ profileAlias }))
+      );
+      if (activationCode !== 'ready') return failed(activationCode);
       return checkedInvocation(await execute(Object.freeze({
         profileAlias,
         request
@@ -321,7 +343,13 @@
         const snapshot = structuredClone(input);
         exactObject(snapshot, ['profileAlias', 'ack'], 'ack client input');
         const profileAlias = alias(snapshot.profileAlias);
-        const request = acknowledgementRequest(snapshot.ack);
+        let ackInput = snapshot.ack;
+        if (ackInput && typeof ackInput === 'object' && !Array.isArray(ackInput) &&
+            Object.hasOwn(ackInput, 'version')) {
+          const normalized = checkedAck(ackInput);
+          ackInput = { id: normalized.id, ok: normalized.ok, code: normalized.code };
+        }
+        const request = acknowledgementRequest(ackInput);
         const result = await invoke(profileAlias, request);
         if (!result.ok) return failed(result.code);
         if (![200, 204].includes(result.response.status)) return failed();

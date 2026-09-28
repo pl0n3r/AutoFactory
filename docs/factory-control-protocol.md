@@ -438,11 +438,18 @@ de seguridad end-to-end.
 
 ## Cliente autenticado de transporte (slice 15, composición pura)
 
-`createAuthenticatedTransportClient({transport, invoker})` une el contrato de
-descriptores con el invoker credential-bound sin implementar red. Captura las
+`createAuthenticatedTransportClient({transport, invoker, activation})` une el contrato de
+descriptores con el invoker credential-bound y el preflight de activación sin implementar red. Captura las
 funciones inyectadas al construir la fachada y snapshottea cada input antes de
 validarlo, por lo que una mutación del caller durante un `await` no cambia el
 descriptor ya autorizado.
+
+Antes de **cada** operación, la fachada llama `activation.evaluate({profileAlias})` y solo
+continúa con `{allowed:true,code:"ready"}`. `unpaired|consent_denied|legal_blocked`
+se colapsan a `unauthorized`; decisiones mal formadas o `invalid|failed` se colapsan
+a `failed`. El invoker no se toca cuando el preflight deniega. La función
+`evaluate` se captura al construir el cliente para evitar que una mutación posterior
+de la dependencia cambie la frontera de confianza.
 
 La fachada expone solo tres operaciones cerradas:
 
@@ -452,13 +459,20 @@ La fachada expone solo tres operaciones cerradas:
   produce `empty` y HTTP 200 debe pasar por `commandResponse` antes de
   devolver un comando normalizado;
 - `sendAck({profileAlias,ack})`: genera el descriptor ACK fijo y acepta solo
-  HTTP 200/204.
+  HTTP 200/204. Puede consumir tanto el ACK crudo `{id,ok,code}` como el ACK
+  normalizado `{version,kind,id,ok,code}` que produce `createCommandPump`; en este
+  último caso revalida el discriminador y elimina `version/kind` antes de pasarlo al
+  contrato de protocolo, evitando una doble-normalización incompatible.
 
 El caller no puede suministrar origen, path, método, token, credential id ni
 headers. Los bodies de heartbeat/ACK no se devuelven al caller. Errores,
 statuses inesperados, responses adulteradas o excepciones se colapsan a
 `{ok:false,code:"failed"}`; una falta de credencial puede propagarse solo como
 `unauthorized`.
+
+El gate se reevalúa por operación; no se trata como sesión permanente. Si cae entre
+ejecución de una orden y su ACK, el pump conserva el cursor y reporta `ack_failed`;
+el ledger impide repetir el efecto cuando el flujo se reconcilie.
 
 Este slice sigue sin `fetch`, DNS, AbortController, alarms, background,
 manifest, host permissions ni tráfico real. No cambia `datos.yml`. D-061
