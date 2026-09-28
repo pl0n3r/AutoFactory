@@ -1,9 +1,13 @@
 (function (root, factory) {
-  const api = factory();
+  'use strict';
+
+  const api = factory({ currentTime, createRequest, checkedStorage });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ChatGPTAutopilotFactoryChromeStorage = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (helpers) {
   'use strict';
+
+  const { currentTime, createRequest, checkedStorage } = helpers;
 
   const KEY = 'factoryControlCommandReceiptsV1';
   const CREDENTIAL_KEY = 'factoryControlProfileCredentialsV1';
@@ -184,7 +188,7 @@
         if (index === -1 && rows.length >= MAX_CREDENTIALS) {
           throw new TypeError('Profile credential storage full');
         }
-        const duplicate = rows.find(item =>
+        const duplicate = rows.some(item =>
           item.id === row.id && item.profileAlias !== row.profileAlias);
         if (duplicate) throw new TypeError('Invalid opaque credential');
         if (index === -1) rows.push(row);
