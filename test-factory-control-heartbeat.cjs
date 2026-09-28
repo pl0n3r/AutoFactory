@@ -62,8 +62,36 @@ const validConsent = () => ({
   );
   assert.throws(
     () => buildHeartbeatSnapshot({ ...snapshotBase }, () => snapshotNow),
-    /provider signal/
+    /input/
   );
+  {
+    const hiddenInput = {
+      ...snapshotBase,
+      providerSignal: { signalCode: 'ready', alertText: null }
+    };
+    Object.defineProperty(hiddenInput, 'chatText', {
+      value: 'private chat',
+      enumerable: false
+    });
+    assert.throws(
+      () => buildHeartbeatSnapshot(hiddenInput, () => snapshotNow),
+      /input/
+    );
+  }
+  {
+    const hiddenSignal = { signalCode: 'ready', alertText: null };
+    Object.defineProperty(hiddenSignal, 'chatText', {
+      value: 'private chat',
+      enumerable: false
+    });
+    assert.throws(
+      () => buildHeartbeatSnapshot({
+        ...snapshotBase,
+        providerSignal: hiddenSignal
+      }, () => snapshotNow),
+      /provider signal/
+    );
+  }
   assert.equal(MIN_INTERVAL_MS, 60000);
   assert.throws(() => createHeartbeatCoordinator({}), /requires/);
 
