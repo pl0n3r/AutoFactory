@@ -64,25 +64,25 @@
 
   function consentReady(value, profileAlias, nowMs) {
     if (!exactObject(value, ['profileAlias', 'purpose', 'enabled', 'revoked', 'expiresAt']) ||
-        !alias(value.profileAlias) || value.purpose !== HEARTBEAT_PURPOSE ||
+        !alias(value.profileAlias) || typeof value.purpose !== 'string' ||
         typeof value.enabled !== 'boolean' ||
         typeof value.revoked !== 'boolean') {
       throw new TypeError('Invalid verified heartbeat consent');
     }
     const active = validExpiry(value.expiresAt, nowMs);
-    return value.profileAlias === profileAlias &&
+    return value.profileAlias === profileAlias && value.purpose === HEARTBEAT_PURPOSE &&
       value.enabled === true && value.revoked === false && active;
   }
 
   function legalReady(value, profileAlias, nowMs) {
     if (!exactObject(value, ['profileAlias', 'purpose', 'allowed', 'revoked', 'expiresAt']) ||
-        !alias(value.profileAlias) || value.purpose !== LEGAL_PURPOSE ||
+        !alias(value.profileAlias) || typeof value.purpose !== 'string' ||
         typeof value.allowed !== 'boolean' || typeof value.revoked !== 'boolean') {
       throw new TypeError('Invalid verified legal gate');
     }
     const active = validExpiry(value.expiresAt, nowMs);
-    return value.profileAlias === profileAlias && value.allowed === true &&
-      value.revoked === false && active;
+    return value.profileAlias === profileAlias && value.purpose === LEGAL_PURPOSE &&
+      value.allowed === true && value.revoked === false && active;
   }
 
   function createActivationPreflight({
