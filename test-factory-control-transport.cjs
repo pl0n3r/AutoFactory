@@ -22,7 +22,7 @@ function bridge(options = {}) {
     lastEvent: 'idle'
   });
   assert.deepEqual(heartbeat, {
-    origin: ORIGIN,
+    origin: 'https://control.condorapp.com.co',
     method: 'POST',
     path: '/v1/bridge/heartbeat',
     timeoutMs: 10000,
@@ -43,7 +43,7 @@ function bridge(options = {}) {
     cursor: 'cursor:001'
   });
   assert.deepEqual(poll, {
-    origin: ORIGIN,
+    origin: 'https://control.condorapp.com.co',
     method: 'GET',
     path: '/v1/bridge/commands/next',
     timeoutMs: DEFAULT_LONG_POLL_MS + 5000,
@@ -61,7 +61,7 @@ function bridge(options = {}) {
     ok: true,
     code: 'ok'
   });
-  assert.equal(ack.origin, ORIGIN);
+  assert.equal(ack.origin, 'https://control.condorapp.com.co');
   assert.equal(ack.path, '/v1/bridge/commands/ack');
   assert.equal(ack.method, 'POST');
   assert.equal(ack.body.kind, 'ack');
@@ -120,9 +120,23 @@ function bridge(options = {}) {
   }
 
   assert.equal(Object.isFrozen(heartbeat), true);
+  assert.equal(Object.isFrozen(heartbeat.body), true);
+  assert.equal(Object.isFrozen(heartbeat.body.tabs), true);
+  assert.equal(Object.isFrozen(heartbeat.body.tabs[0]), true);
   assert.equal(Object.isFrozen(poll.query), true);
   assert.equal(Object.isFrozen(response), true);
   assert.equal(Object.isFrozen(response.command), true);
+
+  const message = transport.commandResponse({
+    cursor: 'cursor:004',
+    command: {
+      id: 'command-004',
+      action: 'send_message',
+      target: 7,
+      payload: { text: 'owner message' }
+    }
+  });
+  assert.equal(Object.isFrozen(message.command.payload), true);
 
   console.log('factory-control transport contract: ok');
 })();
