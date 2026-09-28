@@ -12,6 +12,10 @@
   const DEFAULT_LONG_POLL_MS = 25_000;
   const MIN_LONG_POLL_MS = 5_000;
   const MAX_LONG_POLL_MS = 30_000;
+  const COMMAND_ACK_CODES = new Set([
+    'ok', 'invalid', 'not_found', 'not_ready', 'timeout', 'unauthorized',
+    'already_handled', 'failed'
+  ]);
 
   function exactObject(value, fields, label) {
     if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -335,8 +339,8 @@
     exactObject(value, ['version', 'kind', 'id', 'ok', 'code'], 'command ACK');
     if (value.version !== 1 || value.kind !== 'ack' ||
         typeof value.id !== 'string' || value.id.length < 1 || value.id.length > 80 ||
-        typeof value.ok !== 'boolean' || typeof value.code !== 'string' ||
-        value.code.length < 1 || value.code.length > 32) {
+        typeof value.ok !== 'boolean' || !COMMAND_ACK_CODES.has(value.code) ||
+        value.ok !== (value.code === 'ok')) {
       throw new TypeError('command ACK is invalid');
     }
     return Object.freeze({
