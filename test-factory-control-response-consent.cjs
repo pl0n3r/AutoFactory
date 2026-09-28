@@ -56,6 +56,30 @@ function contract(grant, overrides = {}) {
   assert.deepEqual(result, { allowed: false, code: 'failed' });
   assert.equal(JSON.stringify(result).includes(secret), false);
 
+  const getterSecret = 'profile-getter-secret';
+  const getterInput = {};
+  Object.defineProperty(getterInput, 'profileAlias', {
+    enumerable: true,
+    get() { throw new Error(getterSecret); }
+  });
+  const getterResult = await contract(valid).authorize(getterInput);
+  assert.deepEqual(getterResult, { allowed: false, code: 'failed' });
+  assert.equal(JSON.stringify(getterResult).includes(getterSecret), false);
+
+  let clockCalls = 0;
+  const delayedExpiry = createResponseConsent({
+    now: () => {
+      clockCalls += 1;
+      return NOW + 31 * 60 * 1000;
+    },
+    loadVerifiedConsent: async () => valid
+  });
+  assert.deepEqual(
+    await delayedExpiry.authorize({ profileAlias: 'perfil-1' }),
+    { allowed: false, code: 'denied' }
+  );
+  assert.equal(clockCalls, 1);
+
   const clockFailed = createResponseConsent({
     now: () => { throw new Error('clock-secret'); },
     loadVerifiedConsent: async () => valid
