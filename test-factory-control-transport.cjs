@@ -4,14 +4,15 @@ const assert = require('node:assert/strict');
 const protocol = require('./factory-control-protocol.js');
 const {
   DEFAULT_LONG_POLL_MS,
-  createTransportContract
+  createTransportContract,
+  createCredentialBoundInvoker
 } = require('./factory-control-transport.js');
 
 function bridge(options = {}) {
   return createTransportContract({ protocol, ...options });
 }
 
-(() => {
+(async () => {
   const transport = bridge();
 
   const heartbeat = transport.heartbeatRequest({
@@ -148,5 +149,135 @@ function bridge(options = {}) {
   });
   assert.equal(Object.isFrozen(message.command.payload), true);
 
+
+  const NOW = 1_900_000_000_000;
+  const seen = [];
+  const bound = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async profileAlias => profileAlias === 'perfil-1'
+        ? { id: 'credential-transport-001', expiresAt: NOW + 60_000 }
+        : null
+    },
+    now: () => NOW,
+    invoke: async envelope => {
+      seen.push(envelope);
+      return { status: 200, body: { accepted: true } };
+    }
+  });
+
+  assert.deepEqual(
+    await bound.execute({ profileAlias: 'perfil-1', request: heartbeat }),
+    { ok: true, code: 'authorized', response: { status: 200, body: { accepted: true } } }
+  );
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].credentialId, 'credential-transport-001');
+  assert.deepEqual(seen[0].request, heartbeat);
+  assert.equal(JSON.stringify(await bound.execute({
+    profileAlias: 'perfil-2', request: transport.nextCommandRequest({
+      profileAlias: 'perfil-2', cursor: null
+    })
+  })).includes('credential-transport-001'), false);
+
+  const mutableRequest = {
+    ...heartbeat,
+    body: { ...heartbeat.body, tabs: heartbeat.body.tabs.map(tab => ({ ...tab })) }
+  };
+  let releaseLoad;
+  const delayedLoad = new Promise(resolve => { releaseLoad = resolve; });
+  const mutableSeen = [];
+  const snapshotBound = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async () => {
+        await delayedLoad;
+        return { id: 'credential-snapshot-001', expiresAt: NOW + 60_000 };
+      }
+    },
+    now: () => NOW,
+    invoke: async envelope => {
+      mutableSeen.push(envelope);
+      return { status: 200, body: { accepted: true } };
+    }
+  });
+  const pendingSnapshot = snapshotBound.execute({ profileAlias: 'perfil-1', request: mutableRequest });
+  mutableRequest.origin = 'https://attacker.example';
+  mutableRequest.body.profileAlias = 'perfil-2';
+  releaseLoad();
+  assert.deepEqual(
+    await pendingSnapshot,
+    { ok: true, code: 'authorized', response: { status: 200, body: { accepted: true } } }
+  );
+  assert.equal(mutableSeen[0].request.origin, 'https://control.condorapp.com.co');
+  assert.equal(mutableSeen[0].request.body.profileAlias, 'perfil-1');
+
+  const missing = await bound.execute({
+    profileAlias: 'perfil-2',
+    request: transport.nextCommandRequest({ profileAlias: 'perfil-2', cursor: null })
+  });
+  assert.deepEqual(missing, { ok: false, code: 'unauthorized' });
+
+  const expired = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async () => ({ id: 'credential-expired-001', expiresAt: NOW })
+    },
+    now: () => NOW,
+    invoke: async () => { throw new Error('must not run'); }
+  });
+  assert.deepEqual(
+    await expired.execute({ profileAlias: 'perfil-1', request: heartbeat }),
+    { ok: false, code: 'unauthorized' }
+  );
+
+  const tampered = { ...heartbeat, origin: 'https://attacker.example' };
+  assert.deepEqual(
+    await bound.execute({ profileAlias: 'perfil-1', request: tampered }),
+    { ok: false, code: 'failed' }
+  );
+  assert.equal(seen.length, 1);
+
+  const secretFailure = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async () => ({ id: 'credential-secret-001', expiresAt: NOW + 60_000 })
+    },
+    now: () => NOW,
+    invoke: async () => { throw new Error('credential-secret-001 private transport path'); }
+  });
+  const failed = await secretFailure.execute({ profileAlias: 'perfil-1', request: heartbeat });
+  assert.deepEqual(failed, { ok: false, code: 'failed' });
+  assert.equal(JSON.stringify(failed).includes('credential-secret-001'), false);
+
+  const reflected = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async () => ({ id: 'credential-reflect-001', expiresAt: NOW + 60_000 })
+    },
+    now: () => NOW,
+    invoke: async ({ credentialId }) => ({
+      status: 200,
+      body: { debug: credentialId }
+    })
+  });
+  assert.deepEqual(
+    await reflected.execute({ profileAlias: 'perfil-1', request: heartbeat }),
+    { ok: false, code: 'failed' }
+  );
+
+  const deceptiveBody = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async () => ({ id: 'credential-tojson-001', expiresAt: NOW + 60_000 })
+    },
+    now: () => NOW,
+    invoke: async ({ credentialId }) => ({
+      status: 200,
+      body: {
+        credentialId,
+        accepted: true,
+        toJSON() { return { accepted: true }; }
+      }
+    })
+  });
+  assert.deepEqual(
+    await deceptiveBody.execute({ profileAlias: 'perfil-1', request: heartbeat }),
+    { ok: true, code: 'authorized', response: { status: 200, body: { accepted: true } } }
+  );
+
   console.log('factory-control transport contract: ok');
-})();
+})().catch(error => { console.error(error); process.exitCode = 1; });
