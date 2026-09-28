@@ -157,6 +157,22 @@ assert.deepEqual(
   ),
   { state: 'limit', resetAt: repeatedHourReset }
 );
+
+const springForwardBefore = Date.parse('2024-03-10T06:50:00Z');
+const springForwardAfter = Date.parse('2024-03-10T07:40:00Z');
+const nextValid0230 = Date.parse('2024-03-11T06:30:00Z');
+for (const nowMs of [springForwardBefore, springForwardAfter]) {
+  assert.deepEqual(
+    classifyProviderPageSignal(
+      {
+        signalCode: 'rate-limit',
+        alertText: 'Usage limit reached. Try again at 2:30 AM.'
+      },
+      () => nowMs
+    ),
+    { state: 'limit', resetAt: nextValid0230 }
+  );
+}
 if (previousTz === undefined) delete process.env.TZ;
 else process.env.TZ = previousTz;
 
