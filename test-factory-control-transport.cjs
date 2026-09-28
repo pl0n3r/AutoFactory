@@ -27,6 +27,13 @@ function authenticatedClient(options = {}) {
   });
 }
 
+function commandPump(options = {}) {
+  return commandPump({
+    activation: readyActivation(),
+    ...options
+  });
+}
+
 (async () => {
   const transport = bridge();
 
@@ -562,7 +569,7 @@ function authenticatedClient(options = {}) {
       }
     }
   });
-  const gateDropsBeforeAckPump = createCommandPump({
+  const gateDropsBeforeAckPump = commandPump({
     client: gateDropsBeforeAckClient,
     executor: {
       execute: async commandValue => ({
@@ -603,11 +610,149 @@ function authenticatedClient(options = {}) {
     { ok: true, code: 'empty', cursor: null, command: null }
   );
 
+  assert.throws(
+    () => createCommandPump({
+      client: {
+        nextCommand: async () => ({ ok: true, code: 'empty', cursor: null, command: null }),
+        sendAck: async () => ({ ok: true, code: 'sent' })
+      },
+      executor: { execute: async () => { throw new Error('must not run'); } }
+    }),
+    /dependencies/
+  );
+
+  let deniedPolls = 0;
+  let deniedEffects = 0;
+  let deniedAcks = 0;
+  const deniedBeforeEffectPump = commandPump({
+    activation: {
+      evaluate: async ({ profileAlias }) => {
+        assert.equal(profileAlias, 'perfil-1');
+        return { allowed: false, code: 'consent_denied' };
+      }
+    },
+    client: {
+      nextCommand: async () => {
+        deniedPolls += 1;
+        return {
+          ok: true,
+          code: 'command',
+          cursor: 'cursor:denied-next',
+          command: {
+            version: 1, kind: 'command', id: 'pump-command-denied',
+            action: 'pause', target: 7, payload: null
+          }
+        };
+      },
+      sendAck: async () => {
+        deniedAcks += 1;
+        return { ok: true, code: 'sent' };
+      }
+    },
+    executor: {
+      execute: async () => {
+        deniedEffects += 1;
+        return {
+          version: 1, kind: 'ack', id: 'pump-command-denied',
+          ok: true, code: 'ok'
+        };
+      }
+    }
+  });
+  assert.deepEqual(
+    await deniedBeforeEffectPump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:denied-before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'unauthorized', cursor: 'cursor:denied-before' }
+  );
+  assert.equal(deniedPolls, 1);
+  assert.equal(deniedEffects, 0);
+  assert.equal(deniedAcks, 0);
+
+  let malformedEffects = 0;
+  const malformedBeforeEffectPump = commandPump({
+    activation: {
+      evaluate: async () => ({ allowed: true, code: 'legal_blocked' })
+    },
+    client: {
+      nextCommand: async () => ({
+        ok: true,
+        code: 'command',
+        cursor: 'cursor:malformed-next',
+        command: {
+          version: 1, kind: 'command', id: 'pump-command-malformed',
+          action: 'pause', target: 7, payload: null
+        }
+      }),
+      sendAck: async () => { throw new Error('must not run'); }
+    },
+    executor: {
+      execute: async () => {
+        malformedEffects += 1;
+        throw new Error('must not run');
+      }
+    }
+  });
+  assert.deepEqual(
+    await malformedBeforeEffectPump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:malformed-before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'failed', cursor: 'cursor:malformed-before' }
+  );
+  assert.equal(malformedEffects, 0);
+
+  const mutablePumpActivation = readyActivation();
+  let capturedPumpEffects = 0;
+  const capturedActivationPump = commandPump({
+    activation: mutablePumpActivation,
+    client: {
+      nextCommand: async () => ({
+        ok: true,
+        code: 'command',
+        cursor: 'cursor:captured-next',
+        command: {
+          version: 1, kind: 'command', id: 'pump-command-captured',
+          action: 'pause', target: 7, payload: null
+        }
+      }),
+      sendAck: async () => ({ ok: true, code: 'sent' })
+    },
+    executor: {
+      execute: async commandValue => {
+        capturedPumpEffects += 1;
+        return {
+          version: 1, kind: 'ack', id: commandValue.id,
+          ok: true, code: 'ok'
+        };
+      }
+    }
+  });
+  mutablePumpActivation.evaluate = async () => ({ allowed: false, code: 'legal_blocked' });
+  assert.deepEqual(
+    await capturedActivationPump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:captured-before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    {
+      ok: true,
+      code: 'handled',
+      cursor: 'cursor:captured-next',
+      commandId: 'pump-command-captured',
+      outcome: 'ok'
+    }
+  );
+  assert.equal(capturedPumpEffects, 1);
+
   const pumpEvents = [];
   const seenIds = new Set();
   let releasePoll;
   const pollGate = new Promise(resolve => { releasePoll = resolve; });
-  const pump = createCommandPump({
+  const pump = commandPump({
     client: {
       nextCommand: async input => {
         pumpEvents.push(['poll', structuredClone(input)]);
@@ -690,7 +835,7 @@ function authenticatedClient(options = {}) {
   assert.equal(pumpEvents.filter(event => event[0] === 'execute').length, 2);
 
   let mismatchedAckSent = 0;
-  const mismatchedAckPump = createCommandPump({
+  const mismatchedAckPump = commandPump({
     client: {
       nextCommand: async () => ({
         ok: true,
@@ -729,7 +874,7 @@ function authenticatedClient(options = {}) {
     { version: 1, kind: 'ack', id: 'pump-command-invalid-ack', ok: false, code: 'made_up' }
   ]) {
     let invalidAckSent = 0;
-    const invalidAckPump = createCommandPump({
+    const invalidAckPump = commandPump({
       client: {
         nextCommand: async () => ({
           ok: true,
@@ -758,7 +903,7 @@ function authenticatedClient(options = {}) {
     assert.equal(invalidAckSent, 0);
   }
 
-  const ackFailurePump = createCommandPump({
+  const ackFailurePump = commandPump({
     client: {
       nextCommand: async () => ({
         ok: true,
@@ -827,7 +972,7 @@ function authenticatedClient(options = {}) {
   releasePoll();
   assert.deepEqual(await waiting, { ok: true, code: 'empty', cursor: 'cursor:wait' });
 
-  const opaquePump = createCommandPump({
+  const opaquePump = commandPump({
     client: {
       nextCommand: async () => { throw new Error('credential-pump-secret private'); },
       sendAck: async () => { throw new Error('must not run'); }
