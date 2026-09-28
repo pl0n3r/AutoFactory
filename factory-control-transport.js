@@ -213,7 +213,7 @@
           code: 'authorized',
           response: response(result, auth.id)
         });
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: sensitive transport/store errors are intentionally collapsed to a fixed public result.
         // Never expose profile alias, opaque credential, adapter details or response bodies in errors.
         return Object.freeze({ ok: false, code: 'failed' });
       }
