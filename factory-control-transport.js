@@ -343,7 +343,13 @@
         const snapshot = structuredClone(input);
         exactObject(snapshot, ['profileAlias', 'ack'], 'ack client input');
         const profileAlias = alias(snapshot.profileAlias);
-        const request = acknowledgementRequest(snapshot.ack);
+        let ackInput = snapshot.ack;
+        if (ackInput && typeof ackInput === 'object' && !Array.isArray(ackInput) &&
+            Object.hasOwn(ackInput, 'version')) {
+          const normalized = checkedAck(ackInput);
+          ackInput = { id: normalized.id, ok: normalized.ok, code: normalized.code };
+        }
+        const request = acknowledgementRequest(ackInput);
         const result = await invoke(profileAlias, request);
         if (!result.ok) return failed(result.code);
         if (![200, 204].includes(result.response.status)) return failed();
