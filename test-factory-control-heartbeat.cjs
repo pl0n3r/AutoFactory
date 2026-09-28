@@ -40,7 +40,8 @@ const validConsent = () => ({
   assert.equal(deliveries.length, 1);
   assert.deepEqual(deliveries[0], {
     version: 1, kind: 'heartbeat',
-    ...synthetic()
+    ...synthetic(),
+    accountState: { state: 'unknown', resetAt: null }
   });
   assert.equal(JSON.stringify(deliveries).includes('private chat'), false);
   time += MIN_INTERVAL_MS - 1;
@@ -66,6 +67,23 @@ const validConsent = () => ({
   }
   consent = validConsent();
   time = 100000;
+  heartbeat = build({ snapshot: async () => ({
+    ...synthetic(),
+    accountState: { state: 'limit', resetAt: time + 3_600_000 }
+  }) });
+  assert.equal(await heartbeat.tick(), 'sent');
+  assert.deepEqual(deliveries.at(-1).accountState, {
+    state: 'limit',
+    resetAt: time + 3_600_000
+  });
+  time += MIN_INTERVAL_MS;
+
+  heartbeat = build({ snapshot: async () => ({
+    ...synthetic(),
+    accountState: { state: 'limit', resetAt: null, alertText: 'private chat' }
+  }) });
+  assert.equal(await heartbeat.tick(), 'failed');
+
   heartbeat = build({ snapshot: async () => ({ ...synthetic(), chatText: 'private chat' }) });
   assert.equal(await heartbeat.tick(), 'failed');
   assert.equal(deliveries.length, 2);
