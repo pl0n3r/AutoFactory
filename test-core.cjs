@@ -71,6 +71,27 @@ function page(html) {
   }
 }
 {
+  const doc = page(
+    '<div id="prompt-textarea" contenteditable="true"></div>' +
+    '<div role="alert">Maintenance window at 4:30 PM.</div>' +
+    '<div role="alert">Has alcanzado el límite de uso. Inténtalo de nuevo a las 16:45.</div>'
+  );
+  const signal = core.providerAccountSignal(doc);
+  assert.equal(signal.signalCode, 'rate-limit');
+  assert.equal(signal.alertText.includes('16:45'), true);
+  assert.equal(signal.alertText.includes('4:30 PM'), false);
+  assert.deepEqual(
+    classifyProviderPageSignal(
+      signal,
+      () => new Date(2030, 0, 1, 15, 0, 0, 0).getTime()
+    ),
+    {
+      state: 'limit',
+      resetAt: new Date(2030, 0, 1, 16, 45, 0, 0).getTime()
+    }
+  );
+}
+{
   const doc = page('<div role="alert">Network error secret@example.test</div>');
   assert.deepEqual(
     core.providerAccountSignal(doc),
