@@ -405,15 +405,17 @@
     }
   }
 
-  function createCommandPump({ client, executor } = {}) {
+  function createCommandPump({ client, executor, activation } = {}) {
     if (!client || typeof client.nextCommand !== 'function' ||
         typeof client.sendAck !== 'function' ||
-        !executor || typeof executor.execute !== 'function') {
+        !executor || typeof executor.execute !== 'function' ||
+        !activation || typeof activation.evaluate !== 'function') {
       throw new TypeError('Command pump dependencies are required');
     }
     const nextCommand = client.nextCommand.bind(client);
     const sendAck = client.sendAck.bind(client);
     const execute = executor.execute.bind(executor);
+    const evaluateActivation = activation.evaluate.bind(activation);
     let inFlight = false;
 
     function failed(code, cursorValue) {
@@ -466,6 +468,12 @@
         if (!command || typeof command !== 'object' || Array.isArray(command) ||
             typeof command.id !== 'string' || command.id.length < 1 || command.id.length > 80) {
           return failed('failed', previousCursor);
+        }
+        const activationCode = checkedActivation(
+          await evaluateActivation(Object.freeze({ profileAlias }))
+        );
+        if (activationCode !== 'ready') {
+          return failed(activationCode, previousCursor);
         }
         const ack = checkedAck(await execute(
           command,

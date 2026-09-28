@@ -482,8 +482,8 @@ autenticación y revisión de seguridad end-to-end.
 
 ## Pump de órdenes autenticadas (slice 16, sin runtime)
 
-`createCommandPump({client, executor})` compone el cliente autenticado del slice 15
-con el executor idempotente ya existente. No implementa timers, alarms, background,
+`createCommandPump({client, executor, activation})` compone el cliente autenticado del slice 15
+con el executor idempotente ya existente y revalida el preflight de activación antes del efecto. No implementa timers, alarms, background,
 fetch ni efectos reales.
 
 `runOnce({profileAlias,cursor,context})` snapshottea su entrada antes de cualquier
@@ -494,10 +494,17 @@ El flujo es cerrado:
 
 1. solicita exactamente un `nextCommand`;
 2. si está vacío, no ejecuta efectos ni ACK;
-3. si llega un comando, llama una vez a `executor.execute`;
-4. valida el ACK mínimo producido por el executor;
-5. envía ese ACK mediante `client.sendAck`;
-6. **solo después de ACK enviado** devuelve el cursor nuevo.
+3. si llega un comando, revalida `activation.evaluate({profileAlias})`;
+4. solo con `ready` llama una vez a `executor.execute`;
+5. valida el ACK mínimo producido por el executor;
+6. envía ese ACK mediante `client.sendAck`, que vuelve a gatear la operación;
+7. **solo después de ACK enviado** devuelve el cursor nuevo.
+
+Una denegación `unpaired|consent_denied|legal_blocked` después del poll pero antes
+del efecto devuelve `unauthorized`, conserva el cursor anterior y no ejecuta ni
+envía ACK. Una decisión malformed/`invalid|failed` se reduce a `failed` con la
+misma conservación. La función `activation.evaluate` se captura al construir el
+pump para impedir mutation-after-construction.
 
 Si el efecto ya fue procesado, el ledger del executor puede devolver
 `already_handled` y el pump vuelve a ACK sin repetir el efecto. Si el ACK falla,
