@@ -616,9 +616,12 @@ La separación es deliberada: `content.js` envía el objeto de `pageSignal()`
 al flujo local de learning mediante `recordErrorOnce()`; por eso
 `pageSignal()` **no** incorpora texto libre. Solo
 `providerAccountSignal()` puede exponer texto, únicamente cuando la señal es
-`rate-limit`, limitado a 500 caracteres y pensado para clasificación inmediata
-en memoria. Para `ready|authentication|connection` y cualquier otra señal,
-`alertText` es `null`.
+`rate-limit`. Si existen varias alertas simultáneas, selecciona **solo** la
+primera alerta cuyo propio texto coincide con el patrón cerrado de rate-limit;
+una hora presente únicamente en otra alerta no puede influir en `resetAt`.
+El texto seleccionado se limita a 500 caracteres y se usa para clasificación
+inmediata en memoria. Para `ready|authentication|connection` y cualquier otra
+señal, `alertText` es `null`.
 
 El helper no se invoca desde `content.js`, background ni manifest en este
 slice. No persiste, registra ni transmite la alerta; el resultado normalizado
