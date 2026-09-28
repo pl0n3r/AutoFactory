@@ -5,7 +5,8 @@ const protocol = require('./factory-control-protocol.js');
 const {
   DEFAULT_LONG_POLL_MS,
   createTransportContract,
-  createCredentialBoundInvoker
+  createCredentialBoundInvoker,
+  createAuthenticatedTransportClient
 } = require('./factory-control-transport.js');
 
 function bridge(options = {}) {
@@ -278,6 +279,137 @@ function bridge(options = {}) {
     await deceptiveBody.execute({ profileAlias: 'perfil-1', request: heartbeat }),
     { ok: true, code: 'authorized', response: { status: 200, body: { accepted: true } } }
   );
+
+
+  const clientSeen = [];
+  let releaseClient;
+  const clientGate = new Promise(resolve => { releaseClient = resolve; });
+  const client = createAuthenticatedTransportClient({
+    transport,
+    invoker: {
+      execute: async input => {
+        clientSeen.push(input);
+        if (input.request.path === '/v1/bridge/commands/next') {
+          return {
+            ok: true,
+            code: 'authorized',
+            response: {
+              status: 200,
+              body: {
+                cursor: 'cursor:client-2',
+                command: { id: 'command-client-1', action: 'pause', target: 7 }
+              }
+            }
+          };
+        }
+        await clientGate;
+        return { ok: true, code: 'authorized', response: { status: 204, body: null } };
+      }
+    }
+  });
+
+  const clientHeartbeat = {
+    profileAlias: 'perfil-1',
+    accountAlias: 'cuenta-1',
+    tabs: [{ tabId: 7, enabled: true, state: 'waiting' }],
+    lastEvent: 'idle'
+  };
+  const pendingClientHeartbeat = client.sendHeartbeat(clientHeartbeat);
+  clientHeartbeat.profileAlias = 'perfil-mutado';
+  clientHeartbeat.tabs[0].state = 'error';
+  releaseClient();
+  assert.deepEqual(await pendingClientHeartbeat, { ok: true, code: 'sent' });
+  assert.equal(clientSeen[0].profileAlias, 'perfil-1');
+  assert.equal(clientSeen[0].request.body.profileAlias, 'perfil-1');
+  assert.equal(clientSeen[0].request.body.tabs[0].state, 'waiting');
+
+  assert.deepEqual(
+    await client.nextCommand({ profileAlias: 'perfil-1', cursor: 'cursor:client-1' }),
+    {
+      ok: true,
+      code: 'command',
+      cursor: 'cursor:client-2',
+      command: {
+        version: 1,
+        kind: 'command',
+        id: 'command-client-1',
+        action: 'pause',
+        target: 7,
+        payload: null
+      }
+    }
+  );
+
+  const emptyClient = createAuthenticatedTransportClient({
+    transport,
+    invoker: {
+      execute: async () => ({
+        ok: true, code: 'authorized', response: { status: 204, body: null }
+      })
+    }
+  });
+  assert.deepEqual(
+    await emptyClient.nextCommand({ profileAlias: 'perfil-1', cursor: null }),
+    { ok: true, code: 'empty', cursor: null, command: null }
+  );
+  assert.deepEqual(
+    await emptyClient.sendAck({
+      profileAlias: 'perfil-1',
+      ack: { id: 'command-client-1', ok: true, code: 'ok' }
+    }),
+    { ok: true, code: 'sent' }
+  );
+
+  const badStatusClient = createAuthenticatedTransportClient({
+    transport,
+    invoker: {
+      execute: async () => ({
+        ok: true, code: 'authorized', response: { status: 302, body: { redirect: true } }
+      })
+    }
+  });
+  assert.deepEqual(
+    await badStatusClient.sendHeartbeat({
+      profileAlias: 'perfil-1',
+      accountAlias: 'cuenta-1',
+      tabs: [],
+      lastEvent: 'idle'
+    }),
+    { ok: false, code: 'failed' }
+  );
+
+  const mismatchClient = createAuthenticatedTransportClient({
+    transport: {
+      ...transport,
+      heartbeatRequest: input => ({
+        ...transport.heartbeatRequest(input),
+        body: { ...transport.heartbeatRequest(input).body, profileAlias: 'perfil-otro' }
+      })
+    },
+    invoker: bound
+  });
+  assert.deepEqual(
+    await mismatchClient.sendHeartbeat({
+      profileAlias: 'perfil-1',
+      accountAlias: 'cuenta-1',
+      tabs: [],
+      lastEvent: 'idle'
+    }),
+    { ok: false, code: 'failed' }
+  );
+
+  const secretClient = createAuthenticatedTransportClient({
+    transport,
+    invoker: {
+      execute: async () => { throw new Error('credential-client-secret private'); }
+    }
+  });
+  const secretClientResult = await secretClient.sendAck({
+    profileAlias: 'perfil-1',
+    ack: { id: 'command-client-2', ok: false, code: 'failed' }
+  });
+  assert.deepEqual(secretClientResult, { ok: false, code: 'failed' });
+  assert.equal(JSON.stringify(secretClientResult).includes('credential-client-secret'), false);
 
   console.log('factory-control transport contract: ok');
 })().catch(error => { console.error(error); process.exitCode = 1; });
