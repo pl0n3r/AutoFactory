@@ -124,6 +124,21 @@ try {
   else process.env.TZ = previousTz;
 }
 
+{
+  const hidden = { signalCode: 'ready', alertText: null };
+  Object.defineProperty(hidden, 'chatText', {
+    value: 'private chat',
+    enumerable: false
+  });
+  assert.deepEqual(classifyProviderPageSignal(hidden, () => localNow), UNKNOWN);
+}
+{
+  const symbolKey = Symbol('secret');
+  const symbolSignal = { signalCode: 'ready', alertText: null };
+  symbolSignal[symbolKey] = 'private';
+  assert.deepEqual(classifyProviderPageSignal(symbolSignal, () => localNow), UNKNOWN);
+}
+
 assert.deepEqual(
   classifyProviderPageSignal(
     { signalCode: 'rate-limit', alertText: 'Reset at 4:30 PM.' },
