@@ -430,10 +430,16 @@
         if (poll.code !== 'command') return failed('failed', previousCursor);
         exactObject(poll, ['ok', 'code', 'cursor', 'command'], 'command poll result');
         const nextCursor = cursor(poll.cursor);
+        const command = structuredClone(poll.command);
+        if (!command || typeof command !== 'object' || Array.isArray(command) ||
+            typeof command.id !== 'string' || command.id.length < 1 || command.id.length > 80) {
+          return failed('failed', previousCursor);
+        }
         const ack = checkedAck(await execute(
-          structuredClone(poll.command),
+          command,
           Object.freeze({ profileAlias, enabledTabIds: Object.freeze(enabledTabIds) })
         ));
+        if (ack.id !== command.id) return failed('failed', previousCursor);
         const sent = await sendAck(Object.freeze({
           profileAlias,
           ack

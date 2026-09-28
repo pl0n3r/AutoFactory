@@ -499,6 +499,40 @@ function bridge(options = {}) {
   assert.equal(replay.cursor, 'cursor:next');
   assert.equal(pumpEvents.filter(event => event[0] === 'execute').length, 2);
 
+  let mismatchedAckSent = 0;
+  const mismatchedAckPump = createCommandPump({
+    client: {
+      nextCommand: async () => ({
+        ok: true,
+        code: 'command',
+        cursor: 'cursor:mismatch-next',
+        command: {
+          version: 1, kind: 'command', id: 'pump-command-mismatch',
+          action: 'pause', target: 7, payload: null
+        }
+      }),
+      sendAck: async () => {
+        mismatchedAckSent++;
+        return { ok: true, code: 'sent' };
+      }
+    },
+    executor: {
+      execute: async () => ({
+        version: 1, kind: 'ack', id: 'different-command',
+        ok: true, code: 'ok'
+      })
+    }
+  });
+  assert.deepEqual(
+    await mismatchedAckPump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:mismatch-before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'failed', cursor: 'cursor:mismatch-before' }
+  );
+  assert.equal(mismatchedAckSent, 0);
+
   const ackFailurePump = createCommandPump({
     client: {
       nextCommand: async () => ({
