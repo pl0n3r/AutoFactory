@@ -525,3 +525,37 @@ Este slice reutiliza la detección ES/EN que ya existe en
 `content.js` ni modifica `background.js`, manifest, permisos, alarms o red.
 No añade persistencia ni cambia `datos.yml`; D-061 continúa bloqueando tráfico
 real y go-live.
+
+
+## Preflight de activación del puente (slice 18, aún sin runtime)
+
+`factory-control-activation.js` añade una frontera pura para decidir si un futuro
+transporte puede **intentar activarse**. No crea pairing, no autentica por sí mismo,
+no realiza HTTP y no modifica manifest, background, permisos ni tratamientos.
+
+`createActivationPreflight({loadVerifiedPairing, loadVerifiedHeartbeatConsent,
+loadVerifiedLegalGate, now})` exige, para el mismo `profileAlias`:
+
+- pairing ya verificado, no revocado y vigente;
+- consentimiento de heartbeat ya verificado, con propósito fijo `heartbeat`, habilitado, no revocado y vigente;
+- puerta legal ya verificada, con propósito fijo `factory_control_bridge_activation`, permitida, no revocada y vigente.
+
+Los tres snapshots tienen expiración máxima de 24 horas. El preflight vuelve a
+comprobar pairing y consentimiento con el reloj más reciente antes de devolver
+`ready`, para no aprobar material que haya expirado durante las lecturas
+asíncronas. Un reloj regresivo o un snapshot mal formado falla cerrado.
+
+La salida contiene únicamente `{allowed, code}`, con códigos
+`ready|unpaired|consent_denied|legal_blocked|invalid|failed`. Nunca devuelve
+credential IDs, aliases, detalles de la puerta legal, excepciones, tokens ni texto
+de chat. `ready` **no significa go-live**: el futuro runtime todavía deberá
+autenticar transporte, aplicar autorización por orden, response consent cuando
+corresponda, AbortSignal/revocación y la puerta ControlBot#20. D-061 sigue vigente.
+
+Evidencia específica:
+
+```sh
+node --check factory-control-activation.js
+node test-factory-control-activation.cjs
+npm test
+```
