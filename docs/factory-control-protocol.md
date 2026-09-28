@@ -314,9 +314,7 @@ Salida mínima:
 `{state, resetAt}`, donde `state` es
 `ready|limit|requires_login|error|unknown`.
 
-`limit` exige un `resetAt` entero futuro y acotado a siete días. Señales
-contradictorias, reloj inválido, campos extra o timestamps inválidos fallan a
-`unknown`. No se aceptan mensajes libres, email, URLs, cookies, tokens ni IDs de
+`limit` acepta `resetAt:null` cuando el proveedor no publica una hora de liberación. Si `resetAt` está presente, debe ser un entero futuro y acotado a siete días. Señales contradictorias, reloj inválido, campos extra o timestamps inválidos fallan a `unknown`. No se aceptan mensajes libres, email, URLs, cookies, tokens ni IDs de
 chat, por lo que el resultado puede incorporarse al heartbeat sin filtrar texto.
 
 Este módulo **no detecta por sí mismo** mensajes ES/EN. Esa detección pertenecerá al
