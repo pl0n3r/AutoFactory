@@ -1,7 +1,10 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { classifyAccountState } = require('./factory-control-account-state.js');
+const {
+  classifyAccountState,
+  classifyProviderPageSignal
+} = require('./factory-control-account-state.js');
 
 const NOW = 1_800_000_000_000;
 
@@ -13,6 +16,11 @@ assert.deepEqual(
 assert.deepEqual(
   classifyAccountState({ authenticated: true, usageLimited: true, providerError: false, resetAt: NOW + 3_600_000 }, () => NOW),
   { state: 'limit', resetAt: NOW + 3_600_000 }
+);
+
+assert.deepEqual(
+  classifyAccountState({ authenticated: true, usageLimited: true, providerError: false, resetAt: null }, () => NOW),
+  { state: 'limit', resetAt: null }
 );
 
 assert.deepEqual(
@@ -54,10 +62,175 @@ assert.deepEqual(
   { state: 'unknown', resetAt: null }
 );
 
-const serialized = JSON.stringify(
-  classifyAccountState({ authenticated: true, usageLimited: true, providerError: false, resetAt: NOW + 60_000 }, () => NOW)
+const localNow = new Date(2030, 0, 1, 15, 0, 0, 0).getTime();
+const at1630 = new Date(2030, 0, 1, 16, 30, 0, 0).getTime();
+const at1645 = new Date(2030, 0, 1, 16, 45, 0, 0).getTime();
+const nextDay0215 = new Date(2030, 0, 2, 2, 15, 0, 0).getTime();
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    { signalCode: 'ready', alertText: null },
+    () => localNow
+  ),
+  { state: 'ready', resetAt: null }
 );
-for (const forbidden of ['email', 'token', 'cookie', 'chat', 'secret', 'message']) {
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    { signalCode: 'authentication', alertText: null },
+    () => localNow
+  ),
+  { state: 'requires_login', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    { signalCode: 'connection', alertText: null },
+    () => localNow
+  ),
+  { state: 'error', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    { signalCode: 'rate-limit', alertText: null },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'You have reached your usage limit. Try again at 4:30 PM.'
+    },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: at1630 }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Has alcanzado el límite de uso. Inténtalo de nuevo a las 16:45.'
+    },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: at1645 }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Usage limit reached. Resets at 2:15 a. m.'
+    },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: nextDay0215 }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Límite temporal sin hora de liberación.'
+    },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Límite temporal. Reintenta a las 25:99.'
+    },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'conversation-limit',
+      alertText: null
+    },
+    () => localNow
+  ),
+  { state: 'unknown', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'ready',
+      alertText: 'unexpected provider text'
+    },
+    () => localNow
+  ),
+  { state: 'unknown', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'x'.repeat(501)
+    },
+    () => localNow
+  ),
+  { state: 'unknown', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Límite hasta las 16:30. secret@example.com token=never-reflect'
+    },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: at1630 }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Reset at 4:30 PM or 5:30 PM.'
+    },
+    () => localNow
+  ),
+  { state: 'limit', resetAt: null }
+);
+
+assert.deepEqual(
+  classifyProviderPageSignal(
+    { signalCode: 'rate-limit', alertText: 'Reset at 4:30 PM.' },
+    () => { throw new Error('clock secret'); }
+  ),
+  { state: 'unknown', resetAt: null }
+);
+
+const serialized = JSON.stringify([
+  classifyAccountState(
+    { authenticated: true, usageLimited: true, providerError: false, resetAt: NOW + 60_000 },
+    () => NOW
+  ),
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Límite hasta las 16:30. secret@example.com token=never-reflect'
+    },
+    () => localNow
+  )
+]);
+for (const forbidden of ['email', 'token', 'cookie', 'chat', 'secret', 'message', 'never-reflect']) {
   assert.equal(serialized.toLowerCase().includes(forbidden), false);
 }
 
