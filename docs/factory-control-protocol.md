@@ -264,3 +264,38 @@ node --check factory-control-pairing.js
 node test-factory-control-pairing.cjs
 npm test
 ```
+
+
+## Contrato de transporte HTTPS (slice 8, sin red activa)
+
+`factory-control-transport.js` define únicamente **descriptores puros** para el
+futuro adaptador HTTPS. No llama `fetch`, no resuelve DNS, no abre sockets, no
+inyecta credenciales y no modifica manifests o permisos.
+
+El origen es constante e inmutable: `https://control.condorapp.com.co`.
+No existe parámetro para sustituirlo. Los únicos paths son:
+
+- `POST /v1/bridge/heartbeat` con heartbeat validado por protocolo v1;
+- `GET /v1/bridge/commands/next` con `profileAlias`, cursor opaco y long-poll
+  de 25 s por defecto, acotado a 5–30 s;
+- `POST /v1/bridge/commands/ack` con ACK validado por protocolo v1.
+
+Los descriptores llevan `authScope: "profile"` como señal abstracta para el
+runtime futuro, pero **nunca** incluyen Authorization, bearer, cookie, token,
+llave ni secreto. El parser `commandResponse` acepta exactamente
+`{cursor, command}`; el comando vuelve a pasar por `protocol.command()` y
+rechaza campos extra.
+
+Este contrato reduce la superficie SSRF/path-injection al no aceptar URL, origen
+ni path suministrados por remoto. No acredita que esos endpoints existan ni que
+ControlBot los implemente todavía. La conexión real, el almacenamiento de
+credenciales, el permiso de host y cualquier tráfico siguen bloqueados por
+ControlBot#20 y D-061.
+
+Evidencia:
+
+```sh
+node --check factory-control-transport.js
+node test-factory-control-transport.cjs
+npm test
+```
