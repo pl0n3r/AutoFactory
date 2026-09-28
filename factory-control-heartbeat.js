@@ -45,15 +45,17 @@
     const ownKeys = Reflect.ownKeys(input);
     if (ownKeys.length !== expectedKeys.length ||
         !ownKeys.every(key => typeof key === 'string' && expectedKeys.includes(key)) ||
-        !expectedKeys.every(key => Object.hasOwn(input, key))) {
+        !expectedKeys.every(key => Object.hasOwn(input, key) &&
+          Object.propertyIsEnumerable(input, key))) {
       throw new TypeError('Heartbeat snapshot input is invalid');
     }
     const providerKeys = Reflect.ownKeys(input.providerSignal || {});
     if (providerKeys.length !== 2 ||
         !providerKeys.every(key => typeof key === 'string' &&
           ['signalCode', 'alertText'].includes(key)) ||
-        !Object.hasOwn(input.providerSignal || {}, 'signalCode') ||
-        !Object.hasOwn(input.providerSignal || {}, 'alertText')) {
+        !['signalCode', 'alertText'].every(key =>
+          Object.hasOwn(input.providerSignal || {}, key) &&
+          Object.propertyIsEnumerable(input.providerSignal || {}, key))) {
       throw new TypeError('Heartbeat snapshot provider signal is invalid');
     }
     const snapshot = structuredClone(input);
