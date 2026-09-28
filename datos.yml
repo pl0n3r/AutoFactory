@@ -75,6 +75,20 @@
       "retention": "review_required",
       "consent": "review_required",
       "providers": []
+    },
+    {
+      "id": "local_factory_control_profile_credential",
+      "category": "authentication",
+      "fields": [
+        "profileAlias",
+        "id",
+        "expiresAt"
+      ],
+      "purpose": "local_factory_control_profile_pairing_credential",
+      "basis": "review_required",
+      "retention": "maximum_24_hours_by_contract",
+      "consent": "review_required",
+      "providers": []
     }
   ]
 }
