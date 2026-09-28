@@ -227,3 +227,40 @@ npm test
 Las regresiones cubren ejecución única, replay tras denegación, broadcast permitido
 y prohibido, excepción con secreto, outcome inválido y un authorizer que intenta
 cambiar el destino del comando.
+
+
+## Pairing contract aislado (slice 7, sin pairing real)
+
+`factory-control-pairing.js` añade `createPairingContract(...)` como frontera pura
+para el futuro emparejamiento. **No** genera códigos, no valida criptografía por sí
+mismo, no guarda llaves, no usa `chrome.storage`, no realiza HTTPS y no modifica
+manifest/permisos. La puerta legal ControlBot#20 y D-061 siguen bloqueando cualquier
+pairing o tráfico real.
+
+`pair({profileAlias, code})` exige un código decimal de seis dígitos y un alias
+local no-email. Después consume dependencias explícitas que el runtime futuro deberá
+proveer desde una fuente autenticada:
+
+- `loadVerifiedChallenge`: entrega solo metadata ya verificada
+  `{challengeId, profileAlias, expiresAt, revoked, used}`;
+- `consumeVerifiedChallenge`: valida/consume atómicamente el código para impedir
+  replay. El contrato nunca persiste ni devuelve el código;
+- `issueOpaqueCredential`: devuelve únicamente un handle opaco
+  `{credentialId, profileAlias, expiresAt}`, con vigencia máxima de 24 horas;
+- `revokeOpaqueCredential`: revoca el handle por perfil.
+
+El challenge no puede declarar más de diez minutos de vigencia futura. Estados
+revocados, usados o expirados fallan cerrado antes de emitir una credencial. Errores
+de adapters se colapsan a códigos fijos
+`paired|invalid|expired|replayed|revoked|not_found|failed`: no se exponen códigos,
+credenciales, mensajes de excepción ni material sensible.
+
+La protección de replay depende de que `consumeVerifiedChallenge` sea atómico en
+la implementación futura. Este slice no afirma autenticación end-to-end, no define
+endpoints y no conecta AutoFactory con ControlBot. Evidencia:
+
+```sh
+node --check factory-control-pairing.js
+node test-factory-control-pairing.cjs
+npm test
+```
