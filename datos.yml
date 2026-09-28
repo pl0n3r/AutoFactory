@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "project": "pl0n3r/AutoFactory",
+  "phase": "construccion",
+  "controller": {
+    "name": "[COMPLETAR POR EL DUEÑO]",
+    "identifier": "[COMPLETAR POR EL DUEÑO]",
+    "address": "[COMPLETAR POR EL DUEÑO]",
+    "rights_email": "[COMPLETAR POR EL DUEÑO]"
+  },
+  "treatments": [
+    {
+      "id": "local_continuation_settings",
+      "category": "usage",
+      "fields": [
+        "prompt",
+        "promptSchemaVersion",
+        "masterEnabled",
+        "conversationMode",
+        "reasoningLevel",
+        "delaySeconds",
+        "scroll_settings",
+        "reload_settings"
+      ],
+      "purpose": "local_user_configured_chat_continuation",
+      "basis": "review_required",
+      "retention": "review_required",
+      "consent": "review_required",
+      "providers": []
+    },
+    {
+      "id": "local_diagnostic_log",
+      "category": "usage",
+      "fields": [
+        "at",
+        "event",
+        "tabId",
+        "windowId",
+        "path",
+        "details"
+      ],
+      "purpose": "local_error_diagnostics",
+      "basis": "review_required",
+      "retention": "maximum_300_events_and_7_days_on_append",
+      "consent": "review_required",
+      "providers": []
+    },
+    {
+      "id": "local_adaptive_metrics",
+      "category": "usage",
+      "fields": [
+        "cycles",
+        "recoveries",
+        "failures",
+        "startupSamplesMs",
+        "responseSamplesMs",
+        "errorsByCode",
+        "actionSuccess"
+      ],
+      "purpose": "local_performance_adaptation",
+      "basis": "review_required",
+      "retention": "review_required",
+      "consent": "review_required",
+      "providers": []
+    },
+    {
+      "id": "local_pending_send_state",
+      "category": "usage",
+      "fields": [
+        "pendingSignature",
+        "lastSentAt"
+      ],
+      "purpose": "local_duplicate_send_prevention",
+      "basis": "review_required",
+      "retention": "review_required",
+      "consent": "review_required",
+      "providers": []
+    }
+  ]
+}
