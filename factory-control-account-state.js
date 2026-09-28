@@ -11,6 +11,17 @@
   const PAGE_SIGNAL_CODES = Object.freeze([
     'ready', 'authentication', 'rate-limit', 'connection'
   ]);
+  const PAGE_SIGNAL_STATE_INPUTS = Object.freeze({
+    ready: Object.freeze({
+      authenticated: true, usageLimited: false, providerError: false, resetAt: null
+    }),
+    authentication: Object.freeze({
+      authenticated: false, usageLimited: false, providerError: false, resetAt: null
+    }),
+    connection: Object.freeze({
+      authenticated: true, usageLimited: false, providerError: true, resetAt: null
+    })
+  });
 
   function unknown() {
     return Object.freeze({ state: 'unknown', resetAt: null });
@@ -109,15 +120,39 @@
     return [...unique.values()];
   }
 
+  function sameLocalMinute(left, right) {
+    return left.getFullYear() === right.getFullYear() &&
+      left.getMonth() === right.getMonth() &&
+      left.getDate() === right.getDate() &&
+      left.getHours() === right.getHours() &&
+      left.getMinutes() === right.getMinutes();
+  }
+
+  function repeatedHourOccurrence(target, nowMs) {
+    const probe = new Date(target.getTime() + 3 * 60 * 60 * 1000);
+    const offsetDeltaMinutes = probe.getTimezoneOffset() - target.getTimezoneOffset();
+    if (offsetDeltaMinutes <= 0) return null;
+
+    const later = new Date(target.getTime() + offsetDeltaMinutes * 60 * 1000);
+    return later.getTime() > nowMs && sameLocalMinute(later, target)
+      ? later.getTime()
+      : null;
+  }
+
   function nextLocalOccurrence(nowMs, hour, minute) {
-    const current = new Date(nowMs);
-    if (Number.isNaN(current.getTime())) return null;
-
     const target = new Date(nowMs);
-    target.setHours(hour, minute, 0, 0);
-    if (target.getTime() <= nowMs) target.setDate(target.getDate() + 1);
+    if (Number.isNaN(target.getTime())) return null;
 
-    const value = target.getTime();
+    target.setHours(hour, minute, 0, 0);
+    let value = target.getTime();
+    if (value <= nowMs) {
+      value = repeatedHourOccurrence(target, nowMs);
+      if (value === null) {
+        target.setDate(target.getDate() + 1);
+        value = target.getTime();
+      }
+    }
+
     if (!Number.isSafeInteger(value) ||
         value <= nowMs ||
         value > nowMs + MAX_RESET_FUTURE_MS) {
@@ -152,24 +187,8 @@
       return unknown();
     }
 
-    if (input.signalCode === 'ready') {
-      return classifyAccountState(
-        { authenticated: true, usageLimited: false, providerError: false, resetAt: null },
-        () => nowMs
-      );
-    }
-    if (input.signalCode === 'authentication') {
-      return classifyAccountState(
-        { authenticated: false, usageLimited: false, providerError: false, resetAt: null },
-        () => nowMs
-      );
-    }
-    if (input.signalCode === 'connection') {
-      return classifyAccountState(
-        { authenticated: true, usageLimited: false, providerError: true, resetAt: null },
-        () => nowMs
-      );
-    }
+    const stateInput = PAGE_SIGNAL_STATE_INPUTS[input.signalCode];
+    if (stateInput) return classifyAccountState(stateInput, () => nowMs);
 
     const resetAt = resetAtFromAlert(input.alertText, nowMs);
     if (resetAt === undefined) return unknown();
