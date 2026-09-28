@@ -70,24 +70,17 @@ function duration(ms) {
   return `${(ms / 1000).toFixed(precision)} s`;
 }
 function appendMetricLine(container, label, value) {
-  if (container.childNodes.length > 0) {
-    container.append(document.createElement('br'));
-  }
+  if (container.childNodes.length > 0) container.append(document.createElement('br'));
   const heading = document.createElement('b');
   heading.textContent = label;
   container.append(heading, document.createTextNode(' ' + value));
 }
 function metricTopEntries(map, empty, limit) {
-  if (!map || typeof map !== 'object' || Array.isArray(map)) {
-    return empty;
-  }
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return empty;
   const entries = Object.entries(map);
-  if (!entries.length) {
-    return empty;
-  }
+  if (!entries.length) return empty;
   entries.sort((a,b) => b[1] - a[1]);
-  return entries.slice(0,limit)
-    .map(([key,count]) => key + ' (' + count + ')').join(', ');
+  return entries.slice(0,limit).map(([key,count]) => key + ' (' + count + ')').join(', ');
 }
 function renderLearning(data={}) {
   let state = {};
@@ -99,28 +92,13 @@ function renderLearning(data={}) {
   $('failures').textContent = state.failures || 0;
   const details = $('learning-details');
   details.replaceChildren();
-  appendMetricLine(
-    details,
-    'Inicio medio:',
-    duration(average(state.startupSamplesMs,600000))
-      + ' · p90: ' + duration(percentile(state.startupSamplesMs,.9,600000))
-  );
-  appendMetricLine(
-    details,
-    'Respuesta media:',
-    duration(average(state.responseSamplesMs,21600000))
-      + ' · p90: ' + duration(percentile(state.responseSamplesMs,.9,21600000))
-  );
-  appendMetricLine(
-    details,
-    'Errores:',
-    metricTopEntries(state.errorsByCode, 'ninguno', 5)
-  );
-  appendMetricLine(
-    details,
-    'Recuperaciones exitosas:',
-    metricTopEntries(state.actionSuccess, 'aún sin datos', 4)
-  );
+  appendMetricLine(details, 'Inicio medio:',
+    duration(average(state.startupSamplesMs,600000)) + ' · p90: ' + duration(percentile(state.startupSamplesMs,.9,600000)));
+  appendMetricLine(details, 'Respuesta media:',
+    duration(average(state.responseSamplesMs,21600000)) + ' · p90: ' + duration(percentile(state.responseSamplesMs,.9,21600000)));
+  appendMetricLine(details, 'Errores:', metricTopEntries(state.errorsByCode, 'ninguno', 5));
+  appendMetricLine(details, 'Recuperaciones exitosas:',
+    metricTopEntries(state.actionSuccess, 'aún sin datos', 4));
 }
 function refreshLearning(){extensionApi.storage.local.get({learning:{}},values=>renderLearning(values.learning));}
 $('start').addEventListener('click',async()=>{try{await save();await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{masterEnabled:true});await broadcast(true);await refresh();}catch(error){$('status').textContent=error.message;}});
