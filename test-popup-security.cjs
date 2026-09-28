@@ -51,10 +51,11 @@ for (const [actual, expected] of [
   [window.document.getElementById('recoveries').textContent, '2'],
   [window.document.getElementById('failures').textContent, '1']
 ]) assert.equal(actual, expected);
+const textareaCount = window.document.querySelectorAll('textarea').length;
 window.navigator.clipboard = { writeText: async () => { throw new Error('denied'); } };
 await window.copyText('diagnostic fallback');
 assert.equal(legacyCopyCalls, 1);
-assert.equal(window.document.querySelector('textarea'), null);
+assert.equal(window.document.querySelectorAll('textarea').length, textareaCount);
 
 window.navigator.clipboard = {
   writeText: async text => { assert.equal(text, 'diagnostic modern'); }
