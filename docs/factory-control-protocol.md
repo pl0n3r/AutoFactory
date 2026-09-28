@@ -314,9 +314,7 @@ Salida mínima:
 `{state, resetAt}`, donde `state` es
 `ready|limit|requires_login|error|unknown`.
 
-`limit` exige un `resetAt` entero futuro y acotado a siete días. Señales
-contradictorias, reloj inválido, campos extra o timestamps inválidos fallan a
-`unknown`. No se aceptan mensajes libres, email, URLs, cookies, tokens ni IDs de
+`limit` acepta `resetAt:null` cuando el proveedor no publica una hora de liberación. Si `resetAt` está presente, debe ser un entero futuro y acotado a siete días. Señales contradictorias, reloj inválido, campos extra o timestamps inválidos fallan a `unknown`. No se aceptan mensajes libres, email, URLs, cookies, tokens ni IDs de
 chat, por lo que el resultado puede incorporarse al heartbeat sin filtrar texto.
 
 Este módulo **no detecta por sí mismo** mensajes ES/EN. Esa detección pertenecerá al
@@ -493,3 +491,37 @@ debe repetir el poll desde el mismo punto y no confirmar avance local.
 Los resultados del pump nunca incluyen payload, texto de chat, grants, token,
 credential id ni excepciones de adapters. Este slice sigue aislado del runtime y
 no modifica `datos.yml`; D-061 mantiene bloqueados red, alarms, permisos y go-live.
+
+
+## Señal local de estado de cuenta (slice 17, sin DOM ni red)
+
+`factory-control-account-state.js` amplía el clasificador normalizado del slice 9
+para consumir una señal ya detectada localmente por la extensión, sin leer el DOM,
+almacenar textos ni activar transporte.
+
+`classifyProviderPageSignal({signalCode, alertText}, now)` acepta únicamente
+`ready|authentication|rate-limit|connection`. Las señales se reducen a la salida
+mínima `{state,resetAt}`:
+
+- `ready` → `ready`;
+- `authentication` → `requires_login`;
+- `connection` → `error`;
+- `rate-limit` → `limit`, incluso cuando el aviso no publica hora.
+
+Para un `rate-limit`, `alertText` se procesa solo en memoria y se descarta.
+Si contiene exactamente una hora válida en formato 24 h o AM/PM —incluyendo
+`a. m.`/`p. m.`— el contrato calcula la próxima ocurrencia en la zona horaria
+local del navegador y la expone como `resetAt`. Si la hora no aparece, es
+ambigua o inválida, conserva `resetAt:null` en vez de inventar una fecha.
+
+El texto está limitado a 500 caracteres y nunca forma parte del resultado. Campos
+extra, señales fuera del vocabulario cerrado o un reloj inválido fallan a
+`unknown`. `classifyAccountState()` ahora permite explícitamente
+`{usageLimited:true,resetAt:null}`, porque la hora de liberación es opcional en
+la UI.
+
+Este slice reutiliza la detección ES/EN que ya existe en
+`autopilot-core.pageSignal()`, pero todavía no conecta ambos módulos dentro de
+`content.js` ni modifica `background.js`, manifest, permisos, alarms o red.
+No añade persistencia ni cambia `datos.yml`; D-061 continúa bloqueando tráfico
+real y go-live.
