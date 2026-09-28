@@ -85,6 +85,10 @@
     return value.toLowerCase().replace(/[.\s]/g, '');
   }
 
+  function addClockCandidate(candidates, hour, minute, index, length) {
+    candidates.push({ hour, minute, index, length });
+  }
+
   function clockCandidates(text) {
     const candidates = [];
     const meridiemPattern = /(\d{1,2})(?::([0-5]\d))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)(?![a-z])/gi;
@@ -96,7 +100,7 @@
       if (rawHour < 1 || rawHour > 12) continue;
       let hour = rawHour % 12;
       if (meridiem === 'pm') hour += 12;
-      candidates.push({ hour, minute, index: match.index, length: match[0].length });
+      addClockCandidate(candidates, hour, minute, match.index, match[0].length);
     }
 
     const twentyFourHourPattern = /(^|[^\d])(\d{1,2}):([0-5]\d)(?!\d)/g;
@@ -109,7 +113,13 @@
         tokenIndex < candidate.index + candidate.length
       );
       if (!overlapsMeridiem && hour >= 0 && hour <= 23) {
-        candidates.push({ hour, minute, index: tokenIndex, length: match[0].length - match[1].length });
+        addClockCandidate(
+          candidates,
+          hour,
+          minute,
+          tokenIndex,
+          match[0].length - match[1].length
+        );
       }
     }
 
@@ -145,10 +155,16 @@
 
     target.setHours(hour, minute, 0, 0);
     let value = target.getTime();
-    if (value <= nowMs) {
+    const normalized = target.getHours() !== hour || target.getMinutes() !== minute;
+    if (normalized) {
+      target.setDate(target.getDate() + 1);
+      target.setHours(hour, minute, 0, 0);
+      value = target.getTime();
+    } else if (value <= nowMs) {
       value = repeatedHourOccurrence(target, nowMs);
       if (value === null) {
         target.setDate(target.getDate() + 1);
+        target.setHours(hour, minute, 0, 0);
         value = target.getTime();
       }
     }
