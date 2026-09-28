@@ -9,6 +9,8 @@
     'ready', 'unpaired', 'consent_denied', 'legal_blocked', 'invalid', 'failed'
   ]);
   const MAX_FUTURE_MS = 24 * 60 * 60 * 1000;
+  const HEARTBEAT_PURPOSE = 'heartbeat';
+  const LEGAL_PURPOSE = 'factory_control_bridge_activation';
 
   function exactObject(value, fields) {
     return value && typeof value === 'object' && !Array.isArray(value) &&
@@ -61,8 +63,8 @@
   }
 
   function consentReady(value, profileAlias, nowMs) {
-    if (!exactObject(value, ['profileAlias', 'enabled', 'revoked', 'expiresAt']) ||
-        !alias(value.profileAlias) ||
+    if (!exactObject(value, ['profileAlias', 'purpose', 'enabled', 'revoked', 'expiresAt']) ||
+        !alias(value.profileAlias) || value.purpose !== HEARTBEAT_PURPOSE ||
         typeof value.enabled !== 'boolean' ||
         typeof value.revoked !== 'boolean') {
       throw new TypeError('Invalid verified heartbeat consent');
@@ -73,12 +75,14 @@
   }
 
   function legalReady(value, profileAlias, nowMs) {
-    if (!exactObject(value, ['profileAlias', 'allowed', 'expiresAt']) ||
-        !alias(value.profileAlias) || typeof value.allowed !== 'boolean') {
+    if (!exactObject(value, ['profileAlias', 'purpose', 'allowed', 'revoked', 'expiresAt']) ||
+        !alias(value.profileAlias) || value.purpose !== LEGAL_PURPOSE ||
+        typeof value.allowed !== 'boolean' || typeof value.revoked !== 'boolean') {
       throw new TypeError('Invalid verified legal gate');
     }
     const active = validExpiry(value.expiresAt, nowMs);
-    return value.profileAlias === profileAlias && value.allowed === true && active;
+    return value.profileAlias === profileAlias && value.allowed === true &&
+      value.revoked === false && active;
   }
 
   function createActivationPreflight({
@@ -148,5 +152,11 @@
     return Object.freeze({ evaluate });
   }
 
-  return Object.freeze({ RESULT_CODES, MAX_FUTURE_MS, createActivationPreflight });
+  return Object.freeze({
+    RESULT_CODES,
+    MAX_FUTURE_MS,
+    HEARTBEAT_PURPOSE,
+    LEGAL_PURPOSE,
+    createActivationPreflight
+  });
 });
