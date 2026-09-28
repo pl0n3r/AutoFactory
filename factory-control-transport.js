@@ -191,7 +191,7 @@
       try {
         exactObject(input, ['profileAlias', 'request'], 'credential-bound input');
         profileAlias = alias(input.profileAlias);
-        const request = descriptorForProfile(profileAlias, input.request);
+        const request = descriptorForProfile(profileAlias, structuredClone(input.request));
         const current = now();
         if (!Number.isSafeInteger(current) || current < 0) {
           return Object.freeze({ ok: false, code: 'failed' });
