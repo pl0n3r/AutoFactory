@@ -204,7 +204,7 @@
           return safeResult(false, 'failed');
         }
         return result;
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: adapter details are intentionally collapsed to fixed public result codes.
         // Deliberately discard adapter exception details; the public contract exposes only fixed result codes.
         return safeResult(false, 'failed');
       }
@@ -227,7 +227,7 @@
           return safeResult(false, 'failed');
         }
         return result;
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: remote/store details and opaque handles must not escape this boundary.
         // Deliberately discard remote/store exception details; handles and adapter messages are sensitive.
         return safeResult(false, 'failed');
       }
