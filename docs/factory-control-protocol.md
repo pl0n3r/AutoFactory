@@ -357,3 +357,31 @@ node --check factory-control-response-consent.js
 node test-factory-control-response-consent.cjs
 npm test
 ```
+
+
+## Persistencia local de credencial opaca (slice 12, sin pairing activo)
+
+`factory-control-chrome-storage.js` también exporta
+`createChromeProfileCredentialStore({local, runtime, now})`. Este adapter
+permanece aislado del runtime y no cambia manifests, permisos ni endpoints.
+
+El store usa la clave `factoryControlProfileCredentialsV1` y conserva como
+máximo una entrada por perfil con exactamente
+`{profileAlias, id, expiresAt}`. El alias debe ser local y no-email; el ID es
+un handle opaco y la vigencia al guardar no puede superar 24 horas. No se
+almacenan códigos de pairing, texto de chat, cookies, sesiones, mensajes de
+excepción ni material criptográfico.
+
+`load(profileAlias)` solo devuelve `{id, expiresAt}` para el perfil exacto
+y una credencial aún vigente. Una entrada expirada queda inutilizable pero
+puede eliminarse explícitamente. `remove({profileAlias,id})` exige coincidencia
+exacta de perfil e ID, de modo que un perfil no puede borrar el handle de otro.
+
+Los arrays corruptos, dispersos, duplicados o con campos extra fallan cerrado.
+Los detalles de `chrome.runtime.lastError` se sustituyen por errores genéricos.
+El update es read-modify-write y no ofrece compare-and-swap; por eso este corte
+no afirma exclusión entre múltiples workers concurrentes.
+
+La pieza no está conectada a `factory-control-pairing.js`, no contiene
+credenciales reales y no habilita tráfico. La conexión pairing → storage y
+cualquier tratamiento real siguen bloqueados por ControlBot#20 y D-061.

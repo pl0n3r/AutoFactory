@@ -1,6 +1,11 @@
 const assert = require('node:assert/strict');
 const { createLedger } = require('./factory-control-ledger.js');
-const { createChromeReceiptStore, KEY } = require('./factory-control-chrome-storage.js');
+const {
+  createChromeReceiptStore,
+  createChromeProfileCredentialStore,
+  KEY,
+  CREDENTIAL_KEY
+} = require('./factory-control-chrome-storage.js');
 const command = id => ({ id, action: 'send_message', target: 9, payload: { text: 'private chat text' } });
 const memory = () => {
   let receipts = [];
@@ -77,8 +82,6 @@ const memory = () => {
     calls += 1;
   }), /receipt/);
   assert.equal(calls, 1);
-  // A storage adapter other than Chrome may return a sparse array. Even if
-  // its save() accepts undefined slots, the handler must never run.
   for (const malformed of [
     Array(1),
     [{ id: 'existing', state: 'done', code: 'ok' }, ,]
@@ -96,7 +99,7 @@ const memory = () => {
     assert.equal(calls, 1);
   }
   await assert.rejects(ledger.execute({ id: 'invalid', action: 'delete_account', target: 9 }, async () => {}), /Unsupported/);
-  // MV3-ready adapter: callback failures must prevent all external effects.
+
   let persisted = {};
   let failGet = false;
   let failSet = false;
@@ -166,7 +169,98 @@ const memory = () => {
     return { ok: true, code: 'ok' };
   })).code, 'not_ready');
   assert.equal(browserCalls, 1);
-  assert.doesNotMatch(JSON.stringify(persisted), /chat text|token|password/);
+
+  const NOW = 1_800_000_000_000;
+  const credentials = createChromeProfileCredentialStore({
+    local, runtime, now: () => NOW
+  });
+  await credentials.save({
+    profileAlias: 'profile-a',
+    id: 'credential-001',
+    expiresAt: NOW + 3_600_000
+  });
+  assert.deepEqual(persisted[CREDENTIAL_KEY], [{
+    profileAlias: 'profile-a',
+    id: 'credential-001',
+    expiresAt: NOW + 3_600_000
+  }]);
+  assert.deepEqual(await credentials.load('profile-a'), {
+    id: 'credential-001',
+    expiresAt: NOW + 3_600_000
+  });
+  assert.equal(await credentials.load('profile-b'), null);
+  assert.equal(await credentials.remove({
+    profileAlias: 'profile-b', id: 'credential-001'
+  }), false);
+  assert.equal(await credentials.remove({
+    profileAlias: 'profile-a', id: 'other-credential'
+  }), false);
+  assert.equal(await credentials.remove({
+    profileAlias: 'profile-a', id: 'credential-001'
+  }), true);
+  assert.deepEqual(persisted[CREDENTIAL_KEY], []);
+
+  await assert.rejects(credentials.save({
+    profileAlias: 'name@example.com',
+    id: 'credential-002',
+    expiresAt: NOW + 1000
+  }), /profile alias/);
+  await assert.rejects(credentials.save({
+    profileAlias: 'profile-a',
+    id: 'credential-002',
+    expiresAt: NOW
+  }), /opaque credential/);
+  await assert.rejects(credentials.save({
+    profileAlias: 'profile-a',
+    id: 'credential-002',
+    expiresAt: NOW + 86_400_001
+  }), /opaque credential/);
+
+  await credentials.save({
+    profileAlias: 'profile-a',
+    id: 'credential-003',
+    expiresAt: NOW + 1000
+  });
+  const expiredStore = createChromeProfileCredentialStore({
+    local, runtime, now: () => NOW + 1000
+  });
+  assert.equal(await expiredStore.load('profile-a'), null);
+  assert.equal(await expiredStore.remove({
+    profileAlias: 'profile-a', id: 'credential-003'
+  }), true);
+
+  persisted[CREDENTIAL_KEY] = [{
+    profileAlias: 'profile-a',
+    id: 'credential-004',
+    expiresAt: NOW + 1000,
+    token: 'must-never-be-accepted'
+  }];
+  await assert.rejects(credentials.load('profile-a'), /credential/);
+  assert.equal(JSON.stringify(persisted).includes('must-never-be-accepted'), true);
+  persisted[CREDENTIAL_KEY] = [];
+
+  failSet = true;
+  await assert.rejects(credentials.save({
+    profileAlias: 'profile-a',
+    id: 'credential-005',
+    expiresAt: NOW + 1000
+  }), error =>
+    error.message === 'Profile credential storage unavailable' &&
+    !error.message.includes('sensitive account details')
+  );
+  failSet = false;
+  failGet = true;
+  await assert.rejects(credentials.load('profile-a'), error =>
+    error.message === 'Profile credential storage unavailable' &&
+    !error.message.includes('private path or token')
+  );
+  failGet = false;
+
+  assert.doesNotMatch(
+    JSON.stringify(persisted),
+    /private chat text|password|session_cookie|pairing code/
+  );
+  console.log('Chrome profile credential store: scoped, expiring, revocable and fail-closed');
   console.log('Chrome receipt store: durable, duplicate-safe, fail-closed and data-minimized');
   console.log('Factory Control ledger: concurrent duplicates, restart, failure isolation, pending, capacity and corruption pass');
 })().catch(error => { console.error(error); process.exitCode = 1; });
