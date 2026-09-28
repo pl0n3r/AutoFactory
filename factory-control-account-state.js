@@ -216,10 +216,35 @@
     );
   }
 
+  function createProviderAccountStateReader({ readProviderSignal, now = Date.now } = {}) {
+    if (typeof readProviderSignal !== 'function' || typeof now !== 'function') {
+      throw new TypeError('Provider account state reader dependencies are required');
+    }
+    const readSignal = readProviderSignal;
+    const clock = now;
+
+    async function read() {
+      try {
+        const raw = await readSignal();
+        if (!exactObject(raw, ['signalCode', 'alertText'])) return unknown();
+        const snapshot = Object.freeze({
+          signalCode: raw.signalCode,
+          alertText: raw.alertText
+        });
+        return classifyProviderPageSignal(snapshot, clock);
+      } catch (_error) { // NOSONAR: provider/clock details are intentionally collapsed to unknown.
+        return unknown();
+      }
+    }
+
+    return Object.freeze({ read });
+  }
+
   return Object.freeze({
     STATES,
     PAGE_SIGNAL_CODES,
     classifyAccountState,
-    classifyProviderPageSignal
+    classifyProviderPageSignal,
+    createProviderAccountStateReader
   });
 });
