@@ -100,6 +100,7 @@ function fixture(overrides = {}) {
     { profileAlias: PROFILE, purpose: 'heartbeat', enabled: false, revoked: false, expiresAt: NOW + 60_000 },
     { profileAlias: PROFILE, purpose: 'heartbeat', enabled: true, revoked: true, expiresAt: NOW + 60_000 },
     { profileAlias: 'otro-perfil', purpose: 'heartbeat', enabled: true, revoked: false, expiresAt: NOW + 60_000 },
+    { profileAlias: PROFILE, purpose: 'response_return', enabled: true, revoked: false, expiresAt: NOW + 60_000 },
     { profileAlias: PROFILE, purpose: 'heartbeat', enabled: true, revoked: false, expiresAt: NOW }
   ]) {
     const { preflight } = fixture({
