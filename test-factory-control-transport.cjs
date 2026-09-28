@@ -178,6 +178,37 @@ function bridge(options = {}) {
     })
   })).includes('credential-transport-001'), false);
 
+  const mutableRequest = {
+    ...heartbeat,
+    body: { ...heartbeat.body, tabs: heartbeat.body.tabs.map(tab => ({ ...tab })) }
+  };
+  let releaseLoad;
+  const delayedLoad = new Promise(resolve => { releaseLoad = resolve; });
+  const mutableSeen = [];
+  const snapshotBound = createCredentialBoundInvoker({
+    credentialStore: {
+      load: async () => {
+        await delayedLoad;
+        return { id: 'credential-snapshot-001', expiresAt: NOW + 60_000 };
+      }
+    },
+    now: () => NOW,
+    invoke: async envelope => {
+      mutableSeen.push(envelope);
+      return { status: 200, body: { accepted: true } };
+    }
+  });
+  const pendingSnapshot = snapshotBound.execute({ profileAlias: 'perfil-1', request: mutableRequest });
+  mutableRequest.origin = 'https://attacker.example';
+  mutableRequest.body.profileAlias = 'perfil-2';
+  releaseLoad();
+  assert.deepEqual(
+    await pendingSnapshot,
+    { ok: true, code: 'authorized', response: { status: 200, body: { accepted: true } } }
+  );
+  assert.equal(mutableSeen[0].request.origin, 'https://control.condorapp.com.co');
+  assert.equal(mutableSeen[0].request.body.profileAlias, 'perfil-1');
+
   const missing = await bound.execute({
     profileAlias: 'perfil-2',
     request: transport.nextCommandRequest({ profileAlias: 'perfil-2', cursor: null })
