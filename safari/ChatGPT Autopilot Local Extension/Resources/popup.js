@@ -16,21 +16,16 @@ for(const mode of ['chat','work'])$(`mode-${mode}`).addEventListener('click',asy
 async function matchingTabs(){ return apiCall(extensionApi.tabs.query.bind(extensionApi.tabs),{url:['https://chatgpt.com/*']}); }
 async function broadcast(enabled) {
   const tabs = await matchingTabs();
-  await Promise.all(tabs.map(tab => new Promise(resolve => {
-    try {
-      const result = extensionApi.tabs.sendMessage(
-        tab.id,
-        { type: 'autopilot:set-enabled', enabled },
-        () => resolve()
-      );
-      if (result?.then) {
-        result.then(resolve, resolve);
-      }
-    } catch (_error) {
-      // Broadcast is best-effort: one unavailable tab must not block the others.
-      resolve();
-    }
-  })));
+  const sends = tabs.map(tab => new Promise((resolve, reject) => {
+    const result = extensionApi.tabs.sendMessage(
+      tab.id,
+      { type: 'autopilot:set-enabled', enabled },
+      () => resolve()
+    );
+    if (result?.then) result.then(resolve, reject);
+  }));
+  // Best-effort fan-out: one unavailable tab must not block the others.
+  await Promise.allSettled(sends);
 }
 async function runtimeMessage(payload){ return apiCall(extensionApi.runtime.sendMessage.bind(extensionApi.runtime),payload); }
 async function message(payload) {
