@@ -89,6 +89,23 @@
       "retention": "maximum_24_hours_by_contract",
       "consent": "review_required",
       "providers": []
+    },
+    {
+      "id": "planned_factory_control_heartbeat_status",
+      "category": "usage",
+      "fields": [
+        "profileAlias",
+        "accountAlias",
+        "tabs",
+        "lastEvent",
+        "accountState.state",
+        "accountState.resetAt"
+      ],
+      "purpose": "planned_factory_control_status_sync",
+      "basis": "review_required",
+      "retention": "no_remote_transmission_or_persistence_until_D-061",
+      "consent": "required_before_activation",
+      "providers": []
     }
   ]
 }
