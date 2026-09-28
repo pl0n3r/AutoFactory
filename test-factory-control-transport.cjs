@@ -28,7 +28,7 @@ function authenticatedClient(options = {}) {
 }
 
 function commandPump(options = {}) {
-  return commandPump({
+  return createCommandPump({
     activation: readyActivation(),
     ...options
   });
