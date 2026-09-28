@@ -94,6 +94,25 @@ const validConsent = () => ({
     );
   }
   {
+    const safeState = { state: 'ready', resetAt: null };
+    let reads = 0;
+    const input = { ...snapshotBase, accountState: safeState };
+    Object.defineProperty(input, 'accountState', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1
+          ? safeState
+          : { state: 'limit', resetAt: 1_900_000_060_000 };
+      }
+    });
+    assert.deepEqual(
+      buildHeartbeatSnapshot(input).accountState,
+      { state: 'ready', resetAt: null }
+    );
+    assert.equal(reads, 1);
+  }
+  {
     const input = {
       ...snapshotBase,
       accountState: { state: 'ready', resetAt: null }
