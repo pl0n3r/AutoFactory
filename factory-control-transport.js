@@ -12,6 +12,10 @@
   const DEFAULT_LONG_POLL_MS = 25_000;
   const MIN_LONG_POLL_MS = 5_000;
   const MAX_LONG_POLL_MS = 30_000;
+  const COMMAND_ACK_CODES = new Set([
+    'ok', 'invalid', 'not_found', 'not_ready', 'timeout', 'unauthorized',
+    'already_handled', 'failed'
+  ]);
 
   function exactObject(value, fields, label) {
     if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -330,11 +334,146 @@
     return Object.freeze({ sendHeartbeat, nextCommand, sendAck });
   }
 
+
+  function checkedAck(value) {
+    exactObject(value, ['version', 'kind', 'id', 'ok', 'code'], 'command ACK');
+    if (value.version !== 1 || value.kind !== 'ack' ||
+        typeof value.id !== 'string' || value.id.length < 1 || value.id.length > 80 ||
+        typeof value.ok !== 'boolean' || !COMMAND_ACK_CODES.has(value.code) ||
+        value.ok !== (value.code === 'ok')) {
+      throw new TypeError('command ACK is invalid');
+    }
+    return Object.freeze({
+      version: value.version,
+      kind: value.kind,
+      id: value.id,
+      ok: value.ok,
+      code: value.code
+    });
+  }
+
+  function enabledTabs(value) {
+    if (!Array.isArray(value) || value.length > 40) {
+      throw new TypeError('enabledTabIds is invalid');
+    }
+    const seen = new Set();
+    return value.map((tabId, index) => {
+      if (!Object.hasOwn(value, index) || !Number.isSafeInteger(tabId) ||
+          tabId < 0 || seen.has(tabId)) {
+        throw new TypeError('enabledTabIds is invalid');
+      }
+      seen.add(tabId);
+      return tabId;
+    });
+  }
+
+  function safeBusyCursor(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        !Object.hasOwn(input, 'cursor')) return null;
+    try {
+      return cursor(input.cursor);
+    } catch (_error) { // NOSONAR: busy path must never reflect an invalid caller value.
+      return null;
+    }
+  }
+
+  function createCommandPump({ client, executor } = {}) {
+    if (!client || typeof client.nextCommand !== 'function' ||
+        typeof client.sendAck !== 'function' ||
+        !executor || typeof executor.execute !== 'function') {
+      throw new TypeError('Command pump dependencies are required');
+    }
+    const nextCommand = client.nextCommand.bind(client);
+    const sendAck = client.sendAck.bind(client);
+    const execute = executor.execute.bind(executor);
+    let inFlight = false;
+
+    function failed(code, cursorValue) {
+      return Object.freeze({ ok: false, code, cursor: cursorValue });
+    }
+
+    async function runOnce(input) {
+      if (inFlight) {
+        return failed('busy', safeBusyCursor(input));
+      }
+      inFlight = true;
+      let previousCursor = null;
+      try {
+        const snapshot = structuredClone(input);
+        exactObject(snapshot, ['profileAlias', 'cursor', 'context'], 'command pump input');
+        const profileAlias = alias(snapshot.profileAlias);
+        previousCursor = cursor(snapshot.cursor);
+        exactObject(snapshot.context, ['profileAlias', 'enabledTabIds'], 'command pump context');
+        if (alias(snapshot.context.profileAlias) !== profileAlias) {
+          return failed('failed', previousCursor);
+        }
+        const enabledTabIds = enabledTabs(snapshot.context.enabledTabIds);
+        const poll = await nextCommand(Object.freeze({
+          profileAlias,
+          cursor: previousCursor
+        }));
+        if (!poll || typeof poll !== 'object' || Array.isArray(poll) ||
+            typeof poll.ok !== 'boolean' || typeof poll.code !== 'string') {
+          return failed('failed', previousCursor);
+        }
+        if (!poll.ok) {
+          return failed(
+            ['unauthorized', 'failed'].includes(poll.code) ? poll.code : 'failed',
+            previousCursor
+          );
+        }
+        if (poll.code === 'empty') {
+          exactObject(poll, ['ok', 'code', 'cursor', 'command'], 'empty poll result');
+          if (poll.command !== null) return failed('failed', previousCursor);
+          return Object.freeze({
+            ok: true,
+            code: 'empty',
+            cursor: cursor(poll.cursor)
+          });
+        }
+        if (poll.code !== 'command') return failed('failed', previousCursor);
+        exactObject(poll, ['ok', 'code', 'cursor', 'command'], 'command poll result');
+        const nextCursor = cursor(poll.cursor);
+        const command = structuredClone(poll.command);
+        if (!command || typeof command !== 'object' || Array.isArray(command) ||
+            typeof command.id !== 'string' || command.id.length < 1 || command.id.length > 80) {
+          return failed('failed', previousCursor);
+        }
+        const ack = checkedAck(await execute(
+          command,
+          Object.freeze({ profileAlias, enabledTabIds: Object.freeze(enabledTabIds) })
+        ));
+        if (ack.id !== command.id) return failed('failed', previousCursor);
+        const sent = await sendAck(Object.freeze({
+          profileAlias,
+          ack
+        }));
+        if (!sent || typeof sent !== 'object' || sent.ok !== true || sent.code !== 'sent') {
+          return failed('ack_failed', previousCursor);
+        }
+        return Object.freeze({
+          ok: true,
+          code: 'handled',
+          cursor: nextCursor,
+          commandId: ack.id,
+          outcome: ack.code
+        });
+      } catch (_error) { // NOSONAR: orchestration intentionally collapses adapter/payload details.
+        return failed('failed', previousCursor);
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    return Object.freeze({ runOnce });
+  }
+
   return Object.freeze({
     ORIGIN,
     DEFAULT_LONG_POLL_MS,
     createTransportContract,
     createCredentialBoundInvoker,
-    createAuthenticatedTransportClient
+    createAuthenticatedTransportClient,
+    createCommandPump
   });
 });

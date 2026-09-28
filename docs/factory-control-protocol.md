@@ -464,3 +464,32 @@ Este slice sigue sin `fetch`, DNS, AbortController, alarms, background,
 manifest, host permissions ni tráfico real. No cambia `datos.yml`. D-061
 continúa bloqueando activación y go-live hasta completar consentimiento,
 autenticación y revisión de seguridad end-to-end.
+
+
+## Pump de órdenes autenticadas (slice 16, sin runtime)
+
+`createCommandPump({client, executor})` compone el cliente autenticado del slice 15
+con el executor idempotente ya existente. No implementa timers, alarms, background,
+fetch ni efectos reales.
+
+`runOnce({profileAlias,cursor,context})` snapshottea su entrada antes de cualquier
+`await`, exige que `context.profileAlias` coincida con el perfil y serializa una
+sola ejecución por instancia. Un segundo `runOnce` concurrente recibe `busy`.
+
+El flujo es cerrado:
+
+1. solicita exactamente un `nextCommand`;
+2. si está vacío, no ejecuta efectos ni ACK;
+3. si llega un comando, llama una vez a `executor.execute`;
+4. valida el ACK mínimo producido por el executor;
+5. envía ese ACK mediante `client.sendAck`;
+6. **solo después de ACK enviado** devuelve el cursor nuevo.
+
+Si el efecto ya fue procesado, el ledger del executor puede devolver
+`already_handled` y el pump vuelve a ACK sin repetir el efecto. Si el ACK falla,
+el resultado conserva el cursor anterior con `ack_failed`, de modo que el caller
+debe repetir el poll desde el mismo punto y no confirmar avance local.
+
+Los resultados del pump nunca incluyen payload, texto de chat, grants, token,
+credential id ni excepciones de adapters. Este slice sigue aislado del runtime y
+no modifica `datos.yml`; D-061 mantiene bloqueados red, alarms, permisos y go-live.

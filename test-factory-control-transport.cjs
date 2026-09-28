@@ -6,7 +6,8 @@ const {
   DEFAULT_LONG_POLL_MS,
   createTransportContract,
   createCredentialBoundInvoker,
-  createAuthenticatedTransportClient
+  createAuthenticatedTransportClient,
+  createCommandPump
 } = require('./factory-control-transport.js');
 
 function bridge(options = {}) {
@@ -410,6 +411,246 @@ function bridge(options = {}) {
   });
   assert.deepEqual(secretClientResult, { ok: false, code: 'failed' });
   assert.equal(JSON.stringify(secretClientResult).includes('credential-client-secret'), false);
+
+
+  const pumpEvents = [];
+  const seenIds = new Set();
+  let releasePoll;
+  const pollGate = new Promise(resolve => { releasePoll = resolve; });
+  const pump = createCommandPump({
+    client: {
+      nextCommand: async input => {
+        pumpEvents.push(['poll', structuredClone(input)]);
+        if (input.cursor === 'cursor:wait') {
+          await pollGate;
+          return { ok: true, code: 'empty', cursor: input.cursor, command: null };
+        }
+        if (input.cursor === 'cursor:empty') {
+          return { ok: true, code: 'empty', cursor: 'cursor:empty-2', command: null };
+        }
+        return {
+          ok: true,
+          code: 'command',
+          cursor: 'cursor:next',
+          command: {
+            version: 1,
+            kind: 'command',
+            id: 'pump-command-1',
+            action: 'pause',
+            target: 7,
+            payload: null
+          }
+        };
+      },
+      sendAck: async input => {
+        pumpEvents.push(['ack', structuredClone(input)]);
+        if (input.profileAlias === 'ack-fails') return { ok: false, code: 'failed' };
+        return { ok: true, code: 'sent' };
+      }
+    },
+    executor: {
+      execute: async commandValue => {
+        pumpEvents.push(['execute', structuredClone(commandValue)]);
+        if (seenIds.has(commandValue.id)) {
+          return {
+            version: 1, kind: 'ack', id: commandValue.id,
+            ok: false, code: 'already_handled'
+          };
+        }
+        seenIds.add(commandValue.id);
+        return {
+          version: 1, kind: 'ack', id: commandValue.id,
+          ok: true, code: 'ok'
+        };
+      }
+    }
+  });
+
+  assert.deepEqual(
+    await pump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:empty',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: true, code: 'empty', cursor: 'cursor:empty-2' }
+  );
+
+  const handled = await pump.runOnce({
+    profileAlias: 'perfil-1',
+    cursor: 'cursor:start',
+    context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+  });
+  assert.deepEqual(handled, {
+    ok: true,
+    code: 'handled',
+    cursor: 'cursor:next',
+    commandId: 'pump-command-1',
+    outcome: 'ok'
+  });
+  assert.equal(pumpEvents.filter(event => event[0] === 'execute').length, 1);
+  assert.equal(pumpEvents.filter(event => event[0] === 'ack').length, 1);
+
+  const replay = await pump.runOnce({
+    profileAlias: 'perfil-1',
+    cursor: 'cursor:start',
+    context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+  });
+  assert.equal(replay.outcome, 'already_handled');
+  assert.equal(replay.cursor, 'cursor:next');
+  assert.equal(pumpEvents.filter(event => event[0] === 'execute').length, 2);
+
+  let mismatchedAckSent = 0;
+  const mismatchedAckPump = createCommandPump({
+    client: {
+      nextCommand: async () => ({
+        ok: true,
+        code: 'command',
+        cursor: 'cursor:mismatch-next',
+        command: {
+          version: 1, kind: 'command', id: 'pump-command-mismatch',
+          action: 'pause', target: 7, payload: null
+        }
+      }),
+      sendAck: async () => {
+        mismatchedAckSent++;
+        return { ok: true, code: 'sent' };
+      }
+    },
+    executor: {
+      execute: async () => ({
+        version: 1, kind: 'ack', id: 'different-command',
+        ok: true, code: 'ok'
+      })
+    }
+  });
+  assert.deepEqual(
+    await mismatchedAckPump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:mismatch-before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'failed', cursor: 'cursor:mismatch-before' }
+  );
+  assert.equal(mismatchedAckSent, 0);
+
+  for (const invalidAck of [
+    { version: 1, kind: 'ack', id: 'pump-command-invalid-ack', ok: false, code: 'ok' },
+    { version: 1, kind: 'ack', id: 'pump-command-invalid-ack', ok: true, code: 'failed' },
+    { version: 1, kind: 'ack', id: 'pump-command-invalid-ack', ok: false, code: 'made_up' }
+  ]) {
+    let invalidAckSent = 0;
+    const invalidAckPump = createCommandPump({
+      client: {
+        nextCommand: async () => ({
+          ok: true,
+          code: 'command',
+          cursor: 'cursor:invalid-ack-next',
+          command: {
+            version: 1, kind: 'command', id: 'pump-command-invalid-ack',
+            action: 'pause', target: 7, payload: null
+          }
+        }),
+        sendAck: async () => {
+          invalidAckSent++;
+          return { ok: true, code: 'sent' };
+        }
+      },
+      executor: { execute: async () => invalidAck }
+    });
+    assert.deepEqual(
+      await invalidAckPump.runOnce({
+        profileAlias: 'perfil-1',
+        cursor: 'cursor:invalid-ack-before',
+        context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+      }),
+      { ok: false, code: 'failed', cursor: 'cursor:invalid-ack-before' }
+    );
+    assert.equal(invalidAckSent, 0);
+  }
+
+  const ackFailurePump = createCommandPump({
+    client: {
+      nextCommand: async () => ({
+        ok: true,
+        code: 'command',
+        cursor: 'cursor:advanced',
+        command: {
+          version: 1, kind: 'command', id: 'pump-command-2',
+          action: 'pause', target: 7, payload: null
+        }
+      }),
+      sendAck: async () => ({ ok: false, code: 'failed' })
+    },
+    executor: {
+      execute: async commandValue => ({
+        version: 1, kind: 'ack', id: commandValue.id, ok: true, code: 'ok'
+      })
+    }
+  });
+  assert.deepEqual(
+    await ackFailurePump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'ack_failed', cursor: 'cursor:before' }
+  );
+
+  assert.deepEqual(
+    await pump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: null,
+      context: { profileAlias: 'perfil-2', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'failed', cursor: null }
+  );
+  assert.deepEqual(
+    await pump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: null,
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7, 7] }
+    }),
+    { ok: false, code: 'failed', cursor: null }
+  );
+
+  const waiting = pump.runOnce({
+    profileAlias: 'perfil-1',
+    cursor: 'cursor:wait',
+    context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+  });
+  assert.deepEqual(
+    await pump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:second',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'busy', cursor: 'cursor:second' }
+  );
+  assert.deepEqual(
+    await pump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: { secret: 'must-not-reflect' },
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'busy', cursor: null }
+  );
+  releasePoll();
+  assert.deepEqual(await waiting, { ok: true, code: 'empty', cursor: 'cursor:wait' });
+
+  const opaquePump = createCommandPump({
+    client: {
+      nextCommand: async () => { throw new Error('credential-pump-secret private'); },
+      sendAck: async () => { throw new Error('must not run'); }
+    },
+    executor: { execute: async () => { throw new Error('must not run'); } }
+  });
+  const opaque = await opaquePump.runOnce({
+    profileAlias: 'perfil-1',
+    cursor: null,
+    context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+  });
+  assert.deepEqual(opaque, { ok: false, code: 'failed', cursor: null });
+  assert.equal(JSON.stringify(opaque).includes('credential-pump-secret'), false);
 
   console.log('factory-control transport contract: ok');
 })().catch(error => { console.error(error); process.exitCode = 1; });
