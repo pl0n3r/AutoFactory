@@ -157,12 +157,12 @@
 
   function checkedPairingResult(value) {
     const paired = value && value.code === 'paired';
+    const successful = value && ['paired', 'revoked'].includes(value.code);
     const fields = paired ? ['ok', 'code', 'credential'] : ['ok', 'code'];
     if (!exactKeys(value, fields) || typeof value.ok !== 'boolean' ||
-        !RESULT_CODES.includes(value.code) ||
-        (paired && (value.ok !== true || !exactKeys(value.credential, ['id', 'expiresAt']) ||
-          !validId(value.credential.id) || !Number.isSafeInteger(value.credential.expiresAt))) ||
-        (!paired && value.ok === true)) {
+        !RESULT_CODES.includes(value.code) || value.ok !== successful ||
+        (paired && (!exactKeys(value.credential, ['id', 'expiresAt']) ||
+          !validId(value.credential.id) || !Number.isSafeInteger(value.credential.expiresAt)))) {
       throw new TypeError('Invalid pairing result');
     }
     return value;
@@ -176,12 +176,13 @@
     }
 
     async function pair(input) {
+      if (!exactKeys(input, ['profileAlias', 'code']) ||
+          !validAlias(input.profileAlias) || !validCode(input.code)) {
+        return safeResult(false, 'invalid');
+      }
       try {
         const result = checkedPairingResult(await pairing.pair(input));
         if (result.code !== 'paired') return result;
-        if (!exactKeys(input, ['profileAlias', 'code']) || !validAlias(input.profileAlias)) {
-          return safeResult(false, 'failed');
-        }
         const row = {
           profileAlias: input.profileAlias,
           id: result.credential.id,
@@ -207,13 +208,13 @@
     }
 
     async function revoke(input) {
+      if (!exactKeys(input, ['profileAlias', 'credentialId']) ||
+          !validAlias(input.profileAlias) || !validId(input.credentialId)) {
+        return safeResult(false, 'invalid');
+      }
       try {
         const result = checkedPairingResult(await pairing.revoke(input));
         if (!['revoked', 'not_found'].includes(result.code)) return result;
-        if (!exactKeys(input, ['profileAlias', 'credentialId']) ||
-            !validAlias(input.profileAlias) || !validId(input.credentialId)) {
-          return safeResult(false, 'failed');
-        }
         try {
           await credentialStore.remove({
             profileAlias: input.profileAlias,
