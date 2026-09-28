@@ -25,6 +25,7 @@ function fixture(overrides = {}) {
         calls.push('consent');
         return {
           profileAlias,
+          purpose: 'heartbeat',
           enabled: true,
           revoked: false,
           expiresAt: NOW + 60_000
@@ -34,7 +35,9 @@ function fixture(overrides = {}) {
       calls.push('legal');
       return {
         profileAlias,
+        purpose: 'factory_control_bridge_activation',
         allowed: true,
+        revoked: false,
         expiresAt: NOW + 60_000
       };
     })
@@ -94,10 +97,10 @@ function fixture(overrides = {}) {
 
   for (const consent of [
     null,
-    { profileAlias: PROFILE, enabled: false, revoked: false, expiresAt: NOW + 60_000 },
-    { profileAlias: PROFILE, enabled: true, revoked: true, expiresAt: NOW + 60_000 },
-    { profileAlias: 'otro-perfil', enabled: true, revoked: false, expiresAt: NOW + 60_000 },
-    { profileAlias: PROFILE, enabled: true, revoked: false, expiresAt: NOW }
+    { profileAlias: PROFILE, purpose: 'heartbeat', enabled: false, revoked: false, expiresAt: NOW + 60_000 },
+    { profileAlias: PROFILE, purpose: 'heartbeat', enabled: true, revoked: true, expiresAt: NOW + 60_000 },
+    { profileAlias: 'otro-perfil', purpose: 'heartbeat', enabled: true, revoked: false, expiresAt: NOW + 60_000 },
+    { profileAlias: PROFILE, purpose: 'heartbeat', enabled: true, revoked: false, expiresAt: NOW }
   ]) {
     const { preflight } = fixture({
       loadVerifiedHeartbeatConsent: async () => consent
@@ -110,9 +113,11 @@ function fixture(overrides = {}) {
 
   for (const gate of [
     null,
-    { profileAlias: PROFILE, allowed: false, expiresAt: NOW + 60_000 },
-    { profileAlias: 'otro-perfil', allowed: true, expiresAt: NOW + 60_000 },
-    { profileAlias: PROFILE, allowed: true, expiresAt: NOW }
+    { profileAlias: PROFILE, purpose: 'factory_control_bridge_activation', allowed: false, revoked: false, expiresAt: NOW + 60_000 },
+    { profileAlias: 'otro-perfil', purpose: 'factory_control_bridge_activation', allowed: true, revoked: false, expiresAt: NOW + 60_000 },
+    { profileAlias: PROFILE, purpose: 'other_gate', allowed: true, revoked: false, expiresAt: NOW + 60_000 },
+    { profileAlias: PROFILE, purpose: 'factory_control_bridge_activation', allowed: true, revoked: true, expiresAt: NOW + 60_000 },
+    { profileAlias: PROFILE, purpose: 'factory_control_bridge_activation', allowed: true, revoked: false, expiresAt: NOW }
   ]) {
     const { preflight } = fixture({ loadVerifiedLegalGate: async () => gate });
     assert.deepEqual(
@@ -198,6 +203,7 @@ function fixture(overrides = {}) {
       },
       loadVerifiedHeartbeatConsent: async ({ profileAlias }) => ({
         profileAlias,
+        purpose: 'heartbeat',
         enabled: true,
         revoked: false,
         expiresAt: NOW + 50_000
