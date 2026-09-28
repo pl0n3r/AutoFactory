@@ -32,6 +32,7 @@ for (const input of [
   { authenticated: true, usageLimited: false, providerError: true, resetAt: NOW + 1000 },
   { authenticated: true, usageLimited: false, providerError: true, resetAt: 'invalid' },
   { authenticated: true, usageLimited: true, providerError: false, resetAt: NOW - 1 },
+  { authenticated: true, usageLimited: true, providerError: false, resetAt: NOW + 7 * 24 * 60 * 60 * 1000 + 1 },
   { authenticated: true, usageLimited: true, providerError: false, resetAt: NOW + 8 * 24 * 60 * 60 * 1000 }
 ]) {
   assert.deepEqual(classifyAccountState(input, () => NOW), { state: 'unknown', resetAt: null });
