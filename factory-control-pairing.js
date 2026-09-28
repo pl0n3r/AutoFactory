@@ -91,10 +91,10 @@
         return safeResult(false, 'invalid');
       }
 
-      const nowMs = now();
-      if (!Number.isSafeInteger(nowMs)) return safeResult(false, 'failed');
-
       try {
+        const nowMs = now();
+        if (!Number.isSafeInteger(nowMs)) return safeResult(false, 'failed');
+
         const challenge = checkedChallenge(
           await loadVerifiedChallenge({ profileAlias: input.profileAlias }),
           input.profileAlias,
@@ -110,15 +110,21 @@
           profileAlias: input.profileAlias,
           code: input.code
         });
-        if (consumed !== true) return safeResult(false, 'invalid');
+        if (!['consumed', 'invalid', 'expired', 'replayed', 'revoked'].includes(consumed)) {
+          return safeResult(false, 'failed');
+        }
+        if (consumed !== 'consumed') return safeResult(false, consumed);
 
+        const credentialValue = await issueOpaqueCredential({
+          challengeId: challenge.challengeId,
+          profileAlias: input.profileAlias
+        });
+        const credentialNowMs = now();
+        if (!Number.isSafeInteger(credentialNowMs)) return safeResult(false, 'failed');
         const credential = checkedCredential(
-          await issueOpaqueCredential({
-            challengeId: challenge.challengeId,
-            profileAlias: input.profileAlias
-          }),
+          credentialValue,
           input.profileAlias,
-          nowMs
+          credentialNowMs
         );
         return safeResult(true, 'paired', credential);
       } catch (_error) {
