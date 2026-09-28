@@ -18,112 +18,122 @@ const validConsent = () => ({
 (async () => {
   assert.equal(PURPOSE, 'heartbeat');
 
-  const snapshotNow = new Date(2030, 0, 1, 15, 0, 0, 0).getTime();
   const snapshotBase = {
     profileAlias: 'sample-profile',
     accountAlias: 'synthetic-local',
     tabs: [{ tabId: 7, enabled: true, state: 'waiting' }],
     lastEvent: 'cycle-complete'
   };
-  assert.deepEqual(
-    buildHeartbeatSnapshot({
-      ...snapshotBase,
-      providerSignal: { signalCode: 'authentication', alertText: null }
-    }, () => snapshotNow),
-    {
-      version: 1,
-      kind: 'heartbeat',
-      ...snapshotBase,
-      accountState: { state: 'requires_login', resetAt: null }
-    }
-  );
-  const limitedSnapshot = buildHeartbeatSnapshot({
-    ...snapshotBase,
-    tabs: [{ tabId: 7, enabled: true, state: 'limit' }],
-    providerSignal: {
-      signalCode: 'rate-limit',
-      alertText: 'Límite de uso. Inténtalo de nuevo a las 16:45. private@example.test token=never-reflect'
-    }
-  }, () => snapshotNow);
-  assert.deepEqual(limitedSnapshot.accountState, {
-    state: 'limit',
-    resetAt: new Date(2030, 0, 1, 16, 45, 0, 0).getTime()
-  });
-  const serializedLimitedSnapshot = JSON.stringify(limitedSnapshot);
-  for (const forbidden of ['private@example.test', 'token', 'never-reflect', 'alertText']) {
-    assert.equal(serializedLimitedSnapshot.includes(forbidden), false);
+  for (const accountState of [
+    { state: 'ready', resetAt: null },
+    { state: 'requires_login', resetAt: null },
+    { state: 'unknown', resetAt: null },
+    { state: 'limit', resetAt: 1_900_000_060_000 }
+  ]) {
+    assert.deepEqual(
+      buildHeartbeatSnapshot({ ...snapshotBase, accountState }),
+      {
+        version: 1,
+        kind: 'heartbeat',
+        ...snapshotBase,
+        accountState
+      }
+    );
   }
-  assert.deepEqual(
-    buildHeartbeatSnapshot({
-      ...snapshotBase,
-      providerSignal: { signalCode: 'conversation-limit', alertText: null }
-    }, () => snapshotNow).accountState,
-    { state: 'unknown', resetAt: null }
-  );
+
   assert.throws(
-    () => buildHeartbeatSnapshot({ ...snapshotBase }, () => snapshotNow),
+    () => buildHeartbeatSnapshot({
+      ...snapshotBase,
+      providerSignal: { signalCode: 'rate-limit', alertText: 'private@example.test token=never-reflect' }
+    }),
     /input/
   );
+
   {
     const hiddenInput = {
       ...snapshotBase,
-      providerSignal: { signalCode: 'ready', alertText: null }
+      accountState: { state: 'ready', resetAt: null }
     };
     Object.defineProperty(hiddenInput, 'chatText', {
       value: 'private chat',
       enumerable: false
     });
-    assert.throws(
-      () => buildHeartbeatSnapshot(hiddenInput, () => snapshotNow),
-      /input/
-    );
+    assert.throws(() => buildHeartbeatSnapshot(hiddenInput), /input/);
   }
   {
-    const hiddenInput = {
-      ...snapshotBase,
-      providerSignal: { signalCode: 'ready', alertText: null }
-    };
-    Object.defineProperty(hiddenInput, 'providerSignal', {
-      value: { signalCode: 'ready', alertText: null },
-      enumerable: false
-    });
-    assert.throws(
-      () => buildHeartbeatSnapshot(hiddenInput, () => snapshotNow),
-      /input/
-    );
-  }
-  {
-    const hiddenSignal = {};
-    Object.defineProperty(hiddenSignal, 'signalCode', {
-      value: 'authentication',
-      enumerable: false
-    });
-    Object.defineProperty(hiddenSignal, 'alertText', {
-      value: null,
-      enumerable: true
-    });
-    assert.throws(
-      () => buildHeartbeatSnapshot({
-        ...snapshotBase,
-        providerSignal: hiddenSignal
-      }, () => snapshotNow),
-      /provider signal/
-    );
-  }
-  {
-    const hiddenSignal = { signalCode: 'ready', alertText: null };
-    Object.defineProperty(hiddenSignal, 'chatText', {
+    const hiddenState = { state: 'ready', resetAt: null };
+    Object.defineProperty(hiddenState, 'alertText', {
       value: 'private chat',
       enumerable: false
     });
     assert.throws(
-      () => buildHeartbeatSnapshot({
-        ...snapshotBase,
-        providerSignal: hiddenSignal
-      }, () => snapshotNow),
-      /provider signal/
+      () => buildHeartbeatSnapshot({ ...snapshotBase, accountState: hiddenState }),
+      /input/
     );
   }
+  {
+    const symbolState = { state: 'ready', resetAt: null };
+    symbolState[Symbol('secret')] = 'private';
+    assert.throws(
+      () => buildHeartbeatSnapshot({ ...snapshotBase, accountState: symbolState }),
+      /input/
+    );
+  }
+  {
+    const mutableState = { resetAt: null };
+    Object.defineProperty(mutableState, 'state', {
+      enumerable: true,
+      get() {
+        mutableState.alertText = 'private chat';
+        return 'ready';
+      }
+    });
+    assert.throws(
+      () => buildHeartbeatSnapshot({ ...snapshotBase, accountState: mutableState }),
+      /changed during read/
+    );
+  }
+  {
+    const safeState = { state: 'ready', resetAt: null };
+    let reads = 0;
+    const input = { ...snapshotBase, accountState: safeState };
+    Object.defineProperty(input, 'accountState', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1
+          ? safeState
+          : { state: 'limit', resetAt: 1_900_000_060_000 };
+      }
+    });
+    assert.deepEqual(
+      buildHeartbeatSnapshot(input).accountState,
+      { state: 'ready', resetAt: null }
+    );
+    assert.equal(reads, 1);
+  }
+  {
+    const input = {
+      ...snapshotBase,
+      accountState: { state: 'ready', resetAt: null }
+    };
+    Object.defineProperty(input, 'profileAlias', {
+      enumerable: true,
+      get() {
+        input.chatText = 'private chat';
+        return 'sample-profile';
+      }
+    });
+    assert.throws(() => buildHeartbeatSnapshot(input), /changed during read/);
+  }
+  assert.equal(
+    JSON.stringify(buildHeartbeatSnapshot({
+      ...snapshotBase,
+      accountState: { state: 'limit', resetAt: 1_900_000_060_000 }
+    })).includes('alertText'),
+    false
+  );
+
   assert.equal(MIN_INTERVAL_MS, 60000);
   assert.throws(() => createHeartbeatCoordinator({}), /requires/);
 

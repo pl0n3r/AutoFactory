@@ -628,24 +628,27 @@ slice. No persiste, registra ni transmite la alerta; el resultado normalizado
 del clasificador sigue siendo solo `{state,resetAt}`. D-061 continúa bloqueando
 runtime remoto, permisos, pairing real, red y go-live.
 
-## Composición local de señal de cuenta (slice 23, sin runtime remoto)
+## Composición de heartbeat con estado ya reducido (slice 25, sin runtime remoto)
 
 `factory-control-heartbeat.js` expone
-`buildHeartbeatSnapshot({profileAlias,accountAlias,tabs,lastEvent,providerSignal}, now)`.
-El helper reutiliza `classifyProviderPageSignal()` y después
-`protocol.heartbeat()`; no define un wire format paralelo.
+`buildHeartbeatSnapshot({profileAlias,accountAlias,tabs,lastEvent,accountState})`.
+La frontera ya **no acepta** `providerSignal` ni `alertText`, y el módulo heartbeat
+ya no depende de `factory-control-account-state.js`.
 
-`providerSignal.alertText` puede existir solo durante la clasificación local del
-caso `rate-limit`. El resultado final contiene únicamente
-`accountState:{state,resetAt}`; el texto, correo, token u otros fragmentos del
-aviso no se reflejan. Señales fuera del vocabulario del clasificador se reducen a
-`unknown/null`.
+El caller debe entregar el contrato mínimo producido por el reader del slice 24:
+`accountState:{state,resetAt}`. Antes de copiar, el helper valida own-keys y
+enumerabilidad tanto del snapshot como de `accountState`; después de leer los
+campos vuelve a validar ambos objetos para cerrar getters que muten el shape.
+La validación semántica final sigue perteneciendo a `protocol.heartbeat()`.
 
-Este helper no lee DOM, no se carga desde `content.js` ni `background.js`, no
-persiste la señal y no activa transporte. El paso futuro de runtime deberá inyectar
-la señal efímera desde `providerAccountSignal()` únicamente cuando D-061 y las
-puertas restantes permitan la composición real.
+Con esto, el texto del aviso del proveedor muere dentro del reader de estado de
+cuenta y no entra al módulo heartbeat. `providerSignal`, `alertText`, email,
+token, texto de chat o campos extra —incluidos no enumerables y `Symbol`— son
+rechazados por esta frontera.
 
+Este helper continúa sin leerse desde `content.js` o background y no activa
+persistencia, transporte, pairing ni permisos. D-061 sigue bloqueando red y
+go-live.
 
 ## Reader efímero de estado de cuenta (slice 24, sin runtime)
 

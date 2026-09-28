@@ -2,14 +2,11 @@
   const api = factory(
     typeof module === 'object' && module.exports
       ? require('./factory-control-protocol.js')
-      : root.ChatGPTAutopilotFactoryProtocol,
-    typeof module === 'object' && module.exports
-      ? require('./factory-control-account-state.js')
-      : root.ChatGPTAutopilotFactoryAccountState
+      : root.ChatGPTAutopilotFactoryProtocol
   );
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ChatGPTAutopilotFactoryHeartbeat = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (protocol, accountState) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (protocol) {
   'use strict';
 
   const MIN_INTERVAL_MS = 60000;
@@ -33,38 +30,47 @@
       consent.expiresAt > time && consent.expiresAt <= time + MAX_CONSENT_MS;
   }
 
-  function buildHeartbeatSnapshot(input, now = Date.now) {
-    if (!protocol || typeof protocol.heartbeat !== 'function' ||
-        !accountState || typeof accountState.classifyProviderPageSignal !== 'function') {
+  function exactEnumerableObject(value, fields) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const ownKeys = Reflect.ownKeys(value);
+    return ownKeys.length === fields.length &&
+      ownKeys.every(key => typeof key === 'string' && fields.includes(key)) &&
+      fields.every(key => Object.hasOwn(value, key) &&
+        Object.prototype.propertyIsEnumerable.call(value, key));
+  }
+
+  function buildHeartbeatSnapshot(input) {
+    if (!protocol || typeof protocol.heartbeat !== 'function') {
       throw new TypeError('Heartbeat snapshot dependencies are required');
     }
-    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    const fields = ['profileAlias', 'accountAlias', 'tabs', 'lastEvent', 'accountState'];
+    if (!exactEnumerableObject(input, fields)) {
       throw new TypeError('Heartbeat snapshot input is invalid');
     }
-    const expectedKeys = ['profileAlias', 'accountAlias', 'tabs', 'lastEvent', 'providerSignal'];
-    const ownKeys = Reflect.ownKeys(input);
-    if (ownKeys.length !== expectedKeys.length ||
-        !ownKeys.every(key => typeof key === 'string' && expectedKeys.includes(key)) ||
-        !expectedKeys.every(key => Object.hasOwn(input, key) &&
-          Object.prototype.propertyIsEnumerable.call(input, key))) {
+
+    const rawAccountState = input.accountState;
+    if (!exactEnumerableObject(rawAccountState, ['state', 'resetAt'])) {
       throw new TypeError('Heartbeat snapshot input is invalid');
     }
-    const providerKeys = Reflect.ownKeys(input.providerSignal || {});
-    if (providerKeys.length !== 2 ||
-        !providerKeys.every(key => typeof key === 'string' &&
-          ['signalCode', 'alertText'].includes(key)) ||
-        !['signalCode', 'alertText'].every(key =>
-          Object.hasOwn(input.providerSignal || {}, key) &&
-          Object.prototype.propertyIsEnumerable.call(input.providerSignal || {}, key))) {
-      throw new TypeError('Heartbeat snapshot provider signal is invalid');
+
+    const profileAlias = input.profileAlias;
+    const accountAlias = input.accountAlias;
+    const tabs = input.tabs;
+    const lastEvent = input.lastEvent;
+    const state = rawAccountState.state;
+    const resetAt = rawAccountState.resetAt;
+
+    if (!exactEnumerableObject(input, fields) ||
+        !exactEnumerableObject(rawAccountState, ['state', 'resetAt'])) {
+      throw new TypeError('Heartbeat snapshot input changed during read');
     }
-    const snapshot = structuredClone(input);
-    const providerSignal = snapshot.providerSignal;
-    delete snapshot.providerSignal;
-    const classified = accountState.classifyProviderPageSignal(providerSignal, now);
+
     return Object.freeze(protocol.heartbeat({
-      ...snapshot,
-      accountState: classified
+      profileAlias,
+      accountAlias,
+      tabs,
+      lastEvent,
+      accountState: { state, resetAt }
     }));
   }
 
