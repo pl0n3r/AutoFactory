@@ -238,6 +238,22 @@ for (const forbidden of ['email', 'token', 'cookie', 'chat', 'secret', 'message'
   });
   assert.deepEqual(await symbolExtraReader.read(), UNKNOWN);
 
+  const mutatingAccessorReader = createProviderAccountStateReader({
+    readProviderSignal: async () => {
+      const raw = { alertText: null };
+      Object.defineProperty(raw, 'signalCode', {
+        enumerable: true,
+        get() {
+          raw.chatText = 'private chat';
+          return 'ready';
+        }
+      });
+      return raw;
+    },
+    now: () => localNow
+  });
+  assert.deepEqual(await mutatingAccessorReader.read(), UNKNOWN);
+
   const throwingReader = createProviderAccountStateReader({
     readProviderSignal: async () => {
       throw new Error('provider secret');
