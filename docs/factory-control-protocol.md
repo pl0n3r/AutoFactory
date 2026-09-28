@@ -330,3 +330,30 @@ node --check factory-control-account-state.js
 node test-factory-control-account-state.cjs
 npm test
 ```
+
+
+## Consentimiento para devolución de respuesta (slice 10, sin contenido real)
+
+`factory-control-response-consent.js` define un contrato puro de decisión para la
+futura función opt-in que devolvería la última respuesta completa al centro. Este
+slice **no** lee DOM, no captura respuestas, no almacena texto y no realiza red.
+
+`authorize({profileAlias})` consulta una concesión ya verificada e inyectada por
+el runtime futuro. Esa concesión debe contener exactamente
+`{profileAlias, purpose, enabled, revoked, expiresAt}`, con propósito fijo
+`response_return`, opt-in explícito, mismo perfil, no revocada y vigencia máxima
+de una hora. Cualquier ausencia, drift, expiración o error falla cerrado.
+
+El resultado solo puede ser `{allowed, code}`, con códigos
+`allowed|denied|invalid|failed`. Nunca incluye contenido de chat, token, email,
+URL, ID de conversación, excepción ni secreto. Este contrato no sustituye la
+puerta legal ni el consentimiento verificable end-to-end; ControlBot#20 y D-061
+mantienen bloqueado cualquier tratamiento o tráfico real.
+
+Evidencia:
+
+```sh
+node --check factory-control-response-consent.js
+node test-factory-control-response-consent.cjs
+npm test
+```
