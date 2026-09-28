@@ -41,10 +41,22 @@
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       throw new TypeError('Heartbeat snapshot input is invalid');
     }
-    const snapshot = structuredClone(input);
-    if (!Object.hasOwn(snapshot, 'providerSignal')) {
-      throw new TypeError('Heartbeat snapshot provider signal is required');
+    const expectedKeys = ['profileAlias', 'accountAlias', 'tabs', 'lastEvent', 'providerSignal'];
+    const ownKeys = Reflect.ownKeys(input);
+    if (ownKeys.length !== expectedKeys.length ||
+        !ownKeys.every(key => typeof key === 'string' && expectedKeys.includes(key)) ||
+        !expectedKeys.every(key => Object.hasOwn(input, key))) {
+      throw new TypeError('Heartbeat snapshot input is invalid');
     }
+    const providerKeys = Reflect.ownKeys(input.providerSignal || {});
+    if (providerKeys.length !== 2 ||
+        !providerKeys.every(key => typeof key === 'string' &&
+          ['signalCode', 'alertText'].includes(key)) ||
+        !Object.hasOwn(input.providerSignal || {}, 'signalCode') ||
+        !Object.hasOwn(input.providerSignal || {}, 'alertText')) {
+      throw new TypeError('Heartbeat snapshot provider signal is invalid');
+    }
+    const snapshot = structuredClone(input);
     const providerSignal = snapshot.providerSignal;
     delete snapshot.providerSignal;
     const classified = accountState.classifyProviderPageSignal(providerSignal, now);
