@@ -170,6 +170,50 @@ function fixture(overrides = {}) {
     const { preflight } = fixture({
       now: () => {
         call += 1;
+        if (call === 1) return NOW;
+        if (call === 2) return NOW + 10_000;
+        return NOW + 55_000;
+      },
+      loadVerifiedPairing: async ({ profileAlias }) => ({
+        profileAlias,
+        id: 'credential-001',
+        expiresAt: NOW + 50_000,
+        revoked: false
+      })
+    });
+    assert.deepEqual(
+      await preflight.evaluate({ profileAlias: PROFILE }),
+      { allowed: false, code: 'unpaired' }
+    );
+  }
+
+  {
+    let call = 0;
+    const { preflight } = fixture({
+      now: () => {
+        call += 1;
+        if (call === 1) return NOW;
+        if (call === 2) return NOW + 10_000;
+        return NOW + 55_000;
+      },
+      loadVerifiedHeartbeatConsent: async ({ profileAlias }) => ({
+        profileAlias,
+        enabled: true,
+        revoked: false,
+        expiresAt: NOW + 50_000
+      })
+    });
+    assert.deepEqual(
+      await preflight.evaluate({ profileAlias: PROFILE }),
+      { allowed: false, code: 'consent_denied' }
+    );
+  }
+
+  {
+    let call = 0;
+    const { preflight } = fixture({
+      now: () => {
+        call += 1;
         return call === 1 ? NOW : NOW - 1;
       }
     });
