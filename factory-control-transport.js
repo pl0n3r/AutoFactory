@@ -59,6 +59,19 @@
     });
   }
 
+  function freezeHeartbeat(body) {
+    body.tabs.forEach(tab => Object.freeze(tab));
+    Object.freeze(body.tabs);
+    return Object.freeze(body);
+  }
+
+  function freezeCommand(command) {
+    if (command.payload && typeof command.payload === 'object') {
+      Object.freeze(command.payload);
+    }
+    return Object.freeze(command);
+  }
+
   function createTransportContract({ protocol, longPollMs = DEFAULT_LONG_POLL_MS } = {}) {
     if (!protocol ||
         typeof protocol.heartbeat !== 'function' ||
@@ -69,7 +82,7 @@
     const waitMs = longPoll(longPollMs);
 
     function heartbeatRequest(input) {
-      const body = Object.freeze(protocol.heartbeat(input));
+      const body = freezeHeartbeat(protocol.heartbeat(input));
       return descriptor('POST', HEARTBEAT_PATH, 10_000, null, body);
     }
 
@@ -92,7 +105,7 @@
       exactObject(input, ['cursor', 'command'], 'command response');
       return Object.freeze({
         cursor: cursor(input.cursor),
-        command: Object.freeze(protocol.command(input.command))
+        command: freezeCommand(protocol.command(input.command))
       });
     }
 
