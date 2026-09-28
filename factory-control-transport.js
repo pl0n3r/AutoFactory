@@ -348,6 +348,31 @@
     });
   }
 
+  function enabledTabs(value) {
+    if (!Array.isArray(value) || value.length > 40) {
+      throw new TypeError('enabledTabIds is invalid');
+    }
+    const seen = new Set();
+    return value.map((tabId, index) => {
+      if (!Object.hasOwn(value, index) || !Number.isSafeInteger(tabId) ||
+          tabId < 0 || seen.has(tabId)) {
+        throw new TypeError('enabledTabIds is invalid');
+      }
+      seen.add(tabId);
+      return tabId;
+    });
+  }
+
+  function safeBusyCursor(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input) ||
+        !Object.hasOwn(input, 'cursor')) return null;
+    try {
+      return cursor(input.cursor);
+    } catch (_error) { // NOSONAR: busy path must never reflect an invalid caller value.
+      return null;
+    }
+  }
+
   function createCommandPump({ client, executor } = {}) {
     if (!client || typeof client.nextCommand !== 'function' ||
         typeof client.sendAck !== 'function' ||
@@ -365,8 +390,7 @@
 
     async function runOnce(input) {
       if (inFlight) {
-        const cursorValue = input && Object.hasOwn(input, 'cursor') ? input.cursor : null;
-        return failed('busy', cursorValue);
+        return failed('busy', safeBusyCursor(input));
       }
       inFlight = true;
       let previousCursor = null;
@@ -376,11 +400,10 @@
         const profileAlias = alias(snapshot.profileAlias);
         previousCursor = cursor(snapshot.cursor);
         exactObject(snapshot.context, ['profileAlias', 'enabledTabIds'], 'command pump context');
-        if (alias(snapshot.context.profileAlias) !== profileAlias ||
-            !Array.isArray(snapshot.context.enabledTabIds)) {
+        if (alias(snapshot.context.profileAlias) !== profileAlias) {
           return failed('failed', previousCursor);
         }
-        const enabledTabIds = structuredClone(snapshot.context.enabledTabIds);
+        const enabledTabIds = enabledTabs(snapshot.context.enabledTabIds);
         const poll = await nextCommand(Object.freeze({
           profileAlias,
           cursor: previousCursor
