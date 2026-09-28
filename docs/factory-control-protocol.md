@@ -299,3 +299,34 @@ node --check factory-control-transport.js
 node test-factory-control-transport.cjs
 npm test
 ```
+
+
+## Estado de cuenta normalizado (slice 9, sin DOM/runtime)
+
+`factory-control-account-state.js` define un clasificador puro para señales que un
+futuro adapter de proveedor ya haya verificado. No inspecciona DOM, no contiene
+selectores, no lee cookies/sesión y no activa red.
+
+Entrada exacta:
+`{authenticated, usageLimited, providerError, resetAt}`.
+
+Salida mínima:
+`{state, resetAt}`, donde `state` es
+`ready|limit|requires_login|error|unknown`.
+
+`limit` exige un `resetAt` entero futuro y acotado a siete días. Señales
+contradictorias, reloj inválido, campos extra o timestamps inválidos fallan a
+`unknown`. No se aceptan mensajes libres, email, URLs, cookies, tokens ni IDs de
+chat, por lo que el resultado puede incorporarse al heartbeat sin filtrar texto.
+
+Este módulo **no detecta por sí mismo** mensajes ES/EN. Esa detección pertenecerá al
+adapter de proveedor futuro, que deberá convertir la UI a estas señales tipadas y
+seguir respetando ControlBot#20/D-061.
+
+Evidencia:
+
+```sh
+node --check factory-control-account-state.js
+node test-factory-control-account-state.cjs
+npm test
+```
