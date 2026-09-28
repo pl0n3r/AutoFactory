@@ -305,6 +305,7 @@ function authenticatedClient(options = {}) {
 
   let blockedInvocations = 0;
   const blockedClient = authenticatedClient({
+    transport,
     activation: {
       evaluate: async ({ profileAlias }) => {
         assert.equal(profileAlias, 'perfil-1');
@@ -342,6 +343,7 @@ function authenticatedClient(options = {}) {
 
   let malformedInvocations = 0;
   const malformedGateClient = authenticatedClient({
+    transport,
     activation: {
       evaluate: async () => ({ allowed: true, code: 'legal_blocked' })
     },
@@ -360,6 +362,7 @@ function authenticatedClient(options = {}) {
 
   let activationCalls = 0;
   const reevaluatedClient = authenticatedClient({
+    transport,
     activation: {
       evaluate: async () => {
         activationCalls += 1;
@@ -530,6 +533,7 @@ function authenticatedClient(options = {}) {
   let gateSequence = 0;
   let gatedTransportInvocations = 0;
   const gateDropsBeforeAckClient = authenticatedClient({
+    transport,
     activation: {
       evaluate: async () => {
         gateSequence += 1;
@@ -583,6 +587,7 @@ function authenticatedClient(options = {}) {
 
   const mutableActivation = readyActivation();
   const capturedActivationClient = authenticatedClient({
+    transport,
     activation: mutableActivation,
     invoker: {
       execute: async () => ({
