@@ -128,6 +128,7 @@
         );
         return safeResult(true, 'paired', credential);
       } catch (_error) {
+        // Collapse pairing/storage adapter failures to the fixed public result.
         return safeResult(false, 'failed');
       }
     }
@@ -147,6 +148,7 @@
         if (revoked === false) return safeResult(false, 'not_found');
         return safeResult(false, 'failed');
       } catch (_error) {
+        // Collapse remote/store adapter failures; never expose handle or exception text.
         return safeResult(false, 'failed');
       }
     }
@@ -154,5 +156,85 @@
     return Object.freeze({ pair, revoke });
   }
 
-  return Object.freeze({ RESULT_CODES, createPairingContract });
+
+  function checkedPairingResult(value) {
+    const paired = value?.code === 'paired';
+    const successful = ['paired', 'revoked'].includes(value?.code);
+    const fields = paired ? ['ok', 'code', 'credential'] : ['ok', 'code'];
+    if (!exactKeys(value, fields) || typeof value.ok !== 'boolean' ||
+        !RESULT_CODES.includes(value.code) || value.ok !== successful ||
+        (paired && (!exactKeys(value.credential, ['id', 'expiresAt']) ||
+          !validId(value.credential.id) || !Number.isSafeInteger(value.credential.expiresAt)))) {
+      throw new TypeError('Invalid pairing result');
+    }
+    return value;
+  }
+
+  function createPersistedPairingContract({ pairing, credentialStore } = {}) {
+    if (!pairing || typeof pairing.pair !== 'function' || typeof pairing.revoke !== 'function' ||
+        !credentialStore || typeof credentialStore.save !== 'function' ||
+        typeof credentialStore.remove !== 'function') {
+      throw new TypeError('Persisted pairing dependencies are required');
+    }
+
+    async function pair(input) {
+      if (!exactKeys(input, ['profileAlias', 'code']) ||
+          !validAlias(input.profileAlias) || !validCode(input.code)) {
+        return safeResult(false, 'invalid');
+      }
+      try {
+        const result = checkedPairingResult(await pairing.pair(input));
+        if (result.code !== 'paired') return result;
+        const row = {
+          profileAlias: input.profileAlias,
+          id: result.credential.id,
+          expiresAt: result.credential.expiresAt
+        };
+        try {
+          await credentialStore.save(row);
+        } catch (_error) {
+          try {
+            await pairing.revoke({
+              profileAlias: input.profileAlias,
+              credentialId: result.credential.id
+            });
+          } catch (_revokeError) {
+            // Best-effort compensation only. The opaque handle still expires server-side.
+          }
+          return safeResult(false, 'failed');
+        }
+        return result;
+      } catch (_error) { // NOSONAR: adapter details are intentionally collapsed to fixed public result codes.
+        // Deliberately discard adapter exception details; the public contract exposes only fixed result codes.
+        return safeResult(false, 'failed');
+      }
+    }
+
+    async function revoke(input) {
+      if (!exactKeys(input, ['profileAlias', 'credentialId']) ||
+          !validAlias(input.profileAlias) || !validId(input.credentialId)) {
+        return safeResult(false, 'invalid');
+      }
+      try {
+        const result = checkedPairingResult(await pairing.revoke(input));
+        if (!['revoked', 'not_found'].includes(result.code)) return result;
+        try {
+          await credentialStore.remove({
+            profileAlias: input.profileAlias,
+            id: input.credentialId
+          });
+        } catch (_error) {
+          return safeResult(false, 'failed');
+        }
+        return result;
+      } catch (_error) { // NOSONAR: remote/store details and opaque handles must not escape this boundary.
+        // Deliberately discard remote/store exception details; handles and adapter messages are sensitive.
+        return safeResult(false, 'failed');
+      }
+    }
+
+    return Object.freeze({ pair, revoke });
+  }
+
+  return Object.freeze({ RESULT_CODES, createPairingContract, createPersistedPairingContract });
 });

@@ -385,3 +385,28 @@ no afirma exclusión entre múltiples workers concurrentes.
 La pieza no está conectada a `factory-control-pairing.js`, no contiene
 credenciales reales y no habilita tráfico. La conexión pairing → storage y
 cualquier tratamiento real siguen bloqueados por ControlBot#20 y D-061.
+
+
+## Pairing persistido por perfil (slice 13, composición pura)
+
+`createPersistedPairingContract({pairing, credentialStore})` une los dos contratos
+ya existentes sin activar el runtime. El `pairing` inyectado debe exponer
+`pair/revoke` y el store solo `save/remove`; este corte no importa Chrome,
+no usa `fetch`, no conoce endpoints y no modifica permisos o manifests.
+
+Cuando `pair()` devuelve `paired`, el wrapper guarda exclusivamente
+`{profileAlias,id,expiresAt}`. Si ese guardado falla después de emitir el
+handle, intenta una revocación compensatoria y siempre devuelve
+`{ok:false,code:"failed"}`, sin propagar excepciones, el código de seis
+dígitos ni el identificador de credencial.
+
+En `revoke()`, un fallo remoto conserva la copia local para permitir reintento.
+Solo después de `revoked` o `not_found` se intenta retirar el handle local.
+Si la limpieza local falla, el resultado se degrada a `failed` para evitar
+declarar revocación completa mientras persiste estado local obsoleto.
+
+No se añade tratamiento de datos: el único registro persistido sigue siendo
+`local_factory_control_profile_credential` de `datos.yml`, con los mismos
+campos, propósito, retención y proveedor vacío. ControlBot#20 está completado,
+pero D-061 sigue exigiendo consentimiento verificable, autenticación y validación
+de seguridad antes de pairing/tráfico real o go-live.
