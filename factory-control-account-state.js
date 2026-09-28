@@ -28,8 +28,10 @@
   }
 
   function exactObject(value, fields) {
-    return value && typeof value === 'object' && !Array.isArray(value) &&
-      Object.keys(value).length === fields.length &&
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const ownKeys = Reflect.ownKeys(value);
+    return ownKeys.length === fields.length &&
+      ownKeys.every(key => typeof key === 'string' && fields.includes(key)) &&
       fields.every(field => Object.hasOwn(value, field));
   }
 
