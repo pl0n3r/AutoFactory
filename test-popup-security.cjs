@@ -19,6 +19,11 @@ const { window } = dom;
 let executed = false;
 window.__unsafeExecution = () => { executed = true; };
 window.setInterval = () => 0;
+let legacyCopyCalls = 0;
+window.document.execCommand = command => {
+  if (command === 'copy') legacyCopyCalls += 1;
+  return command === 'copy';
+};
 window.chrome = {
   runtime: {
     getManifest: () => ({ version: '1.6.7' }),
@@ -60,6 +65,19 @@ assert.equal(result.textContent.includes('Respuesta media: 1.5 s · p90: 2.0 s')
 assert.equal(window.document.getElementById('cycles').textContent, '4');
 assert.equal(window.document.getElementById('recoveries').textContent, '2');
 assert.equal(window.document.getElementById('failures').textContent, '1');
+
+window.navigator.clipboard = {
+  writeText: async () => { throw new Error('denied'); }
+};
+await window.copyText('diagnostic fallback');
+assert.equal(legacyCopyCalls, 1);
+assert.equal(window.document.querySelector('textarea'), null);
+
+window.navigator.clipboard = {
+  writeText: async text => { assert.equal(text, 'diagnostic modern'); }
+};
+await window.copyText('diagnostic modern');
+assert.equal(legacyCopyCalls, 1);
 
 window.renderLearning({ errorsByCode: {}, actionSuccess: {} });
 window.renderLearning(null);

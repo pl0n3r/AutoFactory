@@ -99,15 +99,32 @@ function renderLearning(data={}) {
 function refreshLearning(){extensionApi.storage.local.get({learning:{}},values=>renderLearning(values.learning));}
 $('start').addEventListener('click',async()=>{try{await save();await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{masterEnabled:true});await broadcast(true);await refresh();}catch(error){$('status').textContent=error.message;}});
 $('stop').addEventListener('click',async()=>{try{await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{masterEnabled:false});await broadcast(false);await refresh();}catch(error){$('status').textContent=error.message;}});
-async function copyText(text) {
-  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
-    throw new Error('Portapapeles no disponible');
-  }
+function copyTextLegacy(text) {
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  document.body.appendChild(field);
+  field.select();
   try {
-    await navigator.clipboard.writeText(text);
-  } catch (_error) {
-    throw new Error('No pude acceder al portapapeles');
+    if (!document.execCommand('copy')) { // NOSONAR: compatibility fallback for extension popups without clipboardWrite.
+      throw new Error('No pude acceder al portapapeles');
+    }
+  } finally {
+    field.remove();
   }
+}
+async function copyText(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (_error) {
+      // Clipboard API can lose transient activation after async diagnostic reads.
+    }
+  }
+  copyTextLegacy(text);
 }
 $('copy-log').addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:get-log'});await copyText(JSON.stringify({exportedAt:new Date().toISOString(),extensionVersion,learning:(await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),{learning:{}})).learning,entries:result.entries||[]},null,2));$('status').textContent=`DIAGNÓSTICO COPIADO · ${(result.entries||[]).length} eventos`;}catch(error){$('status').textContent=`No pude copiar: ${error.message}`;}});
 $('clear-log').addEventListener('click',async()=>{try{await runtimeMessage({type:'autopilot:clear-log'});$('status').textContent='LOG BORRADO';}catch(error){$('status').textContent=`No pude borrar: ${error.message}`;}});
