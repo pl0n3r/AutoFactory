@@ -16,7 +16,7 @@
 
   function classifyAccountState(input, now = Date.now) {
     if (!exactObject(input, ['authenticated', 'usageLimited', 'providerError', 'resetAt'])) {
-      throw new TypeError('Invalid account state signal');
+      return Object.freeze({ state: 'unknown', resetAt: null });
     }
     if (typeof input.authenticated !== 'boolean' ||
         typeof input.usageLimited !== 'boolean' ||
@@ -30,7 +30,7 @@
     if (!Number.isSafeInteger(nowMs)) return Object.freeze({ state: 'unknown', resetAt: null });
 
     if (input.providerError) {
-      if (input.usageLimited || input.authenticated === false) {
+      if (input.usageLimited || input.authenticated === false || input.resetAt !== null) {
         return Object.freeze({ state: 'unknown', resetAt: null });
       }
       return Object.freeze({ state: 'error', resetAt: null });
