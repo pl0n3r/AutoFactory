@@ -410,3 +410,27 @@ No se añade tratamiento de datos: el único registro persistido sigue siendo
 campos, propósito, retención y proveedor vacío. ControlBot#20 está completado,
 pero D-061 sigue exigiendo consentimiento verificable, autenticación y validación
 de seguridad antes de pairing/tráfico real o go-live.
+
+
+## Transporte ligado a credencial opaca (slice 14, sin red activa)
+
+`createCredentialBoundInvoker({credentialStore, invoke, now})` compone el store
+local con los descriptores HTTPS sin implementar `fetch` ni activar permisos.
+La API pública recibe `{profileAlias,request}`; valida que el descriptor pertenezca
+al origen fijo y a uno de los tres métodos/paths ya definidos por el contrato.
+
+La credencial se carga por alias dentro de la frontera y debe tener exactamente
+`{id,expiresAt}`, estar vigente y no superar 24 horas de horizonte. El handle
+opaco solo se entrega al adapter confiable `invoke({credentialId,request})`;
+nunca forma parte del descriptor, del resultado público ni de un error.
+
+El adapter debe devolver exactamente `{status,body}` con status HTTP válido.
+Si una respuesta refleja accidentalmente el credential id, el wrapper falla
+cerrado. Ausencia/expiración devuelve `unauthorized`; corrupción, excepción,
+reloj inválido, descriptor adulterado o respuesta inválida devuelve `failed`.
+Ningún mensaje de excepción se propaga.
+
+Este slice no añade persistencia ni campos a `datos.yml`, no incorpora proveedor
+concreto, no hace DNS/HTTP y no toca manifest/background. D-061 sigue bloqueando
+tráfico real y go-live hasta consentimiento verificable, autenticación y revisión
+de seguridad end-to-end.
