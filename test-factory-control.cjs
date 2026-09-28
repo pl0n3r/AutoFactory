@@ -12,6 +12,7 @@ assert.deepEqual(protocol.heartbeat(heartbeat()), {
   version: 1, kind: 'heartbeat', profileAlias: 'chrome-pipe',
   accountAlias: 'dev-main',
   tabs: [{ tabId: 9, enabled: true, state: 'generating' }],
+  accountState: { state: 'unknown', resetAt: null },
   lastEvent: 'cycle-complete'
 });
 assert.equal(protocol.heartbeat({ ...heartbeat(), lastEvent: undefined }).lastEvent, null);
