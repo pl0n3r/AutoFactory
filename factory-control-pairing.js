@@ -154,5 +154,82 @@
     return Object.freeze({ pair, revoke });
   }
 
-  return Object.freeze({ RESULT_CODES, createPairingContract });
+
+  function checkedPairingResult(value) {
+    const paired = value && value.code === 'paired';
+    const fields = paired ? ['ok', 'code', 'credential'] : ['ok', 'code'];
+    if (!exactKeys(value, fields) || typeof value.ok !== 'boolean' ||
+        !RESULT_CODES.includes(value.code) ||
+        (paired && (value.ok !== true || !exactKeys(value.credential, ['id', 'expiresAt']) ||
+          !validId(value.credential.id) || !Number.isSafeInteger(value.credential.expiresAt))) ||
+        (!paired && value.ok === true)) {
+      throw new TypeError('Invalid pairing result');
+    }
+    return value;
+  }
+
+  function createPersistedPairingContract({ pairing, credentialStore } = {}) {
+    if (!pairing || typeof pairing.pair !== 'function' || typeof pairing.revoke !== 'function' ||
+        !credentialStore || typeof credentialStore.save !== 'function' ||
+        typeof credentialStore.remove !== 'function') {
+      throw new TypeError('Persisted pairing dependencies are required');
+    }
+
+    async function pair(input) {
+      try {
+        const result = checkedPairingResult(await pairing.pair(input));
+        if (result.code !== 'paired') return result;
+        if (!exactKeys(input, ['profileAlias', 'code']) || !validAlias(input.profileAlias)) {
+          return safeResult(false, 'failed');
+        }
+        const row = {
+          profileAlias: input.profileAlias,
+          id: result.credential.id,
+          expiresAt: result.credential.expiresAt
+        };
+        try {
+          await credentialStore.save(row);
+        } catch (_error) {
+          try {
+            await pairing.revoke({
+              profileAlias: input.profileAlias,
+              credentialId: result.credential.id
+            });
+          } catch (_revokeError) {
+            // Best-effort compensation only. The opaque handle still expires server-side.
+          }
+          return safeResult(false, 'failed');
+        }
+        return result;
+      } catch (_error) {
+        return safeResult(false, 'failed');
+      }
+    }
+
+    async function revoke(input) {
+      try {
+        const result = checkedPairingResult(await pairing.revoke(input));
+        if (!['revoked', 'not_found'].includes(result.code)) return result;
+        if (!exactKeys(input, ['profileAlias', 'credentialId']) ||
+            !validAlias(input.profileAlias) || !validId(input.credentialId)) {
+          return safeResult(false, 'failed');
+        }
+        try {
+          await credentialStore.remove({
+            profileAlias: input.profileAlias,
+            id: input.credentialId
+          });
+        } catch (_error) {
+          return safeResult(false, 'failed');
+        }
+        return result;
+      } catch (_error) {
+        return safeResult(false, 'failed');
+      }
+    }
+
+    return Object.freeze({ pair, revoke });
+  }
+
+  return Object.freeze({ RESULT_CODES, createPairingContract, createPersistedPairingContract });
 });

@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { createPairingContract } = require('./factory-control-pairing.js');
+const { createPairingContract, createPersistedPairingContract } = require('./factory-control-pairing.js');
 
 const NOW = 1_800_000_000_000;
 
@@ -173,6 +173,121 @@ function fixture(overrides = {}) {
     });
     assert.deepEqual(
       await contract.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'failed' }
+    );
+  }
+
+
+  {
+    const { contract, calls } = fixture();
+    const stored = [];
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async row => { stored.push(structuredClone(row)); },
+        remove: async row => {
+          const index = stored.findIndex(item =>
+            item.profileAlias === row.profileAlias && item.id === row.id);
+          if (index === -1) return false;
+          stored.splice(index, 1);
+          return true;
+        }
+      }
+    });
+    assert.deepEqual(
+      await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: true, code: 'paired', credential: { id: 'credential-001', expiresAt: NOW + 3_600_000 } }
+    );
+    assert.deepEqual(stored, [{
+      profileAlias: 'perfil-1',
+      id: 'credential-001',
+      expiresAt: NOW + 3_600_000
+    }]);
+    assert.deepEqual(
+      await persisted.revoke({ profileAlias: 'perfil-1', credentialId: 'credential-001' }),
+      { ok: true, code: 'revoked' }
+    );
+    assert.deepEqual(stored, []);
+    assert.equal(calls.filter(call => call.kind === 'revoke').length, 1);
+  }
+
+  {
+    const { contract, calls } = fixture();
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async () => { throw new Error('private storage path'); },
+        remove: async () => true
+      }
+    });
+    const result = await persisted.pair({ profileAlias: 'perfil-1', code: '123456' });
+    assert.deepEqual(result, { ok: false, code: 'failed' });
+    assert.equal(calls.filter(call => call.kind === 'revoke').length, 1);
+    assert.equal(JSON.stringify(result).includes('private storage path'), false);
+    assert.equal(JSON.stringify(result).includes('123456'), false);
+  }
+
+  {
+    const { contract, calls } = fixture({
+      revokeOpaqueCredential: async ({ profileAlias, credentialId }) => {
+        calls.push({ kind: 'revoke', profileAlias, credentialId });
+        return false;
+      }
+    });
+    const stored = [{
+      profileAlias: 'perfil-1',
+      id: 'credential-001',
+      expiresAt: NOW + 3_600_000
+    }];
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async () => {},
+        remove: async row => {
+          const index = stored.findIndex(item =>
+            item.profileAlias === row.profileAlias && item.id === row.id);
+          if (index === -1) return false;
+          stored.splice(index, 1);
+          return true;
+        }
+      }
+    });
+    assert.deepEqual(
+      await persisted.revoke({ profileAlias: 'perfil-1', credentialId: 'credential-001' }),
+      { ok: false, code: 'not_found' }
+    );
+    assert.deepEqual(stored, []);
+  }
+
+  {
+    const { contract } = fixture({
+      revokeOpaqueCredential: async () => { throw new Error('remote secret'); }
+    });
+    let removed = false;
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async () => {},
+        remove: async () => { removed = true; return true; }
+      }
+    });
+    assert.deepEqual(
+      await persisted.revoke({ profileAlias: 'perfil-1', credentialId: 'credential-001' }),
+      { ok: false, code: 'failed' }
+    );
+    assert.equal(removed, false);
+  }
+
+  {
+    const persisted = createPersistedPairingContract({
+      pairing: {
+        pair: async () => ({ ok: true, code: 'paired', credential: { id: 'bad', expiresAt: NOW + 1 } }),
+        revoke: async () => ({ ok: false, code: 'failed' })
+      },
+      credentialStore: { save: async () => {}, remove: async () => true }
+    });
+    assert.deepEqual(
+      await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
       { ok: false, code: 'failed' }
     );
   }
