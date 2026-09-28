@@ -53,6 +53,7 @@ async function message(payload) {
         resolve(response);
       });
     } catch (_error) {
+      // Browser transport details may expose extension internals; return a stable user-safe error.
       reject(new Error('Recarga esta pestaña para cargar Autopilot'));
     }
   });
