@@ -330,11 +330,117 @@
     return Object.freeze({ sendHeartbeat, nextCommand, sendAck });
   }
 
+
+  function checkedAck(value) {
+    exactObject(value, ['version', 'kind', 'id', 'ok', 'code'], 'command ACK');
+    if (value.version !== 1 || value.kind !== 'ack' ||
+        typeof value.id !== 'string' || value.id.length < 1 || value.id.length > 80 ||
+        typeof value.ok !== 'boolean' || typeof value.code !== 'string' ||
+        value.code.length < 1 || value.code.length > 32) {
+      throw new TypeError('command ACK is invalid');
+    }
+    return Object.freeze({
+      version: value.version,
+      kind: value.kind,
+      id: value.id,
+      ok: value.ok,
+      code: value.code
+    });
+  }
+
+  function createCommandPump({ client, executor } = {}) {
+    if (!client || typeof client.nextCommand !== 'function' ||
+        typeof client.sendAck !== 'function' ||
+        !executor || typeof executor.execute !== 'function') {
+      throw new TypeError('Command pump dependencies are required');
+    }
+    const nextCommand = client.nextCommand.bind(client);
+    const sendAck = client.sendAck.bind(client);
+    const execute = executor.execute.bind(executor);
+    let inFlight = false;
+
+    function failed(code, cursorValue) {
+      return Object.freeze({ ok: false, code, cursor: cursorValue });
+    }
+
+    async function runOnce(input) {
+      if (inFlight) {
+        const cursorValue = input && Object.hasOwn(input, 'cursor') ? input.cursor : null;
+        return failed('busy', cursorValue);
+      }
+      inFlight = true;
+      let previousCursor = null;
+      try {
+        const snapshot = structuredClone(input);
+        exactObject(snapshot, ['profileAlias', 'cursor', 'context'], 'command pump input');
+        const profileAlias = alias(snapshot.profileAlias);
+        previousCursor = cursor(snapshot.cursor);
+        exactObject(snapshot.context, ['profileAlias', 'enabledTabIds'], 'command pump context');
+        if (alias(snapshot.context.profileAlias) !== profileAlias ||
+            !Array.isArray(snapshot.context.enabledTabIds)) {
+          return failed('failed', previousCursor);
+        }
+        const enabledTabIds = structuredClone(snapshot.context.enabledTabIds);
+        const poll = await nextCommand(Object.freeze({
+          profileAlias,
+          cursor: previousCursor
+        }));
+        if (!poll || typeof poll !== 'object' || Array.isArray(poll) ||
+            typeof poll.ok !== 'boolean' || typeof poll.code !== 'string') {
+          return failed('failed', previousCursor);
+        }
+        if (!poll.ok) {
+          return failed(
+            ['unauthorized', 'failed'].includes(poll.code) ? poll.code : 'failed',
+            previousCursor
+          );
+        }
+        if (poll.code === 'empty') {
+          exactObject(poll, ['ok', 'code', 'cursor', 'command'], 'empty poll result');
+          if (poll.command !== null) return failed('failed', previousCursor);
+          return Object.freeze({
+            ok: true,
+            code: 'empty',
+            cursor: cursor(poll.cursor)
+          });
+        }
+        if (poll.code !== 'command') return failed('failed', previousCursor);
+        exactObject(poll, ['ok', 'code', 'cursor', 'command'], 'command poll result');
+        const nextCursor = cursor(poll.cursor);
+        const ack = checkedAck(await execute(
+          structuredClone(poll.command),
+          Object.freeze({ profileAlias, enabledTabIds: Object.freeze(enabledTabIds) })
+        ));
+        const sent = await sendAck(Object.freeze({
+          profileAlias,
+          ack
+        }));
+        if (!sent || typeof sent !== 'object' || sent.ok !== true || sent.code !== 'sent') {
+          return failed('ack_failed', previousCursor);
+        }
+        return Object.freeze({
+          ok: true,
+          code: 'handled',
+          cursor: nextCursor,
+          commandId: ack.id,
+          outcome: ack.code
+        });
+      } catch (_error) { // NOSONAR: orchestration intentionally collapses adapter/payload details.
+        return failed('failed', previousCursor);
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    return Object.freeze({ runOnce });
+  }
+
   return Object.freeze({
     ORIGIN,
     DEFAULT_LONG_POLL_MS,
     createTransportContract,
     createCredentialBoundInvoker,
-    createAuthenticatedTransportClient
+    createAuthenticatedTransportClient,
+    createCommandPump
   });
 });
