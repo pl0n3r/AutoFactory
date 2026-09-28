@@ -155,6 +155,8 @@
     }
     return documentTextMatches(doc, pattern, 420);
   }
+  const RATE_LIMIT_PATTERN = /rate limit|too many requests|límite de (uso|mensajes)|try again later/i;
+
   function providerAlerts(doc = document) {
     return [...doc.querySelectorAll('[role="alert"], [data-testid*="error"]')]
       .map(element => normalize(element.innerText || element.textContent))
@@ -171,7 +173,7 @@
     }
     if (additionalSafetyCheck(doc)) return { code: 'safety-check', action: 'wait' };
     const alerts = providerAlerts(doc).join(' ').toLowerCase();
-    if (/rate limit|too many requests|límite de (uso|mensajes)|try again later/.test(alerts)) {
+    if (RATE_LIMIT_PATTERN.test(alerts)) {
       return { code: 'rate-limit', action: 'wait' };
     }
     if (interruptedConnection(doc)
@@ -183,9 +185,11 @@
   }
   function providerAccountSignal(doc = document) {
     const signal = pageSignal(doc);
-    const alertText = signal.code === 'rate-limit'
-      ? providerAlerts(doc).join(' ').slice(0, 500)
-      : null;
+    let alertText = null;
+    if (signal.code === 'rate-limit') {
+      const matchingAlert = providerAlerts(doc).find(text => RATE_LIMIT_PATTERN.test(text));
+      alertText = typeof matchingAlert === 'string' ? matchingAlert.slice(0, 500) : null;
+    }
     return Object.freeze({ signalCode: signal.code, alertText });
   }
   function normalize(value) {
