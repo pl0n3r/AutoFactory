@@ -1,13 +1,52 @@
 (function (root, factory) {
   'use strict';
 
-  const api = factory({ currentTime, createRequest, checkedStorage });
+  function currentTime(now) {
+    let value;
+    try { value = now(); } catch (_error) {
+      // Clock adapter details may disclose host/runtime internals; expose a stable failure only.
+      throw new Error('Profile credential clock unavailable');
+    }
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error('Profile credential clock unavailable');
+    }
+    return value;
+  }
+
+  function createRequest(local, runtime, message) {
+    return function request(operation, arg) {
+      return new Promise((resolve, reject) => {
+        let finished = false;
+        try {
+          local[operation](arg, value => {
+            if (finished) return;
+            finished = true;
+            // Never copy chrome.runtime.lastError.message: it may reveal paths or credentials.
+            if (runtime.lastError) reject(new Error(message));
+            else resolve(value);
+          });
+        } catch (_error) {
+          // Storage adapter exceptions are intentionally collapsed to the caller-safe message.
+          if (!finished) reject(new Error(message));
+        }
+      });
+    };
+  }
+
+  function checkedStorage({ local, runtime } = {}) {
+    if (!local || typeof local.get !== 'function' ||
+        typeof local.set !== 'function' || !runtime || typeof runtime !== 'object') {
+      throw new TypeError('chrome.storage.local and chrome.runtime are required');
+    }
+    return { local, runtime };
+  }
+
+  const api = factory(currentTime, createRequest, checkedStorage);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ChatGPTAutopilotFactoryChromeStorage = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (helpers) {
+})(typeof globalThis !== 'undefined' ? globalThis : this,
+  function (currentTime, createRequest, checkedStorage) {
   'use strict';
-
-  const { currentTime, createRequest, checkedStorage } = helpers;
 
   const KEY = 'factoryControlCommandReceiptsV1';
   const CREDENTIAL_KEY = 'factoryControlProfileCredentialsV1';
@@ -95,46 +134,6 @@
     }
     out.sort((a, b) => a.profileAlias.localeCompare(b.profileAlias));
     return out;
-  }
-
-  function currentTime(now) {
-    let value;
-    try { value = now(); } catch (_error) {
-      // Clock adapter details may disclose host/runtime internals; expose a stable failure only.
-      throw new Error('Profile credential clock unavailable');
-    }
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error('Profile credential clock unavailable');
-    }
-    return value;
-  }
-
-  function createRequest(local, runtime, message) {
-    return function request(operation, arg) {
-      return new Promise((resolve, reject) => {
-        let finished = false;
-        try {
-          local[operation](arg, value => {
-            if (finished) return;
-            finished = true;
-            // Never copy chrome.runtime.lastError.message: it may reveal paths or credentials.
-            if (runtime.lastError) reject(new Error(message));
-            else resolve(value);
-          });
-        } catch (_error) {
-          // Storage adapter exceptions are intentionally collapsed to the caller-safe message.
-          if (!finished) reject(new Error(message));
-        }
-      });
-    };
-  }
-
-  function checkedStorage({ local, runtime } = {}) {
-    if (!local || typeof local.get !== 'function' ||
-        typeof local.set !== 'function' || !runtime || typeof runtime !== 'object') {
-      throw new TypeError('chrome.storage.local and chrome.runtime are required');
-    }
-    return { local, runtime };
   }
 
   function createChromeReceiptStore(deps = {}) {
