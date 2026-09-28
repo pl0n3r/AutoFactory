@@ -205,6 +205,7 @@
         }
         return result;
       } catch (_error) {
+        // Deliberately discard adapter exception details; the public contract exposes only fixed result codes.
         return safeResult(false, 'failed');
       }
     }
@@ -227,6 +228,7 @@
         }
         return result;
       } catch (_error) {
+        // Deliberately discard remote/store exception details; handles and adapter messages are sensitive.
         return safeResult(false, 'failed');
       }
     }
