@@ -31,13 +31,13 @@ window.chrome = {
 
 window.eval(fs.readFileSync(path.join(root, 'popup.js'), 'utf8'));
 
+(async () => {
 const injection = '<img src=x onerror="window.__unsafeExecution()">';
 window.renderLearning({
   cycles: 4, recoveries: 2, failures: 1,
   responseSamplesMs: [1000, 2000], startupSamplesMs: [3000, 4000],
   errorsByCode: { [injection]: 3 }, actionSuccess: { [injection + ':reload']: 1 }
 });
-
 const result = window.document.getElementById('learning-details');
 for (const [actual, expected] of [
   [executed, false],
@@ -51,7 +51,6 @@ for (const [actual, expected] of [
   [window.document.getElementById('recoveries').textContent, '2'],
   [window.document.getElementById('failures').textContent, '1']
 ]) assert.equal(actual, expected);
-
 window.navigator.clipboard = { writeText: async () => { throw new Error('denied'); } };
 await window.copyText('diagnostic fallback');
 assert.equal(legacyCopyCalls, 1);
@@ -62,7 +61,6 @@ window.navigator.clipboard = {
 };
 await window.copyText('diagnostic modern');
 assert.equal(legacyCopyCalls, 1);
-
 for (const value of [
   { errorsByCode: {}, actionSuccess: {} },
   null,
@@ -73,3 +71,4 @@ assert.equal(result.textContent.includes('aún sin datos'), true);
 assert.equal(result.querySelector('img'), null);
 
 console.log('Popup metrics: safe rendering, exact stats, clipboard fallback and empty states');
+})().catch(error => { console.error(error); process.exitCode = 1; });
