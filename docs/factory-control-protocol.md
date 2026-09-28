@@ -459,7 +459,10 @@ La fachada expone solo tres operaciones cerradas:
   produce `empty` y HTTP 200 debe pasar por `commandResponse` antes de
   devolver un comando normalizado;
 - `sendAck({profileAlias,ack})`: genera el descriptor ACK fijo y acepta solo
-  HTTP 200/204.
+  HTTP 200/204. Puede consumir tanto el ACK crudo `{id,ok,code}` como el ACK
+  normalizado `{version,kind,id,ok,code}` que produce `createCommandPump`; en este
+  último caso revalida el discriminador y elimina `version/kind` antes de pasarlo al
+  contrato de protocolo, evitando una doble-normalización incompatible.
 
 El caller no puede suministrar origen, path, método, token, credential id ni
 headers. Los bodies de heartbeat/ACK no se devuelven al caller. Errores,
