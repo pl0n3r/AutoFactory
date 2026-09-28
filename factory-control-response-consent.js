@@ -30,11 +30,14 @@
 
     async function authorize(input) {
       try {
-        if (!exactObject(input, ['profileAlias']) || !alias(input.profileAlias)) {
+        if (!exactObject(input, ['profileAlias'])) {
           return decision(false, 'invalid');
         }
 
         const profileAlias = input.profileAlias;
+        if (!alias(profileAlias)) {
+          return decision(false, 'invalid');
+        }
         const grant = await loadVerifiedConsent({ profileAlias });
         const nowMs = now();
         if (!Number.isSafeInteger(nowMs)) return decision(false, 'failed');
