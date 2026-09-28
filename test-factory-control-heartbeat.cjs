@@ -82,6 +82,14 @@ const validConsent = () => ({
   assert.equal(await heartbeat.tick(), 'denied');
   assert.equal(deliveries.length, 2);
 
+  consent = validConsent();
+  heartbeat = build({ snapshot: async () => {
+    consent.purpose = 'response_return';
+    return synthetic();
+  } });
+  assert.equal(await heartbeat.tick(), 'denied');
+  assert.equal(deliveries.length, 2);
+
   // Reauthentication/storage may take long enough for consent to expire.
   consent = { ...validConsent(), expiresAt: time + 100 };
   let consentReads = 0;
