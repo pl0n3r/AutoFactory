@@ -3,7 +3,8 @@
 const assert = require('node:assert/strict');
 const {
   classifyAccountState,
-  classifyProviderPageSignal
+  classifyProviderPageSignal,
+  createProviderAccountStateReader
 } = require('./factory-control-account-state.js');
 
 const NOW = 1_800_000_000_000;
@@ -164,4 +165,111 @@ for (const forbidden of ['email', 'token', 'cookie', 'chat', 'secret', 'message'
   assert.equal(serialized.toLowerCase().includes(forbidden), false);
 }
 
-console.log('factory-control account state contract: ok');
+(async () => {
+  assert.throws(() => createProviderAccountStateReader({}), /dependencies/);
+  assert.throws(
+    () => createProviderAccountStateReader({
+      readProviderSignal: async () => ({ signalCode: 'ready', alertText: null }),
+      now: 123
+    }),
+    /dependencies/
+  );
+
+  const dependencies = {
+    readProviderSignal: async () => ({ signalCode: 'ready', alertText: null }),
+    now: () => localNow
+  };
+  const capturedReader = createProviderAccountStateReader(dependencies);
+  dependencies.readProviderSignal = async () => ({
+    signalCode: 'authentication',
+    alertText: null
+  });
+  assert.deepEqual(
+    await capturedReader.read(),
+    { state: 'ready', resetAt: null }
+  );
+
+  const loginReader = createProviderAccountStateReader({
+    readProviderSignal: async () => ({
+      signalCode: 'authentication',
+      alertText: null
+    }),
+    now: () => localNow
+  });
+  assert.deepEqual(
+    await loginReader.read(),
+    { state: 'requires_login', resetAt: null }
+  );
+
+  const sensitiveReader = createProviderAccountStateReader({
+    readProviderSignal: async () => ({
+      signalCode: 'rate-limit',
+      alertText: 'Límite de uso. Inténtalo de nuevo a las 16:45. secret@example.com token=never-reflect'
+    }),
+    now: () => localNow
+  });
+  const sensitiveResult = await sensitiveReader.read();
+  assert.deepEqual(sensitiveResult, { state: 'limit', resetAt: at1645 });
+  const serializedReaderResult = JSON.stringify(sensitiveResult).toLowerCase();
+  for (const forbidden of ['secret', 'email', 'token', 'never-reflect', 'alerttext']) {
+    assert.equal(serializedReaderResult.includes(forbidden), false);
+  }
+
+  const hiddenExtraReader = createProviderAccountStateReader({
+    readProviderSignal: async () => {
+      const raw = { signalCode: 'ready', alertText: null };
+      Object.defineProperty(raw, 'chatText', {
+        value: 'private chat',
+        enumerable: false
+      });
+      return raw;
+    },
+    now: () => localNow
+  });
+  assert.deepEqual(await hiddenExtraReader.read(), UNKNOWN);
+
+  const symbolExtraReader = createProviderAccountStateReader({
+    readProviderSignal: async () => {
+      const raw = { signalCode: 'ready', alertText: null };
+      raw[Symbol('secret')] = 'private';
+      return raw;
+    },
+    now: () => localNow
+  });
+  assert.deepEqual(await symbolExtraReader.read(), UNKNOWN);
+
+  const mutatingAccessorReader = createProviderAccountStateReader({
+    readProviderSignal: async () => {
+      const raw = { alertText: null };
+      Object.defineProperty(raw, 'signalCode', {
+        enumerable: true,
+        get() {
+          raw.chatText = 'private chat';
+          return 'ready';
+        }
+      });
+      return raw;
+    },
+    now: () => localNow
+  });
+  assert.deepEqual(await mutatingAccessorReader.read(), UNKNOWN);
+
+  const throwingReader = createProviderAccountStateReader({
+    readProviderSignal: async () => {
+      throw new Error('provider secret');
+    },
+    now: () => localNow
+  });
+  assert.deepEqual(await throwingReader.read(), UNKNOWN);
+
+  const invalidClockReader = createProviderAccountStateReader({
+    readProviderSignal: async () => ({ signalCode: 'ready', alertText: null }),
+    now: () => Number.NaN
+  });
+  assert.deepEqual(await invalidClockReader.read(), UNKNOWN);
+
+  console.log('factory-control account state contract: ok');
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

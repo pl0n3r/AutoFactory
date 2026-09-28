@@ -645,3 +645,23 @@ Este helper no lee DOM, no se carga desde `content.js` ni `background.js`, no
 persiste la señal y no activa transporte. El paso futuro de runtime deberá inyectar
 la señal efímera desde `providerAccountSignal()` únicamente cuando D-061 y las
 puertas restantes permitan la composición real.
+
+
+## Reader efímero de estado de cuenta (slice 24, sin runtime)
+
+`factory-control-account-state.js` expone
+`createProviderAccountStateReader({readProviderSignal, now})`. La frontera captura
+ambas dependencias al construirse y cada `read()` reduce inmediatamente la señal
+del proveedor al contrato mínimo `{state,resetAt}`.
+
+Antes de copiar ningún valor, el reader valida el objeto **original** con
+`Reflect.ownKeys`: cualquier campo extra, incluso no enumerable o `Symbol`,
+produce `unknown/null`. Después crea un snapshot plano únicamente con
+`signalCode` y `alertText`, lo clasifica y descarta la señal cruda. Excepciones
+del adapter, reloj inválido, shape adulterado o clasificación inválida se colapsan
+a `unknown/null`; no se reflejan mensajes ni detalles del proveedor.
+
+El resultado nunca contiene `alertText`, email, token, texto de chat ni errores.
+Este reader aún no está conectado a `content.js`, background, manifest, storage o
+transporte. No cambia `datos.yml`: sigue siendo una frontera puramente local y
+efímera. D-061 continúa bloqueando red, pairing real, permisos y go-live.
