@@ -231,6 +231,7 @@
           signalCode: raw.signalCode,
           alertText: raw.alertText
         });
+        if (!exactObject(raw, ['signalCode', 'alertText'])) return unknown();
         return classifyProviderPageSignal(snapshot, clock);
       } catch (_error) { // NOSONAR: provider/clock details are intentionally collapsed to unknown.
         return unknown();
