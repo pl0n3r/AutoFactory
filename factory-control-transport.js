@@ -66,6 +66,7 @@
   function freezeHeartbeat(body) {
     body.tabs.forEach(tab => Object.freeze(tab));
     Object.freeze(body.tabs);
+    Object.freeze(body.accountState);
     return Object.freeze(body);
   }
 

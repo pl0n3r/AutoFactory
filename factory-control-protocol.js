@@ -10,6 +10,9 @@
   const TAB_STATES = new Set([
     'paused', 'waiting', 'generating', 'sending', 'error', 'limit', 'requires_login'
   ]);
+  const ACCOUNT_STATES = new Set([
+    'ready', 'limit', 'requires_login', 'error', 'unknown'
+  ]);
   const ACTIONS = new Set([
     'pause', 'resume', 'open_chat', 'set_prompt', 'set_mode', 'send_message'
   ]);
@@ -51,9 +54,30 @@
     return value;
   }
 
+  function normalizedAccountState(value) {
+    if (value === undefined) {
+      return { state: 'unknown', resetAt: null };
+    }
+    object(value, 'accountState');
+    keys(value, ['state', 'resetAt'], 'accountState');
+    if (!Object.hasOwn(value, 'state') || !Object.hasOwn(value, 'resetAt') ||
+        !ACCOUNT_STATES.has(value.state)) {
+      throw new TypeError('Invalid account state');
+    }
+    if (value.state === 'limit') {
+      if (value.resetAt !== null &&
+          (!Number.isSafeInteger(value.resetAt) || value.resetAt < 1)) {
+        throw new TypeError('Invalid account state resetAt');
+      }
+    } else if (value.resetAt !== null) {
+      throw new TypeError('Invalid account state resetAt');
+    }
+    return { state: value.state, resetAt: value.resetAt };
+  }
+
   function heartbeat(input) {
     object(input, 'heartbeat');
-    keys(input, ['profileAlias', 'accountAlias', 'tabs', 'lastEvent'], 'heartbeat');
+    keys(input, ['profileAlias', 'accountAlias', 'tabs', 'lastEvent', 'accountState'], 'heartbeat');
     if (!Array.isArray(input.tabs) || input.tabs.length > 40) {
       throw new TypeError('Too many tabs or missing tabs');
     }
@@ -87,7 +111,9 @@
       version: VERSION, kind: 'heartbeat',
       profileAlias: alias(input.profileAlias, 'profileAlias'),
       accountAlias: alias(input.accountAlias, 'accountAlias'),
-      tabs, lastEvent
+      tabs,
+      accountState: normalizedAccountState(input.accountState),
+      lastEvent
     };
   }
 

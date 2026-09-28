@@ -56,9 +56,23 @@ function commandPump(options = {}) {
       profileAlias: 'perfil-1',
       accountAlias: 'cuenta-1',
       tabs: [{ tabId: 7, enabled: true, state: 'waiting' }],
+      accountState: { state: 'unknown', resetAt: null },
       lastEvent: 'idle'
     }
   });
+
+  const limitedHeartbeat = transport.heartbeatRequest({
+    profileAlias: 'perfil-1',
+    accountAlias: 'cuenta-1',
+    tabs: [{ tabId: 7, enabled: true, state: 'limit' }],
+    accountState: { state: 'limit', resetAt: 1_900_000_060_000 },
+    lastEvent: 'rate-limit'
+  });
+  assert.deepEqual(limitedHeartbeat.body.accountState, {
+    state: 'limit',
+    resetAt: 1_900_000_060_000
+  });
+  assert.equal(JSON.stringify(limitedHeartbeat).includes('alertText'), false);
 
   const poll = transport.nextCommandRequest({
     profileAlias: 'perfil-1',
@@ -156,6 +170,7 @@ function commandPump(options = {}) {
   assert.equal(Object.isFrozen(heartbeat.body), true);
   assert.equal(Object.isFrozen(heartbeat.body.tabs), true);
   assert.equal(Object.isFrozen(heartbeat.body.tabs[0]), true);
+  assert.equal(Object.isFrozen(heartbeat.body.accountState), true);
   assert.equal(Object.isFrozen(poll.query), true);
   assert.equal(Object.isFrozen(response), true);
   assert.equal(Object.isFrozen(response.command), true);

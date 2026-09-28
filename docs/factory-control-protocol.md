@@ -19,13 +19,16 @@ El permiso de host, cuando sea necesario, debe cubrir **solo** este origen.
 (`ChatGPTAutopilotFactoryProtocol`) y en Node (`require(...)`).
 Exporta `VERSION=1` y tres funciones que **rechazan** campos desconocidos:
 
-- `heartbeat({profileAlias, accountAlias, tabs, lastEvent})`:
+- `heartbeat({profileAlias, accountAlias, tabs, accountState?, lastEvent})`:
   alias cortos sin formato de correo, hasta 40 pestañas, identificadores enteros
   únicos, indicador `enabled`, estado
   `paused|waiting|generating|sending|error|limit|requires_login`,
-  y código de evento alfanumérico corto o `null`. Rechaza arrays de
-  pestañas dispersos antes de emitir un latido para no producir un estado
-  parcial. No acepta URL, ruta de
+  estado de cuenta mínimo `{state,resetAt}` y código de evento alfanumérico
+  corto o `null`. El estado admite únicamente
+  `ready|limit|requires_login|error|unknown`; solo `limit` puede llevar
+  `resetAt` como epoch-ms positivo. Si un caller legado omite `accountState`,
+  se normaliza a `unknown/null`. Rechaza arrays de pestañas dispersos antes de
+  emitir un latido para no producir un estado parcial. No acepta URL, ruta de
   conversación, correo, token ni texto del chat.
 - `command({id, action, target, payload?})`: solo
   `pause|resume|open_chat|set_prompt|set_mode|send_message`.
@@ -582,3 +585,21 @@ node --check factory-control-activation.js
 node test-factory-control-activation.cjs
 npm test
 ```
+
+
+## Estado de cuenta dentro del heartbeat (slice 22, contrato puro)
+
+El heartbeat v1 normaliza un objeto cerrado `accountState:{state,resetAt}`.
+No contiene el aviso del proveedor, email, token, ruta de chat ni ningún texto
+libre. `factory-control-account-state.js` ya produce la misma forma mínima,
+pero este slice **todavía no conecta** el detector DOM ni activa transporte.
+
+Compatibilidad: callers puros anteriores que omiten `accountState` continúan
+siendo válidos y se normalizan a `{state:"unknown",resetAt:null}`. El transporte
+congela también este objeto anidado antes de entregar el descriptor al invoker.
+
+`datos.yml` registra el esquema como tratamiento **planificado** con
+`providers: []` y retención explícita
+`no_remote_transmission_or_persistence_until_D-061`. Esto documenta el dato
+futuro; no afirma que exista recolección, persistencia o transmisión activa.
+D-061 mantiene bloqueados runtime, pairing real, permisos, red y go-live.
