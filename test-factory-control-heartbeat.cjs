@@ -79,6 +79,38 @@ const validConsent = () => ({
     );
   }
   {
+    const hiddenInput = {
+      ...snapshotBase,
+      providerSignal: { signalCode: 'ready', alertText: null }
+    };
+    Object.defineProperty(hiddenInput, 'providerSignal', {
+      value: { signalCode: 'ready', alertText: null },
+      enumerable: false
+    });
+    assert.throws(
+      () => buildHeartbeatSnapshot(hiddenInput, () => snapshotNow),
+      /input/
+    );
+  }
+  {
+    const hiddenSignal = {};
+    Object.defineProperty(hiddenSignal, 'signalCode', {
+      value: 'authentication',
+      enumerable: false
+    });
+    Object.defineProperty(hiddenSignal, 'alertText', {
+      value: null,
+      enumerable: true
+    });
+    assert.throws(
+      () => buildHeartbeatSnapshot({
+        ...snapshotBase,
+        providerSignal: hiddenSignal
+      }, () => snapshotNow),
+      /provider signal/
+    );
+  }
+  {
     const hiddenSignal = { signalCode: 'ready', alertText: null };
     Object.defineProperty(hiddenSignal, 'chatText', {
       value: 'private chat',
