@@ -143,6 +143,23 @@ assert.deepEqual(
   { state: 'limit', resetAt: null }
 );
 
+const previousTz = process.env.TZ;
+process.env.TZ = 'America/New_York';
+const repeatedHourNow = Date.parse('2024-11-03T06:15:00Z');
+const repeatedHourReset = Date.parse('2024-11-03T06:30:00Z');
+assert.deepEqual(
+  classifyProviderPageSignal(
+    {
+      signalCode: 'rate-limit',
+      alertText: 'Usage limit reached. Try again at 1:30 AM.'
+    },
+    () => repeatedHourNow
+  ),
+  { state: 'limit', resetAt: repeatedHourReset }
+);
+if (previousTz === undefined) delete process.env.TZ;
+else process.env.TZ = previousTz;
+
 assert.deepEqual(
   classifyProviderPageSignal(
     {
