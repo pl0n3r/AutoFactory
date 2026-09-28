@@ -527,6 +527,77 @@ function authenticatedClient(options = {}) {
   assert.equal(JSON.stringify(secretClientResult).includes('credential-client-secret'), false);
 
 
+  let gateSequence = 0;
+  let gatedTransportInvocations = 0;
+  const gateDropsBeforeAckClient = authenticatedClient({
+    activation: {
+      evaluate: async () => {
+        gateSequence += 1;
+        return gateSequence === 1
+          ? { allowed: true, code: 'ready' }
+          : { allowed: false, code: 'legal_blocked' };
+      }
+    },
+    invoker: {
+      execute: async ({ request }) => {
+        gatedTransportInvocations += 1;
+        if (request.path !== '/v1/bridge/commands/next') {
+          throw new Error('ACK transport must stay gated');
+        }
+        return {
+          ok: true,
+          code: 'authorized',
+          response: {
+            status: 200,
+            body: {
+              cursor: 'cursor:gate-next',
+              command: { id: 'command-gate-1', action: 'pause', target: 7 }
+            }
+          }
+        };
+      }
+    }
+  });
+  const gateDropsBeforeAckPump = createCommandPump({
+    client: gateDropsBeforeAckClient,
+    executor: {
+      execute: async commandValue => ({
+        version: 1,
+        kind: 'ack',
+        id: commandValue.id,
+        ok: true,
+        code: 'ok'
+      })
+    }
+  });
+  assert.deepEqual(
+    await gateDropsBeforeAckPump.runOnce({
+      profileAlias: 'perfil-1',
+      cursor: 'cursor:gate-before',
+      context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+    }),
+    { ok: false, code: 'ack_failed', cursor: 'cursor:gate-before' }
+  );
+  assert.equal(gateSequence, 2);
+  assert.equal(gatedTransportInvocations, 1);
+
+  const mutableActivation = readyActivation();
+  const capturedActivationClient = authenticatedClient({
+    activation: mutableActivation,
+    invoker: {
+      execute: async () => ({
+        ok: true,
+        code: 'authorized',
+        response: { status: 204, body: null }
+      })
+    }
+  });
+  mutableActivation.evaluate = async () => ({ allowed: false, code: 'legal_blocked' });
+  assert.deepEqual(
+    await capturedActivationClient.nextCommand({ profileAlias: 'perfil-1', cursor: null }),
+    { ok: true, code: 'empty', cursor: null, command: null }
+  );
+
   const pumpEvents = [];
   const seenIds = new Set();
   let releasePoll;
