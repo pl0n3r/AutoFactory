@@ -29,6 +29,8 @@ for (const input of [
   { authenticated: false, usageLimited: true, providerError: false, resetAt: NOW + 1000 },
   { authenticated: false, usageLimited: false, providerError: true, resetAt: null },
   { authenticated: true, usageLimited: false, providerError: false, resetAt: NOW + 1000 },
+  { authenticated: true, usageLimited: false, providerError: true, resetAt: NOW + 1000 },
+  { authenticated: true, usageLimited: false, providerError: true, resetAt: 'invalid' },
   { authenticated: true, usageLimited: true, providerError: false, resetAt: NOW - 1 },
   { authenticated: true, usageLimited: true, providerError: false, resetAt: NOW + 8 * 24 * 60 * 60 * 1000 }
 ]) {
@@ -40,15 +42,15 @@ assert.deepEqual(
   { state: 'unknown', resetAt: null }
 );
 
-assert.throws(
-  () => classifyAccountState({
+assert.deepEqual(
+  classifyAccountState({
     authenticated: true,
     usageLimited: false,
     providerError: false,
     resetAt: null,
     message: 'login email secret'
   }, () => NOW),
-  /Invalid account state signal/
+  { state: 'unknown', resetAt: null }
 );
 
 const serialized = JSON.stringify(
