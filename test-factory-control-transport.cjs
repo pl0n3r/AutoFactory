@@ -533,6 +533,41 @@ function bridge(options = {}) {
   );
   assert.equal(mismatchedAckSent, 0);
 
+  for (const invalidAck of [
+    { version: 1, kind: 'ack', id: 'pump-command-invalid-ack', ok: false, code: 'ok' },
+    { version: 1, kind: 'ack', id: 'pump-command-invalid-ack', ok: true, code: 'failed' },
+    { version: 1, kind: 'ack', id: 'pump-command-invalid-ack', ok: false, code: 'made_up' }
+  ]) {
+    let invalidAckSent = 0;
+    const invalidAckPump = createCommandPump({
+      client: {
+        nextCommand: async () => ({
+          ok: true,
+          code: 'command',
+          cursor: 'cursor:invalid-ack-next',
+          command: {
+            version: 1, kind: 'command', id: 'pump-command-invalid-ack',
+            action: 'pause', target: 7, payload: null
+          }
+        }),
+        sendAck: async () => {
+          invalidAckSent++;
+          return { ok: true, code: 'sent' };
+        }
+      },
+      executor: { execute: async () => invalidAck }
+    });
+    assert.deepEqual(
+      await invalidAckPump.runOnce({
+        profileAlias: 'perfil-1',
+        cursor: 'cursor:invalid-ack-before',
+        context: { profileAlias: 'perfil-1', enabledTabIds: [7] }
+      }),
+      { ok: false, code: 'failed', cursor: 'cursor:invalid-ack-before' }
+    );
+    assert.equal(invalidAckSent, 0);
+  }
+
   const ackFailurePump = createCommandPump({
     client: {
       nextCommand: async () => ({
