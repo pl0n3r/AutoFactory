@@ -263,12 +263,10 @@
       return Object.freeze({ ok: false, code });
     }
     async function invoke(profileAlias, request) {
-      const result = checkedInvocation(await execute(Object.freeze({
+      return checkedInvocation(await execute(Object.freeze({
         profileAlias,
         request
       })));
-      if (!result.ok) return result;
-      return result;
     }
 
     async function sendHeartbeat(input) {
@@ -280,7 +278,7 @@
         if (!result.ok) return failed(result.code);
         if (![200, 204].includes(result.response.status)) return failed();
         return Object.freeze({ ok: true, code: 'sent' });
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: public facade intentionally collapses validation/adapter details.
         return failed();
       }
     }
@@ -309,7 +307,7 @@
           cursor: parsed.cursor,
           command: parsed.command
         });
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: public facade intentionally collapses validation/adapter details.
         return failed();
       }
     }
@@ -324,7 +322,7 @@
         if (!result.ok) return failed(result.code);
         if (![200, 204].includes(result.response.status)) return failed();
         return Object.freeze({ ok: true, code: 'sent' });
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: public facade intentionally collapses validation/adapter details.
         return failed();
       }
     }
