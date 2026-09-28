@@ -537,8 +537,8 @@ no realiza HTTP y no modifica manifest, background, permisos ni tratamientos.
 loadVerifiedLegalGate, now})` exige, para el mismo `profileAlias`:
 
 - pairing ya verificado, no revocado y vigente;
-- consentimiento de heartbeat ya verificado, habilitado, no revocado y vigente;
-- puerta legal ya verificada, permitida y vigente.
+- consentimiento de heartbeat ya verificado, con propósito fijo `heartbeat`, habilitado, no revocado y vigente;
+- puerta legal ya verificada, con propósito fijo `factory_control_bridge_activation`, permitida, no revocada y vigente.
 
 Los tres snapshots tienen expiración máxima de 24 horas. El preflight vuelve a
 comprobar pairing y consentimiento con el reloj más reciente antes de devolver
