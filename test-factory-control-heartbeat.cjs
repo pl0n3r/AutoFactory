@@ -86,7 +86,7 @@ const validConsent = () => ({
 
   heartbeat = build({ snapshot: async () => ({ ...synthetic(), chatText: 'private chat' }) });
   assert.equal(await heartbeat.tick(), 'failed');
-  assert.equal(deliveries.length, 2);
+  assert.equal(deliveries.length, 3);
 
   heartbeat = build({ snapshot: async () => ({ ...synthetic(), profileAlias: 'another-profile' }) });
   assert.equal(await heartbeat.tick(), 'denied');
@@ -98,7 +98,7 @@ const validConsent = () => ({
     return synthetic();
   } });
   assert.equal(await heartbeat.tick(), 'denied');
-  assert.equal(deliveries.length, 2);
+  assert.equal(deliveries.length, 3);
 
   consent = validConsent();
   heartbeat = build({ snapshot: async () => {
@@ -106,7 +106,7 @@ const validConsent = () => ({
     return synthetic();
   } });
   assert.equal(await heartbeat.tick(), 'denied');
-  assert.equal(deliveries.length, 2);
+  assert.equal(deliveries.length, 3);
 
   // Reauthentication/storage may take long enough for consent to expire.
   consent = { ...validConsent(), expiresAt: time + 100 };
@@ -117,7 +117,7 @@ const validConsent = () => ({
     return structuredClone(consent);
   } });
   assert.equal(await heartbeat.tick(), 'denied');
-  assert.equal(deliveries.length, 2);
+  assert.equal(deliveries.length, 3);
   time = 100000;
   consent = validConsent();
   heartbeat = build({
@@ -145,7 +145,7 @@ const validConsent = () => ({
   heartbeat.stop();
   release();
   assert.equal(await first, 'denied');
-  assert.equal(deliveries.length, 2);
+  assert.equal(deliveries.length, 3);
 
   heartbeat = build({ now: () => Infinity });
   assert.equal(await heartbeat.tick(), 'failed');
