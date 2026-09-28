@@ -44,8 +44,12 @@
       throw new TypeError('Heartbeat snapshot dependencies are required');
     }
     const fields = ['profileAlias', 'accountAlias', 'tabs', 'lastEvent', 'accountState'];
-    if (!exactEnumerableObject(input, fields) ||
-        !exactEnumerableObject(input.accountState, ['state', 'resetAt'])) {
+    if (!exactEnumerableObject(input, fields)) {
+      throw new TypeError('Heartbeat snapshot input is invalid');
+    }
+
+    const rawAccountState = input.accountState;
+    if (!exactEnumerableObject(rawAccountState, ['state', 'resetAt'])) {
       throw new TypeError('Heartbeat snapshot input is invalid');
     }
 
@@ -53,11 +57,11 @@
     const accountAlias = input.accountAlias;
     const tabs = input.tabs;
     const lastEvent = input.lastEvent;
-    const state = input.accountState.state;
-    const resetAt = input.accountState.resetAt;
+    const state = rawAccountState.state;
+    const resetAt = rawAccountState.resetAt;
 
     if (!exactEnumerableObject(input, fields) ||
-        !exactEnumerableObject(input.accountState, ['state', 'resetAt'])) {
+        !exactEnumerableObject(rawAccountState, ['state', 'resetAt'])) {
       throw new TypeError('Heartbeat snapshot input changed during read');
     }
 
