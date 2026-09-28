@@ -168,7 +168,7 @@ function fixture(overrides = {}) {
       issueOpaqueCredential: async ({ profileAlias }) => ({
         credentialId: 'credential-001',
         profileAlias,
-        expiresAt: NOW + (25 * 60 * 60 * 1000)
+        expiresAt: NOW + (23 * 60 * 60 * 1000)
       })
     });
     assert.deepEqual(
