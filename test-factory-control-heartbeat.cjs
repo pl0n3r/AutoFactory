@@ -1,16 +1,17 @@
 const assert = require('node:assert/strict');
-const { createHeartbeatCoordinator, MIN_INTERVAL_MS } = require('./factory-control-heartbeat.js');
+const { PURPOSE, createHeartbeatCoordinator, MIN_INTERVAL_MS } = require('./factory-control-heartbeat.js');
 
 const synthetic = () => ({
   profileAlias: 'sample-profile', accountAlias: 'synthetic-local',
   tabs: [{ tabId: 7, enabled: true, state: 'waiting' }], lastEvent: 'cycle-complete'
 });
 const validConsent = () => ({
-  profileAlias: 'sample-profile', enabled: true, revoked: false,
+  profileAlias: 'sample-profile', purpose: 'heartbeat', enabled: true, revoked: false,
   expiresAt: 1000000
 });
 
 (async () => {
+  assert.equal(PURPOSE, 'heartbeat');
   assert.equal(MIN_INTERVAL_MS, 60000);
   assert.throws(() => createHeartbeatCoordinator({}), /requires/);
 
@@ -52,6 +53,7 @@ const validConsent = () => ({
   for (const changed of [
     { enabled: false }, { revoked: true }, { expiresAt: time - 1 },
     { expiresAt: time + 86400001 }, { profileAlias: 'other-profile' },
+    { purpose: 'response_return' }, { purpose: 'other' },
     { accountAlias: 'private@example.test' }
   ]) {
     consent = { ...validConsent(), ...changed };
