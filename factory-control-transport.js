@@ -177,7 +177,7 @@
     if (typeof serialized !== 'string' || serialized.includes(credentialId)) {
       throw new TypeError('transport response is invalid');
     }
-    return Object.freeze({ status: value.status, body: value.body });
+    return Object.freeze({ status: value.status, body: JSON.parse(serialized) });
   }
 
   function createCredentialBoundInvoker({ credentialStore, invoke, now } = {}) {
