@@ -146,14 +146,17 @@
     }
     return false;
   }
-  function additionalSafetyCheck(doc = document) {
-    const pattern = /(?:comprobaciones adicionales antes de responder|additional checks before responding|additional safety check)/i;
+  function platformReview(doc = document) {
+    const pattern = /(?:nuestros sistemas.{0,120}procesando (?:esta )?solicitud.{0,120}antes de responder|our systems.{0,120}processing (?:this )?request.{0,120}before responding|comprobaciones adicionales antes de responder|additional checks before responding|additional safety check)/i;
     const assistantMessages = doc.querySelectorAll?.('[data-message-author-role="assistant"]') || [];
     if (assistantMessages.length) {
       const latest = assistantMessages[assistantMessages.length - 1];
       return pattern.test(normalize(latest.innerText || latest.textContent));
     }
-    return documentTextMatches(doc, pattern, 420);
+    return documentTextMatches(doc, pattern, 520);
+  }
+  function additionalSafetyCheck(doc = document) {
+    return platformReview(doc);
   }
   const RATE_LIMIT_PATTERN = /rate limit|too many requests|límite de (uso|mensajes)|try again later/i;
 
@@ -164,6 +167,7 @@
   }
 
   function pageSignal(doc = document) {
+    if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };
     const recovery = recoveryButton(doc);
     if (recovery) return { code: 'recoverable', action: 'click-recovery', element: recovery };
     const newChat = conversationLimitButton(doc);
@@ -171,7 +175,6 @@
     if (!composer(doc) && buttonWithText(doc, ['Iniciar sesión', 'Log in', 'Sign in'])) {
       return { code: 'authentication', action: 'human' };
     }
-    if (additionalSafetyCheck(doc)) return { code: 'safety-check', action: 'wait' };
     const alerts = providerAlerts(doc).join(' ').toLowerCase();
     if (RATE_LIMIT_PATTERN.test(alerts)) {
       return { code: 'rate-limit', action: 'wait' };
@@ -272,6 +275,7 @@
     recoveryButton,
     conversationLimitButton,
     interruptedConnection,
+    platformReview,
     additionalSafetyCheck,
     pageSignal,
     providerAccountSignal,
