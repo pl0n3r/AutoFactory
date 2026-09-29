@@ -35,3 +35,19 @@ assert.equal(reliability.sendAccepted({ composerCleared: true, messageAppeared: 
 assert.equal(reliability.sendAccepted({ composerCleared: false, messageAppeared: true, generationStarted: true }), false);
 assert.equal(reliability.sendAccepted({ composerCleared: true, messageAppeared: false, generationStarted: false }), false);
 console.log('Envío: acepta generación iniciada sin exigir mensaje virtualizado y evita falsos positivos');
+
+
+let platformReview = reliability.platformReviewProgress({}, 1000, 5000);
+assert.equal(platformReview.startedAt, 1000);
+assert.equal(platformReview.timedOut, false);
+assert.equal(platformReview.shouldEscalate, false);
+platformReview = reliability.platformReviewProgress(platformReview, 5999, 5000);
+assert.equal(platformReview.timedOut, false);
+platformReview = reliability.platformReviewProgress(platformReview, 6000, 5000);
+assert.equal(platformReview.timedOut, true);
+assert.equal(platformReview.shouldEscalate, true);
+assert.equal(platformReview.escalated, true);
+platformReview = reliability.platformReviewProgress(platformReview, 7000, 5000);
+assert.equal(platformReview.timedOut, true);
+assert.equal(platformReview.shouldEscalate, false);
+console.log('Plataforma: espera configurable y escalamiento único son deterministas');
