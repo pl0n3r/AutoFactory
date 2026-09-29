@@ -53,6 +53,7 @@
     conversationTransferAt: 0,
     platformReviewStartedAt: 0,
     platformReviewEscalated: false,
+    platformReviewPlaceholderSeen: false,
     learned: learning.normalize(),
     nextSendAt: 0,
     busy: false,
@@ -601,6 +602,7 @@
     state.generationStartedAt = 0;
     state.waiting = true;
     state.sawGeneration = generationStarted;
+    state.platformReviewPlaceholderSeen = false;
     state.pendingSignature = signature;
     Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
     persistRuntime();
@@ -657,6 +659,7 @@
       state.platformReviewEscalated = review.escalated;
       if (signal.code === 'platform-review') {
         state.waiting = true;
+        state.platformReviewPlaceholderSeen = true;
         if (generating) state.sawGeneration = true;
         if (review.action === 'escalate') {
           log('human-required', {
@@ -674,6 +677,10 @@
         return;
       }
       if (review.action === 'resume') {
+        if (state.waiting && state.pendingSignature) {
+          state.lastSentAt = Date.now();
+          state.generationStartedAt = 0;
+        }
         log('recovery', { code: 'platform-review', action: 'resume' });
       }
       if (signal.code === 'authentication') {
@@ -799,13 +806,16 @@
         }
         state.waiting = true;
         state.sawGeneration = true;
+        state.platformReviewPlaceholderSeen = false;
         followLatest();
         setStatus('ChatGPT está respondiendo');
         return;
       }
       if (state.waiting) {
         const newAssistantMessage = core.assistantMessageCount(document) > state.assistantCountBeforeSend;
-        if (newAssistantMessage && !generating) state.sawGeneration = true;
+        if (newAssistantMessage && !generating && !state.platformReviewPlaceholderSeen) {
+          state.sawGeneration = true;
+        }
         if (!state.sawGeneration) {
           const recovery = core.recoveryButton(document);
           if (recovery && Date.now() - state.lastRecoveryAt > 10000) {
@@ -833,6 +843,7 @@
           state.lastRecovery = null;
         }
         state.waiting = false;
+        state.platformReviewPlaceholderSeen = false;
         state.pendingSignature = '';
         Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
         persistRuntime();

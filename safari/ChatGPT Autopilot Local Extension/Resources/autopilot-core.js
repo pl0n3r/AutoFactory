@@ -151,6 +151,11 @@
     const text = normalize(value);
     return Boolean(text && text.length <= 520 && PLATFORM_REVIEW_PATTERN.test(text));
   }
+  function activeReviewRegion(region, doc = document) {
+    if (!region || region.hidden || region.getAttribute?.('aria-hidden') === 'true') return false;
+    const style = doc.defaultView?.getComputedStyle?.(region);
+    return !style || (style.display !== 'none' && style.visibility !== 'hidden');
+  }
   function platformReview(doc = document) {
     const assistantMessages = doc.querySelectorAll?.('[data-message-author-role="assistant"]') || [];
     if (assistantMessages.length) {
@@ -160,9 +165,10 @@
     const liveRegions = doc.querySelectorAll?.('[role="status"], [role="alert"], [aria-live]') || [];
     for (const region of liveRegions) {
       if (region.closest?.('[data-message-author-role="assistant"]')) continue;
+      if (!activeReviewRegion(region, doc)) continue;
       if (platformReviewText(region.innerText || region.textContent)) return true;
     }
-    if (assistantMessages.length) return false;
+    if (assistantMessages.length || liveRegions.length) return false;
     return documentTextMatches(doc, PLATFORM_REVIEW_PATTERN, 520);
   }
   function additionalSafetyCheck(doc = document) {
