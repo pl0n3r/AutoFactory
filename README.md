@@ -191,3 +191,131 @@ El seguimiento visual usa desplazamiento progresivo de contenedores relevantes y
 El service worker conserva un historial local acotado de eventos técnicos. No guarda mensajes ni contenido del chat; las rutas se anonimizan por categoría y se excluyen identificadores de conversación. **COPIAR LOG** produce una salida sanitizada y **BORRAR LOG** elimina la copia local.
 
 Consulta [CHANGELOG.md](CHANGELOG.md) para el detalle histórico de versiones y cambios.
+
+
+---
+
+### Project Card
+
+> Autopiloto local para mantener flujos de trabajo de ChatGPT en Chrome y Safari bajo límites explícitos de seguridad.
+
+**Rol en la fábrica:** herramienta local/manual · **Fase:** construction · **Roadmap:** [Issue #1](https://github.com/pl0n3r/AutoFactory/issues/1)
+
+## Operational Cockpit
+
+<!-- factory:status:start -->
+| Señal | Estado |
+| --- | --- |
+| main SHA | UNKNOWN |
+| versión | UNKNOWN |
+| CI | UNKNOWN |
+| release | UNKNOWN |
+| health | UNKNOWN |
+| smoke/observer | UNKNOWN |
+| quality/security | UNKNOWN |
+| Issue activo | UNKNOWN |
+| PR activo | UNKNOWN |
+| último release | UNKNOWN |
+<!-- factory:status:end -->
+
+### Progress + Readiness
+
+<!-- factory:progress-readiness:start -->
+| Señal | Estado |
+| --- | --- |
+| Target | UNKNOWN |
+| Progress | UNKNOWN |
+| Readiness | UNKNOWN |
+| Evidence freshness | UNKNOWN |
+| Critical blockers | UNKNOWN |
+| Trend | UNKNOWN |
+
+| Dimensión | Progress | Readiness |
+| --- | --- | --- |
+| UNKNOWN | UNKNOWN | UNKNOWN |
+<!-- factory:progress-readiness:end -->
+
+> Estos bloques son derivados. `UNKNOWN` / `PENDING` significan que falta evidencia canónica; nunca se sustituyen por `GREEN` sin evidencia verificable.
+
+## Work Queue
+
+- **NOW:** [#58 — adoptar README Contract v1](https://github.com/pl0n3r/AutoFactory/issues/58).
+- **NEXT:** [#59 — detectar revisión de plataforma sin tratarla como sesión colgada](https://github.com/pl0n3r/AutoFactory/issues/59).
+- **LATER:** [#1 — puente con Factory Control](https://github.com/pl0n3r/AutoFactory/issues/1).
+- **BLOCKED:** el tráfico real con ControlBot permanece sujeto a D-061 y a la puerta legal/seguridad correspondiente; no se presume por merge.
+
+Esta cola es un resumen enlazado. El roadmap y el estado real continúan en GitHub Issues.
+
+## Qué hace el producto
+
+AutoFactory es una extensión Chrome/Safari que supervisa localmente chats habilitados, espera respuestas, continúa flujos permitidos y aplica recuperación acotada. No decide prioridades de la fábrica, no concede permisos, no evita controles de plataforma y no sustituye a ControlBot ni a FactoryRunner.
+
+## Arquitectura en 60 segundos
+
+```mermaid
+flowchart LR
+    O[Owner] --> A[AutoFactory Chrome/Safari]
+    A --> C[ChatGPT web DOM]
+    F[Factory] -->|gobernanza y contratos| A
+    CB[ControlBot] -. control plane futuro gobernado .-> A
+    FR[FactoryRunner] -. execution plane separado .-> CB
+```
+
+AutoFactory permanece como herramienta local/manual. Cualquier integración real con ControlBot debe atravesar contratos, consentimiento y controles de seguridad explícitos.
+
+## Stack e infraestructura
+
+- JavaScript/Node.js para la extensión y sus pruebas.
+- Chrome Extension y contenedor nativo Swift/Xcode para Safari.
+- Estado local del navegador, sin servidor web ni base de datos propia.
+- GitHub Actions para CI y releases.
+- Sin Hostinger, MariaDB ni runtime remoto implícitos.
+
+## Ciclo de entrega
+
+Issue → reserva → `trabajo/issue-N` → PR → Factory CI → revisión → merge → release versionada → smoke de instalación/carga Chrome/Safari → evidencia de entrega.
+
+Un CI verde por sí solo no acredita la extensión como VERDE. La versión anterior instalable se conserva para reversión.
+
+## Calidad y seguridad
+
+- `npm test` es la regresión base.
+- Los cambios instalables deben conservar paridad Chrome/Safari y smoke de instalación/carga.
+- No se registran textos de conversaciones, tokens, correos ni IDs de chat identificables.
+- Los cambios de tratamiento de datos exigen actualizar `datos.yml` y sus puertas legales.
+- AutoFactory no automatiza aprobaciones, compras, autenticación, CAPTCHA/MFA ni bypass de rate limits.
+- Los bloques operativos del README fallan cerrado ante ausencia de evidencia.
+
+## Roadmap y fuentes de verdad
+
+- Roadmap canónico: [Issue #1](https://github.com/pl0n3r/AutoFactory/issues/1) y sus hojas.
+- Gobernanza: [Factory PLAN-AGENTES.md](https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md).
+- Contrato local: `AGENTES.md`.
+- Decisiones vigentes: `decisiones.yml`.
+- Datos y privacidad: `datos.yml`.
+- Historia de versiones: `CHANGELOG.md` y GitHub Releases.
+- Documentación profunda: `docs/`.
+
+El README enlaza estas fuentes; no reemplaza roadmap, changelog ni evidencia de CI/release.
+
+## Desarrollo local
+
+Comandos reales y reproducibles:
+
+```bash
+npm install
+npm test
+./build-safari.sh
+```
+
+Para Chrome, carga la raíz como extensión descomprimida. Para Safari, `build-safari.sh` sincroniza la fuente web antes de abrir el proyecto Xcode.
+
+## Mapa de la fábrica
+
+- **Factory:** governance/kit y contratos comunes.
+- **ControlBot:** control plane privado.
+- **FactoryRunner:** execution plane autónomo.
+- **Condor / GrindFlow / BRVTAL:** productos.
+- **AutoFactory:** **herramienta local/manual** para sesiones web autorizadas.
+
+AutoFactory es el repositorio actual; su elegibilidad en el dispatcher no cambia estas responsabilidades.
