@@ -1,0 +1,8 @@
+{
+  "name": "ChatGPT Autopilot Local",
+  "tagline": "Extensión local Chrome/Safari para continuar flujos de ChatGPT de forma controlada.",
+  "role": "local/manual tool",
+  "phase": "construction",
+  "roadmap": "GitHub Issues + pl0n3r/AutoFactory#1",
+  "stack": "JavaScript + Node.js >=20 + Chrome Manifest V3 + Safari/Xcode + Factory Kit v1"
+}
