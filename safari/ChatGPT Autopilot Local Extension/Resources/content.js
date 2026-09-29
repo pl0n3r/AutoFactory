@@ -14,6 +14,7 @@
     scrollStableChecks: 8,
     scrollMaxSeconds: 45,
     manualScrollPauseSeconds: 20,
+    platformReviewMaxSeconds: 180,
     autoReload: true,
     reloadCooldownMinutes: 1,
     periodicReload: true,
@@ -50,6 +51,8 @@
     connectionFirstSeenAt: 0,
     connectionCancelAt: 0,
     conversationTransferAt: 0,
+    platformReviewStartedAt: 0,
+    platformReviewEscalated: false,
     learned: learning.normalize(),
     nextSendAt: 0,
     busy: false,
@@ -271,6 +274,8 @@
         manualScrollPauseSeconds: Math.max(0, Math.min(300,
           Number.isFinite(Number(values.manualScrollPauseSeconds))
             ? Number(values.manualScrollPauseSeconds) : SCROLL_DEFAULTS.manualScrollPauseSeconds)),
+        platformReviewMaxSeconds: Math.max(30, Math.min(1800,
+          Number(values.platformReviewMaxSeconds) || SCROLL_DEFAULTS.platformReviewMaxSeconds)),
         autoReload: values.autoReload !== false,
         reloadCooldownMinutes: Math.max(1, Math.min(60, Number(values.reloadCooldownMinutes) || SCROLL_DEFAULTS.reloadCooldownMinutes)),
         periodicReload: values.periodicReload === true,
@@ -643,12 +648,38 @@
         return;
       }
       if (signal.code !== 'ready') followLatest(true);
-      if (signal.code === 'safety-check') {
-        recordErrorOnce(signal, 300000);
+      if (signal.code === 'platform-review') {
+        const review = reliability.platformReviewProgress({
+          startedAt: state.platformReviewStartedAt,
+          escalated: state.platformReviewEscalated
+        }, Date.now(), currentConfig.platformReviewMaxSeconds * 1000);
+        state.platformReviewStartedAt = review.startedAt;
+        state.platformReviewEscalated = review.escalated;
         state.waiting = true;
         if (generating) state.sawGeneration = true;
-        setStatus('Comprobación adicional de seguridad; esperando sin intervenir');
+        if (review.shouldEscalate) {
+          const evidence = {
+            code: 'platform-review-timeout',
+            elapsedMs: review.elapsedMs,
+            maxMs: currentConfig.platformReviewMaxSeconds * 1000
+          };
+          recordErrorOnce(evidence, currentConfig.platformReviewMaxSeconds * 1000);
+          log('human-required', evidence);
+        }
+        setStatus(
+          review.timedOut
+            ? 'Revisión de plataforma prolongada; escalada sin reintentar'
+            : 'Revisión de plataforma; esperando sin intervenir',
+          review.timedOut ? 'error' : 'idle'
+        );
         return;
+      }
+      if (state.platformReviewStartedAt) {
+        log('platform-review-resumed', {
+          elapsedMs: Math.max(0, Date.now() - state.platformReviewStartedAt)
+        });
+        state.platformReviewStartedAt = 0;
+        state.platformReviewEscalated = false;
       }
       if (signal.code === 'authentication') {
         recordErrorOnce(signal);
