@@ -70,10 +70,23 @@
       || current.reloadAttempts < MAX_RELOADS
     );
   }
-  function platformReviewProgress(value = {}, now = Date.now(), maxMs = DEFAULT_PLATFORM_REVIEW_MAX_MS) {
+  function platformReviewProgress(
+    value = {}, now = Date.now(), maxMs = DEFAULT_PLATFORM_REVIEW_MAX_MS, visible = true
+  ) {
     const normalizedNow = Math.max(0, Number(now) || 0);
     const normalizedMaxMs = Math.max(1000, Number(maxMs) || DEFAULT_PLATFORM_REVIEW_MAX_MS);
-    const startedAt = Math.max(0, Number(value.startedAt) || 0) || normalizedNow;
+    const previousStartedAt = Math.max(0, Number(value.startedAt) || 0);
+    if (!visible) {
+      return Object.freeze({
+        startedAt: 0,
+        elapsedMs: 0,
+        timedOut: false,
+        shouldEscalate: false,
+        escalated: false,
+        action: previousStartedAt ? 'resume' : 'none'
+      });
+    }
+    const startedAt = previousStartedAt || normalizedNow;
     const elapsedMs = Math.max(0, normalizedNow - startedAt);
     const timedOut = elapsedMs >= normalizedMaxMs;
     const wasEscalated = value.escalated === true;
@@ -83,7 +96,8 @@
       elapsedMs,
       timedOut,
       shouldEscalate,
-      escalated: wasEscalated || shouldEscalate
+      escalated: wasEscalated || shouldEscalate,
+      action: shouldEscalate ? 'escalate' : timedOut ? 'hold' : 'wait'
     });
   }
   return {

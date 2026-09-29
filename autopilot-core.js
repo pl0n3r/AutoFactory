@@ -146,14 +146,24 @@
     }
     return false;
   }
+  const PLATFORM_REVIEW_PATTERN = /(?:comprobaciones adicionales antes de responder|additional checks before responding|additional safety check|(?:nuestros sistemas|our systems|systems?).{0,120}(?:procesando|processing|revisando|reviewing|comprobando|checking).{0,160}(?:esta\s+|this\s+)?(?:solicitud|request).{0,160}(?:antes de responder|before (?:responding|providing a response)))/i;
+  function platformReviewText(value) {
+    const text = normalize(value);
+    return Boolean(text && text.length <= 520 && PLATFORM_REVIEW_PATTERN.test(text));
+  }
   function platformReview(doc = document) {
-    const pattern = /(?:nuestros sistemas.{0,120}procesando (?:esta )?solicitud.{0,120}antes de responder|our systems.{0,120}processing (?:this )?request.{0,120}before responding|comprobaciones adicionales antes de responder|additional checks before responding|additional safety check)/i;
     const assistantMessages = doc.querySelectorAll?.('[data-message-author-role="assistant"]') || [];
     if (assistantMessages.length) {
       const latest = assistantMessages[assistantMessages.length - 1];
-      return pattern.test(normalize(latest.innerText || latest.textContent));
+      if (platformReviewText(latest.innerText || latest.textContent)) return true;
     }
-    return documentTextMatches(doc, pattern, 520);
+    const liveRegions = doc.querySelectorAll?.('[role="status"], [role="alert"], [aria-live]') || [];
+    for (const region of liveRegions) {
+      if (region.closest?.('[data-message-author-role="assistant"]')) continue;
+      if (platformReviewText(region.innerText || region.textContent)) return true;
+    }
+    if (assistantMessages.length) return false;
+    return documentTextMatches(doc, PLATFORM_REVIEW_PATTERN, 520);
   }
   function additionalSafetyCheck(doc = document) {
     return platformReview(doc);

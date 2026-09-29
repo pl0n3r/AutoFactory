@@ -78,6 +78,25 @@ const reviewBeforeRecovery = {
 assert.deepEqual(core.pageSignal(reviewBeforeRecovery), { code: 'platform-review', action: 'wait' });
 console.log('Plataforma: la revisión tiene prioridad sobre recuperación o reenvío');
 
+const liveReviewStatus = element('Our systems are reviewing this request before responding.');
+liveReviewStatus.closest = () => null;
+const liveReviewDocument = {
+  querySelector(selector) {
+    return selector === '#prompt-textarea' ? { id: 'prompt-textarea' } : null;
+  },
+  querySelectorAll(selector) {
+    if (selector === '[data-message-author-role="assistant"]') {
+      return [element('La respuesta anterior ya terminó correctamente.')];
+    }
+    if (selector === '[role="status"], [role="alert"], [aria-live]') return [liveReviewStatus];
+    if (selector === 'button' || selector === 'button, a') return [];
+    return [];
+  }
+};
+assert.equal(core.platformReview(liveReviewDocument), true);
+assert.deepEqual(core.pageSignal(liveReviewDocument), { code: 'platform-review', action: 'wait' });
+console.log('Plataforma: un estado vivo se detecta aunque el último assistant sea histórico');
+
 const historicalSafetyCheck = {
   querySelectorAll(selector) {
     if (selector === '[data-message-author-role="assistant"]') return [

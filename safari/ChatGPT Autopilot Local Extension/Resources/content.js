@@ -648,23 +648,22 @@
         return;
       }
       if (signal.code !== 'ready') followLatest(true);
+      const review = reliability.platformReviewProgress({
+        startedAt: state.platformReviewStartedAt,
+        escalated: state.platformReviewEscalated
+      }, Date.now(), currentConfig.platformReviewMaxSeconds * 1000,
+      signal.code === 'platform-review');
+      state.platformReviewStartedAt = review.startedAt;
+      state.platformReviewEscalated = review.escalated;
       if (signal.code === 'platform-review') {
-        const review = reliability.platformReviewProgress({
-          startedAt: state.platformReviewStartedAt,
-          escalated: state.platformReviewEscalated
-        }, Date.now(), currentConfig.platformReviewMaxSeconds * 1000);
-        state.platformReviewStartedAt = review.startedAt;
-        state.platformReviewEscalated = review.escalated;
         state.waiting = true;
         if (generating) state.sawGeneration = true;
-        if (review.shouldEscalate) {
-          const evidence = {
+        if (review.action === 'escalate') {
+          log('human-required', {
             code: 'platform-review-timeout',
-            elapsedMs: review.elapsedMs,
-            maxMs: currentConfig.platformReviewMaxSeconds * 1000
-          };
-          recordErrorOnce(evidence, currentConfig.platformReviewMaxSeconds * 1000);
-          log('human-required', evidence);
+            action: 'escalate',
+            reason: 'timeout'
+          });
         }
         setStatus(
           review.timedOut
@@ -674,12 +673,8 @@
         );
         return;
       }
-      if (state.platformReviewStartedAt) {
-        log('platform-review-resumed', {
-          elapsedMs: Math.max(0, Date.now() - state.platformReviewStartedAt)
-        });
-        state.platformReviewStartedAt = 0;
-        state.platformReviewEscalated = false;
+      if (review.action === 'resume') {
+        log('recovery', { code: 'platform-review', action: 'resume' });
       }
       if (signal.code === 'authentication') {
         recordErrorOnce(signal);
