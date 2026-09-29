@@ -14,6 +14,7 @@
     scrollStableChecks: 8,
     scrollMaxSeconds: 45,
     manualScrollPauseSeconds: 20,
+    platformReviewMaxSeconds: 180,
     autoReload: true,
     reloadCooldownMinutes: 1,
     periodicReload: true,
@@ -50,6 +51,9 @@
     connectionFirstSeenAt: 0,
     connectionCancelAt: 0,
     conversationTransferAt: 0,
+    platformReviewStartedAt: 0,
+    platformReviewEscalated: false,
+    platformReviewPlaceholderSeen: false,
     learned: learning.normalize(),
     nextSendAt: 0,
     busy: false,
@@ -271,6 +275,8 @@
         manualScrollPauseSeconds: Math.max(0, Math.min(300,
           Number.isFinite(Number(values.manualScrollPauseSeconds))
             ? Number(values.manualScrollPauseSeconds) : SCROLL_DEFAULTS.manualScrollPauseSeconds)),
+        platformReviewMaxSeconds: Math.max(30, Math.min(1800,
+          Number(values.platformReviewMaxSeconds) || SCROLL_DEFAULTS.platformReviewMaxSeconds)),
         autoReload: values.autoReload !== false,
         reloadCooldownMinutes: Math.max(1, Math.min(60, Number(values.reloadCooldownMinutes) || SCROLL_DEFAULTS.reloadCooldownMinutes)),
         periodicReload: values.periodicReload === true,
@@ -596,6 +602,7 @@
     state.generationStartedAt = 0;
     state.waiting = true;
     state.sawGeneration = generationStarted;
+    state.platformReviewPlaceholderSeen = false;
     state.pendingSignature = signature;
     Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
     persistRuntime();
@@ -643,12 +650,38 @@
         return;
       }
       if (signal.code !== 'ready') followLatest(true);
-      if (signal.code === 'safety-check') {
-        recordErrorOnce(signal, 300000);
+      const review = reliability.platformReviewProgress({
+        startedAt: state.platformReviewStartedAt,
+        escalated: state.platformReviewEscalated
+      }, Date.now(), currentConfig.platformReviewMaxSeconds * 1000,
+      signal.code === 'platform-review');
+      state.platformReviewStartedAt = review.startedAt;
+      state.platformReviewEscalated = review.escalated;
+      if (signal.code === 'platform-review') {
         state.waiting = true;
+        state.platformReviewPlaceholderSeen = true;
         if (generating) state.sawGeneration = true;
-        setStatus('Comprobación adicional de seguridad; esperando sin intervenir');
+        if (review.action === 'escalate') {
+          log('human-required', {
+            code: 'platform-review-timeout',
+            action: 'escalate',
+            reason: 'timeout'
+          });
+        }
+        setStatus(
+          review.timedOut
+            ? 'Revisión de plataforma prolongada; escalada sin reintentar'
+            : 'Revisión de plataforma; esperando sin intervenir',
+          review.timedOut ? 'error' : 'idle'
+        );
         return;
+      }
+      if (review.action === 'resume') {
+        if (state.waiting && state.pendingSignature) {
+          state.lastSentAt = Date.now();
+          state.generationStartedAt = 0;
+        }
+        log('recovery', { code: 'platform-review', action: 'resume' });
       }
       if (signal.code === 'authentication') {
         recordErrorOnce(signal);
@@ -773,13 +806,16 @@
         }
         state.waiting = true;
         state.sawGeneration = true;
+        state.platformReviewPlaceholderSeen = false;
         followLatest();
         setStatus('ChatGPT está respondiendo');
         return;
       }
       if (state.waiting) {
         const newAssistantMessage = core.assistantMessageCount(document) > state.assistantCountBeforeSend;
-        if (newAssistantMessage && !generating) state.sawGeneration = true;
+        if (newAssistantMessage && !generating && !state.platformReviewPlaceholderSeen) {
+          state.sawGeneration = true;
+        }
         if (!state.sawGeneration) {
           const recovery = core.recoveryButton(document);
           if (recovery && Date.now() - state.lastRecoveryAt > 10000) {
@@ -807,6 +843,7 @@
           state.lastRecovery = null;
         }
         state.waiting = false;
+        state.platformReviewPlaceholderSeen = false;
         state.pendingSignature = '';
         Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
         persistRuntime();

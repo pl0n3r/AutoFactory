@@ -36,9 +36,66 @@ console.log('Borrador: solo el prompt exacto del piloto puede retomarse');
 const safetyCheck = documentFixture([
   'Nuestros sistemas están haciendo comprobaciones adicionales antes de responder a esta solicitud.'
 ]);
+assert.equal(core.platformReview(safetyCheck), true);
 assert.equal(core.additionalSafetyCheck(safetyCheck), true);
-assert.deepEqual(core.pageSignal(safetyCheck), { code: 'safety-check', action: 'wait' });
-console.log('Seguridad: comprobación adicional detectada sin cancelar ni reenviar');
+assert.deepEqual(core.pageSignal(safetyCheck), { code: 'platform-review', action: 'wait' });
+console.log('Plataforma: comprobación adicional detectada sin cancelar ni reenviar');
+
+const processingReview = documentFixture([
+  'Nuestros sistemas están procesando esta solicitud un poco más antes de responder.'
+]);
+assert.equal(core.platformReview(processingReview), true);
+assert.deepEqual(core.pageSignal(processingReview), { code: 'platform-review', action: 'wait' });
+
+const englishProcessingReview = documentFixture([
+  'Our systems are processing this request a little longer before responding.'
+]);
+assert.equal(core.platformReview(englishProcessingReview), true);
+assert.deepEqual(core.pageSignal(englishProcessingReview), { code: 'platform-review', action: 'wait' });
+console.log('Plataforma: revisión moderna detectada en español e inglés');
+
+const reviewBeforeRecovery = {
+  querySelector(selector) {
+    if (selector === '#prompt-textarea') return { id: 'prompt-textarea' };
+    return null;
+  },
+  querySelectorAll(selector) {
+    if (selector === '[data-message-author-role="assistant"]') {
+      return [element('Nuestros sistemas están procesando esta solicitud un poco más antes de responder.')];
+    }
+    if (selector === 'button') {
+      return [{
+        disabled: false,
+        innerText: 'Reintentar',
+        textContent: 'Reintentar',
+        getAttribute() { return null; }
+      }];
+    }
+    if (selector === 'button, a') return [];
+    return [];
+  }
+};
+assert.deepEqual(core.pageSignal(reviewBeforeRecovery), { code: 'platform-review', action: 'wait' });
+console.log('Plataforma: la revisión tiene prioridad sobre recuperación o reenvío');
+
+const liveReviewStatus = element('Our systems are reviewing this request before responding.');
+liveReviewStatus.closest = () => null;
+const liveReviewDocument = {
+  querySelector(selector) {
+    return selector === '#prompt-textarea' ? { id: 'prompt-textarea' } : null;
+  },
+  querySelectorAll(selector) {
+    if (selector === '[data-message-author-role="assistant"]') {
+      return [element('La respuesta anterior ya terminó correctamente.')];
+    }
+    if (selector === '[role="status"], [role="alert"], [aria-live]') return [liveReviewStatus];
+    if (selector === 'button' || selector === 'button, a') return [];
+    return [];
+  }
+};
+assert.equal(core.platformReview(liveReviewDocument), true);
+assert.deepEqual(core.pageSignal(liveReviewDocument), { code: 'platform-review', action: 'wait' });
+console.log('Plataforma: un estado vivo se detecta aunque el último assistant sea histórico');
 
 const historicalSafetyCheck = {
   querySelectorAll(selector) {
@@ -49,8 +106,9 @@ const historicalSafetyCheck = {
     return [];
   }
 };
+assert.equal(core.platformReview(historicalSafetyCheck), false);
 assert.equal(core.additionalSafetyCheck(historicalSafetyCheck), false);
-console.log('Seguridad: un aviso histórico no bloquea la respuesta más reciente');
+console.log('Plataforma: un aviso histórico no bloquea la respuesta más reciente');
 
 const stopDocument = {
   querySelector(selector) {

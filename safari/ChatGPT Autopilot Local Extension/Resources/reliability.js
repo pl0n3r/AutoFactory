@@ -7,6 +7,7 @@
   const SESSION_KEY = 'chatgpt-autopilot-runtime-v1';
   const MAX_FAILURES = 5;
   const MAX_RELOADS = 3;
+  const DEFAULT_PLATFORM_REVIEW_MAX_MS = 180000;
 
   function signature(value) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -69,5 +70,39 @@
       || current.reloadAttempts < MAX_RELOADS
     );
   }
-  return { SESSION_KEY, MAX_FAILURES, MAX_RELOADS, signature, normalize, load, save, backoffMs, sendAccepted, afterFailure, afterSuccess, beforeReload, canReload };
+  function platformReviewProgress(
+    value = {}, now = Date.now(), maxMs = DEFAULT_PLATFORM_REVIEW_MAX_MS, visible = true
+  ) {
+    const normalizedNow = Math.max(0, Number(now) || 0);
+    const normalizedMaxMs = Math.max(1000, Number(maxMs) || DEFAULT_PLATFORM_REVIEW_MAX_MS);
+    const previousStartedAt = Math.max(0, Number(value.startedAt) || 0);
+    if (!visible) {
+      return Object.freeze({
+        startedAt: 0,
+        elapsedMs: 0,
+        timedOut: false,
+        shouldEscalate: false,
+        escalated: false,
+        action: previousStartedAt ? 'resume' : 'none'
+      });
+    }
+    const startedAt = previousStartedAt || normalizedNow;
+    const elapsedMs = Math.max(0, normalizedNow - startedAt);
+    const timedOut = elapsedMs >= normalizedMaxMs;
+    const wasEscalated = value.escalated === true;
+    const shouldEscalate = timedOut && !wasEscalated;
+    return Object.freeze({
+      startedAt,
+      elapsedMs,
+      timedOut,
+      shouldEscalate,
+      escalated: wasEscalated || shouldEscalate,
+      action: shouldEscalate ? 'escalate' : timedOut ? 'hold' : 'wait'
+    });
+  }
+  return {
+    SESSION_KEY, MAX_FAILURES, MAX_RELOADS, DEFAULT_PLATFORM_REVIEW_MAX_MS,
+    signature, normalize, load, save, backoffMs, sendAccepted, afterFailure,
+    afterSuccess, beforeReload, canReload, platformReviewProgress
+  };
 });
