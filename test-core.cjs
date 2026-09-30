@@ -36,6 +36,12 @@ function page(html) {
   const doc = page('<article data-message-author-role="assistant"></article><article data-message-author-role="assistant"></article><button aria-label="Reintentar">Reintentar</button><button>Eliminar</button>');
   assert.equal(core.assistantMessageCount(doc), 2);
   assert.equal(core.recoveryButton(doc).getAttribute('aria-label'), 'Reintentar');
+  assert.equal(core.isSafeRecoverySignal(core.pageSignal(doc)), true);
+  assert.equal(core.isSafeRecoverySignal({ code: 'connection', action: 'reload' }), false);
+  assert.equal(core.recoverableEscalation(1), 'retry');
+  assert.equal(core.recoverableEscalation(2), 'retry');
+  assert.equal(core.recoverableEscalation(3), 'reload');
+  assert.equal(core.recoverableEscalation(4), 'new-chat');
 }
 {
   const doc = page('<button>Confirmar compra</button><button>Permitir acceso</button>');

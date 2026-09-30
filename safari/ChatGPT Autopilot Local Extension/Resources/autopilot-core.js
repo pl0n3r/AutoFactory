@@ -182,6 +182,15 @@
       .filter(Boolean);
   }
 
+  function isSafeRecoverySignal(signal) {
+    return Boolean(signal && signal.code === 'recoverable' && signal.action === 'click-recovery' && signal.element);
+  }
+  function recoverableEscalation(attempts) {
+    const count = Math.max(0, Number(attempts) || 0);
+    if (count <= 2) return 'retry';
+    if (count === 3) return 'reload';
+    return 'new-chat';
+  }
   function pageSignal(doc = document) {
     if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };
     const recovery = recoveryButton(doc);
@@ -293,6 +302,8 @@
     interruptedConnection,
     platformReview,
     additionalSafetyCheck,
+    isSafeRecoverySignal,
+    recoverableEscalation,
     pageSignal,
     providerAccountSignal,
     normalize,

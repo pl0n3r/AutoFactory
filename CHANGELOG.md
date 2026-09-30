@@ -2,6 +2,13 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.8 — 2026-09-29
+
+- Evita el ciclo infinito cuando ChatGPT no puede cargar una conversación.
+- Ejecuta dos reintentos, una recarga controlada y, si el error persiste, continúa en un chat nuevo.
+- Da prioridad a esta recuperación segura aunque el circuito de fallos esté activo.
+- Mantiene paridad funcional entre Chrome y Safari y añade pruebas de la escalada.
+
 ## 1.6.7 — 2026-09-26
 
 - Evita falsos errores de envío cuando ChatGPT virtualiza el mensaje en conversaciones largas.

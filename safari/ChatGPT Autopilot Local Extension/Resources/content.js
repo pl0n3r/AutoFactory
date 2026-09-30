@@ -23,6 +23,7 @@
     conversationMode: 'chat'
   });
   const restored = reliability.load(sessionStorage);
+  const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state';
   const runtimeSchemaVersion = 3;
   const runtimeWasUpgraded = sessionStorage.getItem('chatgpt-autopilot-runtime-schema') !== String(runtimeSchemaVersion);
   if (runtimeWasUpgraded) {
@@ -612,25 +613,68 @@
 
   async function tick() {
     if (!state.enabled || state.busy) return;
-    if (Date.now() < state.circuitOpenUntil
-        && core.stopButton(document)
-        && core.interruptedConnection(document)) {
-      Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
-      state.reloadAttempts = 0;
-      state.reloadWindowStartedAt = 0;
-      persistRuntime();
-      log('circuit-reset', { reason: 'active-interrupted-generation' });
-    }
-    if (Date.now() < state.circuitOpenUntil) {
-      setStatus(`Protección activa; reintento en ${Math.ceil((state.circuitOpenUntil - Date.now()) / 60000)} min`, 'error');
-      return;
-    }
     state.busy = true;
     try {
+      const signal = core.pageSignal(document);
+      if (core.isSafeRecoverySignal(signal)
+          && Date.now() - state.lastRecoveryAt > 10000) {
+        let previous = {};
+        try { previous = JSON.parse(sessionStorage.getItem(RECOVERABLE_STATE_KEY) || '{}'); }
+        catch (_error) {}
+        const attempts = previous.path === location.pathname
+          ? Math.max(0, Number(previous.attempts) || 0) + 1 : 1;
+        sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify({
+          path: location.pathname, attempts
+        }));
+        const escalation = core.recoverableEscalation(attempts);
+        state.lastRecoveryAt = Date.now();
+        state.circuitOpenUntil = 0;
+        state.consecutiveFailures = 0;
+        state.waiting = escalation === 'retry';
+        state.sawGeneration = false;
+        state.assistantCountBeforeSend = core.assistantMessageCount(document);
+        state.lastRecovery = { code: signal.code, action: escalation };
+        persistRuntime();
+        saveLearning('recovery');
+        saveLearning('error', 0, { code: signal.code });
+        if (escalation === 'retry') {
+          signal.element.click();
+          setStatus(`Conversación no disponible; reintento ${attempts}/2`);
+        } else if (escalation === 'reload') {
+          setStatus('Conversación no disponible; recarga controlada');
+          location.reload();
+        } else {
+          sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
+          state.pendingSignature = '';
+          state.lastSentAt = 0;
+          state.nextSendAt = Date.now() + 5000;
+          persistRuntime();
+          setStatus('Conversación inaccesible; continuando en un chat nuevo');
+          location.assign('https://chatgpt.com/');
+        }
+        log('recovery', { code: signal.code, action: escalation, attempts,
+          priority: 'circuit-bypass' });
+        return;
+      }
+      if (signal.code !== 'recoverable') {
+        sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
+      }
+      if (Date.now() < state.circuitOpenUntil
+          && core.stopButton(document)
+          && core.interruptedConnection(document)) {
+        Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
+        state.reloadAttempts = 0;
+        state.reloadWindowStartedAt = 0;
+        persistRuntime();
+        log('circuit-reset', { reason: 'active-interrupted-generation' });
+      }
+      if (Date.now() < state.circuitOpenUntil) {
+        setStatus(`Protección activa; reintento en ${Math.ceil((state.circuitOpenUntil - Date.now()) / 60000)} min`, 'error');
+        return;
+      }
       const currentConfig = await config();
       const { prompt, delaySeconds } = currentConfig;
       state.settings = { ...state.settings, ...currentConfig };
-      const signal = core.pageSignal(document);
       const generating = Boolean(core.stopButton(document));
       if (Date.now() - state.contentLoadedAt < 5000) {
         setStatus('Inicializando la interfaz');

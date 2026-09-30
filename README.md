@@ -40,6 +40,11 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 | UNKNOWN | UNKNOWN | UNKNOWN |
 <!-- factory:progress-readiness:end -->
 
+## Versión 1.6.8
+
+- Recupera conversaciones inaccesibles sin ciclos infinitos: dos reintentos, una recarga controlada y continuación en un chat nuevo.
+- Distingue el selector de razonamiento del selector general del modelo y, cuando es necesario, abre Thinking/Pensando antes de elegir Alto/High.
+
 > UNKNOWN/PENDING indica ausencia de evidencia canónica suficiente; nunca equivale a GREEN. En AutoFactory, CI verde no acredita por sí solo una extensión instalable ni un smoke Chrome/Safari.
 
 ## Work Queue
