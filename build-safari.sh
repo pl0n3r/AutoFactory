@@ -6,7 +6,7 @@ PROJECT_ROOT="$ROOT/safari"
 RESOURCES="$PROJECT_ROOT/ChatGPT Autopilot Local Extension/Resources"
 
 mkdir -p "$RESOURCES/icons"
-for file in manifest.json autopilot-core.js learning.js reliability.js content.js popup.html popup.js background.js; do
+for file in manifest.json autopilot-core.js account-budget-guard.js learning.js reliability.js content.js popup.html popup.js popup-budget.js background-entry.js background.js account-budget.js account-budget-background.js; do
   cp "$ROOT/$file" "$RESOURCES/$file"
 done
 for file in icon-16.png icon-32.png icon-48.png icon-64.png icon-128.png; do

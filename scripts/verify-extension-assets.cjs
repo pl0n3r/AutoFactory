@@ -99,7 +99,6 @@ function assetRefs(manifest) {
     }
     for (const file of Object.values(icons)) refs.push(assetName(file));
   }
-  // This is a source parity check, not an assertion of browser installation.
   return [...new Set(refs)];
 }
 function popupScriptRefs(html) {
@@ -114,6 +113,26 @@ function popupScriptRefs(html) {
   }
   if (scripts.length === 0) fail('popup script missing');
   return scripts;
+}
+function workerImportRefs(source) {
+  const refs = [];
+  const calls = source.match(/\bimportScripts\s*\([^)]*\)\s*;/g) || [];
+  for (const call of calls) {
+    const body = call.slice(call.indexOf('(') + 1, call.lastIndexOf(')'));
+    const values = [];
+    const expression = /\s*(['"])([^'"]+)\1\s*(?:,|$)/y;
+    let cursor = 0;
+    while (cursor < body.length) {
+      expression.lastIndex = cursor;
+      const match = expression.exec(body);
+      if (!match) fail('background importScripts must use static local assets');
+      values.push(assetName(match[2]));
+      cursor = expression.lastIndex;
+    }
+    if (!values.length) fail('background importScripts must declare local assets');
+    refs.push(...values);
+  }
+  return refs;
 }
 function validateExtensionTree(root, io = fs) {
   const manifest = readJson(root, 'manifest.json', io);
@@ -139,8 +158,12 @@ function validateExtensionTree(root, io = fs) {
   const popupScripts = popupScriptRefs(
     regularFile(root, manifest.action.default_popup, io).toString('utf8')
   );
+  const backgroundImports = workerImportRefs(
+    regularFile(root, manifest.background.service_worker, io).toString('utf8')
+  );
   const files = [...new Set([
     ...popupScripts,
+    ...backgroundImports,
     ...assetRefs(manifest)
   ])];
   const safariRoot = regularDirectory(root, SAFARI_RESOURCES, io);
@@ -165,4 +188,4 @@ if (require.main === module) {
     process.exitCode = 1;
   }
 }
-module.exports = { validateExtensionTree };
+module.exports = { validateExtensionTree, workerImportRefs };

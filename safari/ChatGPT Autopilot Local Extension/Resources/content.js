@@ -4,6 +4,7 @@
   const learning = globalThis.ChatGPTAutopilotLearning;
   const reliability = globalThis.ChatGPTAutopilotReliability;
   const extensionApi = globalThis.chrome || globalThis.browser;
+  const budgetGuard = globalThis.ChatGPTAutopilotBudgetGuard;
   const DEFAULT_PROMPT = 'Continúa autónomamente el desarrollo del proyecto desde el estado real más reciente. Antes de modificar nada: inspecciona el estado actual del repo, rama, issues, PRs, CI y revisiones. No te detengas después de cada paso; avanza mientras sea seguro, sin duplicar trabajo, y reporta solo hitos grandes.';
   const PROMPT_SCHEMA_VERSION = 2;
   const SCROLL_DEFAULTS = Object.freeze({
@@ -518,13 +519,38 @@
     return 'unavailable';
   }
 
+  async function waitForBudgetBeforeSend(prompt) {
+    if (!budgetGuard?.waitUntilReady) return true;
+    const budgetAt = budgetGuard.nextAllowedAt?.();
+    if (Number.isSafeInteger(budgetAt) && budgetAt > Date.now()) {
+      const seconds = Math.max(1, Math.ceil((budgetAt - Date.now()) / 1000));
+      setStatus(`Presupuesto compartido: esperando ${seconds} s`);
+    } else {
+      setStatus('Verificando presupuesto compartido');
+    }
+    const budgetReady = await budgetGuard.waitUntilReady();
+    if (!budgetReady || !state.enabled) return false;
+    const field = core.composer(document);
+    const currentText = core.composerText(field);
+    if (currentText && !core.isOwnedDraft(field, prompt)) {
+      setStatus('Pausado: el campo contiene texto', 'error');
+      return false;
+    }
+    return true;
+  }
+
   function waitForSendButton(timeoutMs = 10000) {
     const started = Date.now();
+    const localDeadline = started + timeoutMs;
     return new Promise(resolve => {
       const check = () => {
         const button = core.sendButton(document);
         if (core.canSend(button)) return resolve(button);
-        if (Date.now() - started >= timeoutMs) return resolve(null);
+        const budgetAt = budgetGuard?.nextAllowedAt?.();
+        const budgetDeadline = Number.isSafeInteger(budgetAt) && budgetAt > started
+          ? budgetAt + timeoutMs : 0;
+        const deadline = Math.max(localDeadline, budgetDeadline);
+        if (Date.now() >= deadline) return resolve(null);
         setTimeout(check, 100);
       };
       check();
@@ -928,6 +954,7 @@
       if (reasoningResult === 'unavailable') {
         setStatus('Nivel Alto no verificable; continuando con el nivel actual');
       }
+      if (!await waitForBudgetBeforeSend(prompt)) return;
       await sendPrompt(prompt);
     } catch (error) {
       saveLearning('failure');

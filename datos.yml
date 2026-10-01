@@ -64,6 +64,39 @@
       "providers": []
     },
     {
+      "id": "local_account_message_budget",
+      "category": "usage",
+      "fields": [
+        "accountBudgetAccountAlias",
+        "accountBudgetLimit",
+        "accountBudgetWindowMinutes",
+        "factoryAccountBudgetV1.version",
+        "factoryAccountBudgetV1.accountAlias",
+        "factoryAccountBudgetV1.limit",
+        "factoryAccountBudgetV1.windowMs",
+        "factoryAccountBudgetV1.observedAt",
+        "factoryAccountBudgetV1.expiresAt",
+        "sends.at",
+        "sends.reasoningLevel",
+        "limits.at",
+        "limits.reasoningLevel",
+        "blockedUntil",
+        "accountBudgetSnapshotV1.windowMs",
+        "accountBudgetSnapshotV1.budget",
+        "accountBudgetSnapshotV1.sent",
+        "accountBudgetSnapshotV1.remaining",
+        "accountBudgetSnapshotV1.limitEvents",
+        "accountBudgetSnapshotV1.highReasoningSends",
+        "accountBudgetSnapshotV1.nextAllowedAt",
+        "accountBudgetSnapshotV1.source"
+      ],
+      "purpose": "local_proactive_provider_limit_avoidance",
+      "basis": "review_required",
+      "retention": "rolling_configured_window_maximum_512_send_and_limit_events_per_account; Factory policy expires by closed-contract timestamp",
+      "consent": "review_required",
+      "providers": []
+    },
+    {
       "id": "local_pending_send_state",
       "category": "usage",
       "fields": [
@@ -99,7 +132,15 @@
         "tabs",
         "lastEvent",
         "accountState.state",
-        "accountState.resetAt"
+        "accountState.resetAt",
+        "messageBudget.windowMs",
+        "messageBudget.budget",
+        "messageBudget.sent",
+        "messageBudget.remaining",
+        "messageBudget.limitEvents",
+        "messageBudget.highReasoningSends",
+        "messageBudget.nextAllowedAt",
+        "messageBudget.source"
       ],
       "purpose": "planned_factory_control_status_sync",
       "basis": "review_required",
