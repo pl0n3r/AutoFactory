@@ -1,8 +1,19 @@
 (function (root, factory) {
-  const api = factory();
+  function recoverableState(raw) {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_error) {
+      // Recovery state is disposable session metadata; corrupt JSON resets it safely.
+      return {};
+    }
+  }
+
+  const api = factory(recoverableState);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ChatGPTAutopilotCore = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (recoverableState) {
   'use strict';
 
   const COMPOSER_SELECTORS = [
@@ -190,15 +201,6 @@
     if (count <= 2) return 'retry';
     if (count === 3) return 'reload';
     return 'new-chat';
-  }
-  function recoverableState(raw) {
-    if (!raw) return {};
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch (_error) {
-      return {};
-    }
   }
   function pageSignal(doc = document) {
     if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };
