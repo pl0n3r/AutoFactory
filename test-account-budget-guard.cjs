@@ -27,7 +27,15 @@ async function flush() {
   });
   const { window } = dom;
   const button = window.document.getElementById('send');
+  let fakeNow = 100000;
+  window.Date.now = () => fakeNow;
   window.setInterval = () => 0;
+  window.setTimeout = (callback, milliseconds = 0) => {
+    fakeNow += Math.max(0, Number(milliseconds) || 0);
+    Promise.resolve().then(callback);
+    return 0;
+  };
+
   let storageReply = null;
   let consumeCalls = 0;
   let statusCalls = 0;
@@ -48,9 +56,13 @@ async function flush() {
           reply({ ok: true, snapshot: readySnapshot() });
         } else if (message.type === 'autopilot:budget-consume') {
           consumeCalls += 1;
-          reply({ ok: true, allowed: true, snapshot: readySnapshot(Date.now() + 90000) });
+          reply({
+            ok: true,
+            allowed: true,
+            snapshot: readySnapshot(fakeNow + 90000)
+          });
         } else if (message.type === 'autopilot:budget-limit') {
-          reply({ ok: true, snapshot: readySnapshot(Date.now() + 90000) });
+          reply({ ok: true, snapshot: readySnapshot(fakeNow + 90000) });
         }
       }
     },
@@ -67,13 +79,29 @@ async function flush() {
   assert.equal(window.ChatGPTAutopilotCore.canSend(button), false,
     'guard must fail closed before storage initializes');
 
+  const pacingUntil = fakeNow + 90000;
   storageReply({
     masterEnabled: true,
     reasoningLevel: 'high',
-    accountBudgetSnapshotV1: readySnapshot()
+    accountBudgetSnapshotV1: readySnapshot(pacingUntil)
   });
+
+  const guard = window.ChatGPTAutopilotBudgetGuard;
+  assert.ok(guard && typeof guard.waitUntilReady === 'function');
+  assert.equal(guard.nextAllowedAt(), pacingUntil);
+  assert.equal(await guard.waitUntilReady(), true,
+    'a long shared-budget delay must resolve as normal pacing');
+  assert.ok(fakeNow >= pacingUntil,
+    'test clock must cross the full ninety-second pacing window');
+  assert.equal(consumeCalls, 0,
+    'waiting for budget must not consume a slot before content is ready to send');
+  assert.equal(clickEvents, 0,
+    'waiting for budget must never click the provider send control');
+  assert.equal(statusCalls, 1,
+    'budget state is refreshed once when the pacing window expires');
+
   assert.equal(window.ChatGPTAutopilotCore.canSend(button), false,
-    'first readiness check should reserve shared capacity asynchronously');
+    'first readiness check should consume shared capacity asynchronously');
   await flush();
   assert.equal(consumeCalls, 1);
   assert.equal(window.ChatGPTAutopilotCore.canSend(button), true,
@@ -84,9 +112,8 @@ async function flush() {
   button.click();
   assert.equal(clickEvents, 1, 'a second click without authorization must be blocked');
   assert.equal(consumeCalls, 1, 'blocked second click must not bypass the shared budget');
-  assert.equal(statusCalls, 0);
 
-  console.log('account-budget-guard: fail-closed initialization and synchronous authorization pass');
+  console.log('account-budget-guard: long pacing waits without failure or premature click');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;
