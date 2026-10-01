@@ -75,6 +75,48 @@ jobs:
             }));
           }
           NODE
+      - name: Diagnostic offline SonarJS problem rules
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=/tmp/autofactory-sonarjs
+          rm -rf "$work"
+          mkdir -p "$work/input"
+          cp autopilot-core.js content.js "$work/input/"
+          cd "$work"
+          npm init -y >/dev/null 2>&1
+          npm install --ignore-scripts --no-audit --no-fund --save-dev eslint@9 eslint-plugin-sonarjs >/dev/null 2>&1
+          node <<'NODE'
+          const { ESLint } = require('eslint');
+          const sonarjs = require('eslint-plugin-sonarjs');
+          const recommended = sonarjs.configs?.recommended;
+          if (!recommended) throw new Error('eslint-plugin-sonarjs recommended config unavailable');
+          const eslint = new ESLint({
+            overrideConfigFile: true,
+            overrideConfig: [recommended]
+          });
+          const results = await eslint.lintFiles(['input/autopilot-core.js', 'input/content.js']);
+          let count = 0;
+          for (const result of results) {
+            for (const message of result.messages) {
+              if (!message.ruleId?.startsWith('sonarjs/')) continue;
+              const ruleName = message.ruleId.slice('sonarjs/'.length);
+              const meta = sonarjs.rules?.[ruleName]?.meta;
+              if (meta?.type !== 'problem') continue;
+              count += 1;
+              console.log(JSON.stringify({
+                file: result.filePath.split('/').pop(),
+                line: message.line,
+                column: message.column,
+                rule: message.ruleId,
+                message: message.message,
+                type: meta.type
+              }));
+            }
+          }
+          console.log(`SONARJS_PROBLEM_TOTAL=${count}`);
+          NODE
 
   report:
     if: >-
