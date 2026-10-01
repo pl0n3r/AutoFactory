@@ -32,7 +32,7 @@ async function flush() {
   window.setInterval = () => 0;
   window.setTimeout = (callback, milliseconds = 0) => {
     fakeNow += Math.max(0, Number(milliseconds) || 0);
-    Promise.resolve().then(callback);
+    void Promise.resolve().then(callback);
     return 0;
   };
 
