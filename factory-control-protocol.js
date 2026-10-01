@@ -5,7 +5,6 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  // Contract-only module. No network, credentials, chat DOM or extension permissions.
   const VERSION = 1;
   const TAB_STATES = new Set([
     'paused', 'waiting', 'generating', 'sending', 'error', 'limit', 'requires_login'
@@ -20,6 +19,11 @@
     'ok', 'invalid', 'not_found', 'not_ready', 'timeout', 'unauthorized',
     'already_handled', 'failed'
   ]);
+  const BUDGET_FIELDS = [
+    'windowMs', 'budget', 'sent', 'remaining', 'limitEvents',
+    'highReasoningSends', 'nextAllowedAt', 'source'
+  ];
+  const MAX_BUDGET_EVENTS = 512;
 
   function object(value, label) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -55,9 +59,7 @@
   }
 
   function normalizedAccountState(value) {
-    if (value === undefined) {
-      return { state: 'unknown', resetAt: null };
-    }
+    if (value === undefined) return { state: 'unknown', resetAt: null };
     object(value, 'accountState');
     keys(value, ['state', 'resetAt'], 'accountState');
     if (!Object.hasOwn(value, 'state') || !Object.hasOwn(value, 'resetAt') ||
@@ -75,17 +77,45 @@
     return { state: value.state, resetAt: value.resetAt };
   }
 
+  function normalizedMessageBudget(value) {
+    object(value, 'messageBudget');
+    keys(value, BUDGET_FIELDS, 'messageBudget');
+    if (!BUDGET_FIELDS.every(key => Object.hasOwn(value, key))) {
+      throw new TypeError('Invalid message budget');
+    }
+    const integers = ['windowMs', 'budget', 'sent', 'remaining', 'limitEvents', 'highReasoningSends'];
+    if (!integers.every(key => Number.isSafeInteger(value[key]) && value[key] >= 0) ||
+        value.windowMs < 60000 || value.windowMs > 86400000 ||
+        value.budget < 1 || value.budget > MAX_BUDGET_EVENTS ||
+        value.sent > value.budget ||
+        value.remaining !== value.budget - value.sent ||
+        value.limitEvents > MAX_BUDGET_EVENTS ||
+        value.highReasoningSends > value.sent ||
+        (value.nextAllowedAt !== null &&
+          (!Number.isSafeInteger(value.nextAllowedAt) || value.nextAllowedAt < 1)) ||
+        !['default', 'factory'].includes(value.source)) {
+      throw new TypeError('Invalid message budget');
+    }
+    return {
+      windowMs: value.windowMs,
+      budget: value.budget,
+      sent: value.sent,
+      remaining: value.remaining,
+      limitEvents: value.limitEvents,
+      highReasoningSends: value.highReasoningSends,
+      nextAllowedAt: value.nextAllowedAt,
+      source: value.source
+    };
+  }
+
   function heartbeat(input) {
     object(input, 'heartbeat');
-    keys(input, ['profileAlias', 'accountAlias', 'tabs', 'lastEvent', 'accountState'], 'heartbeat');
+    keys(input, ['profileAlias', 'accountAlias', 'tabs', 'lastEvent', 'accountState', 'messageBudget'], 'heartbeat');
     if (!Array.isArray(input.tabs) || input.tabs.length > 40) {
       throw new TypeError('Too many tabs or missing tabs');
     }
-    // Array.prototype.map skips holes and would emit a partial heartbeat.
     for (let index = 0; index < input.tabs.length; index++) {
-      if (!Object.hasOwn(input.tabs, index)) {
-        throw new TypeError('Sparse tab metadata');
-      }
+      if (!Object.hasOwn(input.tabs, index)) throw new TypeError('Sparse tab metadata');
     }
     const seen = new Set();
     const tabs = input.tabs.map(tab => {
@@ -101,13 +131,12 @@
     });
     let lastEvent = null;
     if (input.lastEvent !== undefined && input.lastEvent !== null) {
-      if (typeof input.lastEvent !== 'string' ||
-          !/^[a-z][a-z0-9-]{0,63}$/.test(input.lastEvent)) {
+      if (typeof input.lastEvent !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(input.lastEvent)) {
         throw new TypeError('Invalid diagnostic event code');
       }
       lastEvent = input.lastEvent;
     }
-    return {
+    const result = {
       version: VERSION, kind: 'heartbeat',
       profileAlias: alias(input.profileAlias, 'profileAlias'),
       accountAlias: alias(input.accountAlias, 'accountAlias'),
@@ -115,6 +144,10 @@
       accountState: normalizedAccountState(input.accountState),
       lastEvent
     };
+    if (input.messageBudget !== undefined) {
+      result.messageBudget = normalizedMessageBudget(input.messageBudget);
+    }
+    return result;
   }
 
   function command(input) {
@@ -124,7 +157,6 @@
     if (!ACTIONS.has(input.action)) throw new TypeError('Unsupported command action');
     const target = input.target === 'all' ? 'all' : tabId(input.target);
     const action = input.action;
-    // Only pause/resume may broadcast. A remote message must name one tab.
     if (target === 'all' && action !== 'pause' && action !== 'resume') {
       throw new TypeError('Broadcast is restricted to pause and resume');
     }

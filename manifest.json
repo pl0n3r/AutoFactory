@@ -21,7 +21,7 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background-entry.js"
   },
   "content_scripts": [
     {
@@ -30,6 +30,7 @@
       ],
       "js": [
         "autopilot-core.js",
+        "account-budget-guard.js",
         "learning.js",
         "reliability.js",
         "content.js"
