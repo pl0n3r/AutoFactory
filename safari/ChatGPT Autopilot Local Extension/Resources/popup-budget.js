@@ -16,6 +16,18 @@
   source.className = 'hint';
   title.appendChild(source);
 
+  const enabledRow = document.createElement('div');
+  enabledRow.className = 'toggle';
+  const enabledCopy = document.createElement('div');
+  const enabledTitle = document.createElement('b');
+  enabledTitle.textContent = 'Limitar envíos entre pestañas';
+  const enabledHint = document.createElement('div');
+  enabledHint.className = 'hint';
+  enabledHint.textContent = 'Opcional; desactivado de forma predeterminada';
+  enabledCopy.append(enabledTitle, enabledHint);
+  const enabledToggle = input('budget-enabled', 'checkbox', '');
+  enabledRow.append(enabledCopy, enabledToggle);
+
   const metrics = document.createElement('div');
   metrics.className = 'metrics';
   const sent = metric('budget-sent', 'Envíos');
@@ -48,7 +60,7 @@
   hint.className = 'hint';
   hint.textContent = 'Factory sustituye este fallback automáticamente cuando publica una política fresca y válida.';
 
-  card.append(title, metrics, details, aliasLabel, alias, grid, hint);
+  card.append(title, enabledRow, metrics, details, aliasLabel, alias, grid, hint);
   root.insertBefore(card, root.lastElementChild || null);
 
   const fallbackLimit = card.querySelector('#budget-limit-input');
@@ -111,6 +123,18 @@
     if (seconds < 60) return `Reanuda en ${seconds} s`;
     return `Reanuda en ${Math.ceil(seconds / 60)} min`;
   }
+  function renderEnabled(value) {
+    const active = value === true;
+    enabledToggle.checked = active;
+    for (const node of [metrics, details, aliasLabel, alias, grid, hint]) node.hidden = !active;
+    alias.disabled = !active;
+    fallbackLimit.disabled = !active;
+    windowMinutes.disabled = !active;
+    if (!active) {
+      source.textContent = 'desactivado';
+      next.textContent = 'Sin pausas de presupuesto compartido.';
+    }
+  }
   function render(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') return;
     sent.value.textContent = String(snapshot.sent ?? 0);
@@ -141,6 +165,7 @@
       fallbackLimit.value = String(wantedLimit);
       windowMinutes.value = String(wantedWindow);
       void setLocal({
+        accountBudgetEnabled: enabledToggle.checked,
         accountBudgetAccountAlias: safeAlias,
         accountBudgetLimit: wantedLimit,
         accountBudgetWindowMinutes: wantedWindow
@@ -152,19 +177,24 @@
   }
 
   extensionApi.storage.local.get({
+    accountBudgetEnabled: false,
     accountBudgetAccountAlias: 'primary',
     accountBudgetLimit: 40,
     accountBudgetWindowMinutes: 60,
     accountBudgetSnapshotV1: null
   }, values => {
+    renderEnabled(values.accountBudgetEnabled === true);
     alias.value = values.accountBudgetAccountAlias || 'primary';
     fallbackLimit.value = String(values.accountBudgetLimit || 40);
     windowMinutes.value = String(values.accountBudgetWindowMinutes || 60);
     render(values.accountBudgetSnapshotV1);
     void refresh();
   });
-  for (const node of [alias, fallbackLimit, windowMinutes]) node.addEventListener('change', saveSettings);
+  for (const node of [enabledToggle, alias, fallbackLimit, windowMinutes]) node.addEventListener('change', saveSettings);
   extensionApi.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.accountBudgetEnabled) {
+      renderEnabled(changes.accountBudgetEnabled.newValue === true);
+    }
     if (area === 'local' && changes.accountBudgetSnapshotV1?.newValue) {
       render(changes.accountBudgetSnapshotV1.newValue);
     }

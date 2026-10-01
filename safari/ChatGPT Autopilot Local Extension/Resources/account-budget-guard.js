@@ -12,7 +12,8 @@
 
   const AUTHORIZATION_TTL_MS = 5000;
   const WAIT_POLL_MS = 250;
-  let enabled = null;
+  let masterEnabled = null;
+  let budgetEnabled = null;
   let ready = false;
   let snapshot = null;
   let reasoningLevel = 'unknown';
@@ -89,7 +90,7 @@
   }
 
   async function ensureSnapshot() {
-    if (enabled === true && ready && snapshot) return true;
+    if (masterEnabled === true && budgetEnabled === true && ready && snapshot) return true;
     return refreshStatus();
   }
 
@@ -102,9 +103,10 @@
   }
 
   async function waitBudgetReadyStep() {
-    if (enabled === false) return false;
+    if (budgetEnabled === false) return true;
+    if (masterEnabled === false) return false;
     const refreshed = await ensureSnapshot();
-    if (!refreshed || enabled !== true) {
+    if (!refreshed || masterEnabled !== true || budgetEnabled !== true) {
       await delay(WAIT_POLL_MS);
       return waitBudgetReadyStep();
     }
@@ -121,7 +123,8 @@
   }
 
   function budgetReadyNow() {
-    if (enabled !== true || !ready || !snapshot) return false;
+    if (budgetEnabled === false) return true;
+    if (masterEnabled !== true || !ready || !snapshot) return false;
     if (snapshot.nextAllowedAt !== null) {
       if (Date.now() < snapshot.nextAllowedAt) return false;
       ready = false;
@@ -143,7 +146,7 @@
     void runtimeMessage({ type: 'autopilot:budget-consume', reasoningLevel })
       .then(response => {
         if (!response?.ok || !applySnapshot(response.snapshot) ||
-            !response.allowed || enabled !== true) return;
+            !response.allowed || masterEnabled !== true || budgetEnabled !== true) return;
         if (core.sendButton(document) !== button || !originalCanSend(button)) return;
         authorizedButton = button;
         authorizedAt = Date.now();
@@ -153,8 +156,8 @@
 
   core.canSend = button => {
     if (!originalCanSend(button)) return false;
-    if (enabled === false) return true;
-    if (enabled !== true) return false;
+    if (budgetEnabled === false || masterEnabled === false) return true;
+    if (masterEnabled !== true || budgetEnabled !== true) return false;
     if (authorizationValid(button)) return true;
     requestAuthorization(button);
     return false;
@@ -182,8 +185,10 @@
 
   clickPrototype.click = function (...args) {
     const sendButton = core.sendButton(document);
-    if (this !== sendButton || enabled === false) return originalClick.apply(this, args);
-    if (enabled !== true || !authorizationValid(this)) return undefined;
+    if (this !== sendButton || budgetEnabled === false || masterEnabled === false) {
+      return originalClick.apply(this, args);
+    }
+    if (masterEnabled !== true || budgetEnabled !== true || !authorizationValid(this)) return undefined;
     clearAuthorization();
     return originalClick.apply(this, args);
   };
@@ -191,8 +196,14 @@
   extensionApi.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes.masterEnabled) {
-      enabled = Boolean(changes.masterEnabled.newValue);
-      if (!enabled) clearAuthorization();
+      masterEnabled = Boolean(changes.masterEnabled.newValue);
+      if (!masterEnabled) clearAuthorization();
+    }
+    if (changes.accountBudgetEnabled) {
+      budgetEnabled = changes.accountBudgetEnabled.newValue === true;
+      clearAuthorization();
+      ready = false;
+      if (budgetEnabled) void refreshStatus();
     }
     if (changes.reasoningLevel) {
       reasoningLevel = changes.reasoningLevel.newValue === 'high' ? 'high' : 'unknown';
@@ -210,12 +221,14 @@
 
   extensionApi.storage.local.get({
     masterEnabled: false,
+    accountBudgetEnabled: false,
     reasoningLevel: 'high',
     accountBudgetSnapshotV1: null
   }, values => {
-    enabled = Boolean(values.masterEnabled);
+    masterEnabled = Boolean(values.masterEnabled);
+    budgetEnabled = values.accountBudgetEnabled === true;
     reasoningLevel = values.reasoningLevel === 'high' ? 'high' : 'unknown';
-    if (!applySnapshot(values.accountBudgetSnapshotV1)) void refreshStatus();
+    if (budgetEnabled && !applySnapshot(values.accountBudgetSnapshotV1)) void refreshStatus();
   });
 
   globalThis.ChatGPTAutopilotBudgetGuard = Object.freeze({
@@ -224,6 +237,6 @@
   });
 
   setInterval(() => {
-    if (enabled === true) void refreshStatus();
+    if (masterEnabled === true && budgetEnabled === true) void refreshStatus();
   }, 5000);
 })();

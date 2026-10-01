@@ -82,11 +82,23 @@ async function flush() {
   const pacingUntil = fakeNow + 90000;
   storageReply({
     masterEnabled: true,
+    accountBudgetEnabled: false,
+    reasoningLevel: 'high',
+    accountBudgetSnapshotV1: readySnapshot(pacingUntil)
+  });
+  const guard = window.ChatGPTAutopilotBudgetGuard;
+  assert.equal(window.ChatGPTAutopilotCore.canSend(button), true,
+    'shared budget must not block sends when disabled');
+  assert.equal(await guard.waitUntilReady(), true,
+    'disabled shared budget must resolve immediately');
+
+  storageReply({
+    masterEnabled: true,
+    accountBudgetEnabled: true,
     reasoningLevel: 'high',
     accountBudgetSnapshotV1: readySnapshot(pacingUntil)
   });
 
-  const guard = window.ChatGPTAutopilotBudgetGuard;
   assert.ok(guard && typeof guard.waitUntilReady === 'function');
   assert.equal(guard.nextAllowedAt(), pacingUntil);
   assert.equal(await guard.waitUntilReady(), true,

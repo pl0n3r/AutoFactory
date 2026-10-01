@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.11 — 2026-10-01
+
+- Desactiva por defecto el presupuesto compartido de mensajes.
+- Evita cualquier pausa presupuestaria mientras la opción esté apagada.
+- Añade un interruptor explícito en el popup para activarlo voluntariamente.
+
 ## 1.6.10 — 2026-10-01
 
 - Actualiza cada segundo el estado de espera del presupuesto compartido.
