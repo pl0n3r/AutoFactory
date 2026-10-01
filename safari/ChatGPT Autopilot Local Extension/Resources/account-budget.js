@@ -14,13 +14,23 @@ function budgetPositiveInteger(value, min, max, label) {
   return value;
 }
 
-function budgetPruneAccount(row, now, policy) {
-  const cutoff = now - policy.windowMs;
+function budgetPruneAccount(row, now, policy, maxEvents) {
+  const retentionWindowMs = policy.retentionWindowMs || policy.windowMs;
+  const cutoff = now - retentionWindowMs;
+  const retain = events => events
+    .filter(item => item.at > cutoff)
+    .sort((left, right) => left.at - right.at)
+    .slice(-maxEvents);
   return {
-    sends: row.sends.filter(item => item.at > cutoff),
-    limits: row.limits.filter(item => item.at > cutoff),
+    sends: retain(row.sends),
+    limits: retain(row.limits),
     blockedUntil: row.blockedUntil > now ? row.blockedUntil : 0
   };
+}
+
+function budgetActiveEvents(events, now, policy) {
+  const cutoff = now - policy.windowMs;
+  return events.filter(item => item.at > cutoff);
 }
 
 function budgetCapacityAt(row, policy) {
@@ -36,22 +46,25 @@ function budgetPaceAt(row, policy) {
 }
 
 function budgetSummary(row, policy, now) {
-  const sent = row.sends.length;
+  const sends = budgetActiveEvents(row.sends, now, policy);
+  const limits = budgetActiveEvents(row.limits, now, policy);
+  const activeRow = { ...row, sends, limits };
+  const sent = sends.length;
   const policyPauseAt = policy.source === 'factory' && policy.limit === 0
     ? policy.expiresAt : 0;
   const nextAllowedAt = Math.max(
     row.blockedUntil,
     policyPauseAt || 0,
-    budgetCapacityAt(row, policy),
-    budgetPaceAt(row, policy)
+    budgetCapacityAt(activeRow, policy),
+    budgetPaceAt(activeRow, policy)
   );
   return Object.freeze({
     windowMs: policy.windowMs,
     budget: policy.limit,
     sent,
     remaining: Math.max(0, policy.limit - sent),
-    limitEvents: row.limits.length,
-    highReasoningSends: row.sends.filter(item => item.reasoningLevel === 'high').length,
+    limitEvents: limits.length,
+    highReasoningSends: sends.filter(item => item.reasoningLevel === 'high').length,
     nextAllowedAt: nextAllowedAt > now ? nextAllowedAt : null,
     source: policy.source
   });
@@ -119,12 +132,20 @@ function budgetSummary(row, policy, now) {
         input.minIntervalMs, 1, 24 * 60 * 60 * 1000, 'budget interval'
       );
       const expiresAt = budgetClock(input.expiresAt);
+      const retentionWindowMs = input.retentionWindowMs === undefined
+        ? windowMs
+        : budgetPositiveInteger(
+            input.retentionWindowMs,
+            windowMs,
+            24 * 60 * 60 * 1000,
+            'budget retention window'
+          );
       if (limit > 0 && minIntervalMs < Math.ceil(windowMs / limit)) {
         throw new TypeError('Invalid Factory budget pace');
       }
-      return Object.freeze({
-        limit, windowMs, minIntervalMs, expiresAt, source
-      });
+      const normalized = { limit, windowMs, minIntervalMs, expiresAt, source };
+      if (retentionWindowMs > windowMs) normalized.retentionWindowMs = retentionWindowMs;
+      return Object.freeze(normalized);
     }
     const limit = budgetPositiveInteger(
       input.limit === undefined ? DEFAULT_LIMIT : input.limit,
@@ -196,7 +217,8 @@ function budgetSummary(row, policy, now) {
       throw new TypeError('Invalid Factory budget policy freshness');
     }
     if (value.status === 'STALE') {
-      if (value.budget !== null || value.source !== 'conservative-default') {
+      if (value.budget !== null ||
+          (value.source !== 'conservative-default' && expiresAt > current)) {
         throw new TypeError('Invalid Factory STALE policy');
       }
       return null;
@@ -224,7 +246,10 @@ function budgetSummary(row, policy, now) {
   function effectivePolicy(settings, remote, alias, now) {
     const local = localPolicy(settings);
     const learned = factoryPolicy(remote, alias, now);
-    return learned || local;
+    if (!learned) return local;
+    const retentionWindowMs = Math.max(local.windowMs, learned.windowMs);
+    if (retentionWindowMs === learned.windowMs) return learned;
+    return Object.freeze({ ...learned, retentionWindowMs });
   }
 
   function eventRows(value, type) {
@@ -278,7 +303,9 @@ function budgetSummary(row, policy, now) {
     const normalized = normalizeState(state);
     const wanted = accountAlias(alias);
     const row = normalized.accounts[wanted] || accountState();
-    normalized.accounts[wanted] = budgetPruneAccount(row, budgetClock(now), policy);
+    normalized.accounts[wanted] = budgetPruneAccount(
+      row, budgetClock(now), policy, MAX_EVENTS
+    );
     return { state: normalized, row: normalized.accounts[wanted] };
   }
 
@@ -303,6 +330,7 @@ function budgetSummary(row, policy, now) {
       at: now,
       reasoningLevel: reasoningLevel(input.reasoningLevel)
     });
+    if (current.row.sends.length > MAX_EVENTS) current.row.sends.shift();
     return {
       state: current.state,
       allowed: true,
