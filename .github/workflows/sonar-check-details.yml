@@ -31,6 +31,38 @@ jobs:
         with:
           node-version: 20
       - run: node test-sonar-check-relay.cjs
+      - name: Diagnostic public Sonar bugs on main
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const params = new URLSearchParams({
+            componentKeys: 'pl0n3r_AutoFactory',
+            branch: 'main',
+            issueStatuses: 'OPEN,CONFIRMED',
+            sinceLeakPeriod: 'true',
+            types: 'BUG',
+            ps: '100'
+          });
+          const response = await fetch(`https://sonarcloud.io/api/issues/search?${params}`);
+          if (!response.ok) throw new Error(`Sonar API ${response.status}`);
+          const payload = await response.json();
+          console.log(`SONAR_BUG_TOTAL=${payload.total ?? payload.paging?.total ?? 'unknown'}`);
+          for (const issue of payload.issues || []) {
+            console.log(JSON.stringify({
+              key: issue.key,
+              rule: issue.rule,
+              severity: issue.severity,
+              component: issue.component,
+              line: issue.line,
+              message: issue.message,
+              cleanCodeAttribute: issue.cleanCodeAttribute,
+              impacts: issue.impacts,
+              creationDate: issue.creationDate
+            }));
+          }
+          NODE
 
   report:
     if: >-
