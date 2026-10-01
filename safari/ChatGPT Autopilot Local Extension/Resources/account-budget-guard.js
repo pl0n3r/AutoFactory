@@ -88,36 +88,27 @@
     return ready && snapshot ? snapshot.nextAllowedAt : null;
   }
 
-  async function ensureSnapshot() {
-    if (enabled === true && ready && snapshot) return true;
-    return refreshStatus();
-  }
-
-  function waitDelayMs() {
-    const current = Date.now();
-    if (snapshot?.nextAllowedAt !== null && snapshot.nextAllowedAt > current) {
-      return Math.min(1000, Math.max(50, snapshot.nextAllowedAt - current));
+  async function waitUntilReady() {
+    while (true) {
+      if (enabled === false) return false;
+      if (enabled !== true || !ready || !snapshot) {
+        const refreshed = await refreshStatus();
+        if (!refreshed) {
+          await delay(WAIT_POLL_MS);
+          continue;
+        }
+      }
+      if (enabled === false) return false;
+      if (snapshot.nextAllowedAt === null && snapshot.remaining > 0) return true;
+      const current = Date.now();
+      const waitMs = snapshot.nextAllowedAt !== null && snapshot.nextAllowedAt > current
+        ? Math.min(1000, Math.max(50, snapshot.nextAllowedAt - current))
+        : WAIT_POLL_MS;
+      await delay(waitMs);
+      if (snapshot?.nextAllowedAt !== null && Date.now() >= snapshot.nextAllowedAt) {
+        ready = false;
+      }
     }
-    return WAIT_POLL_MS;
-  }
-
-  async function waitBudgetReadyStep() {
-    if (enabled === false) return false;
-    const refreshed = await ensureSnapshot();
-    if (!refreshed || enabled !== true) {
-      await delay(WAIT_POLL_MS);
-      return waitBudgetReadyStep();
-    }
-    if (snapshot.nextAllowedAt === null && snapshot.remaining > 0) return true;
-    await delay(waitDelayMs());
-    if (snapshot?.nextAllowedAt !== null && Date.now() >= snapshot.nextAllowedAt) {
-      ready = false;
-    }
-    return waitBudgetReadyStep();
-  }
-
-  function waitUntilReady() {
-    return waitBudgetReadyStep();
   }
 
   function budgetReadyNow() {
