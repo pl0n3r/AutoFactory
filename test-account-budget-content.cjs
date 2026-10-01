@@ -43,3 +43,8 @@ assert.ok(waitForSend.includes('Math.max(localDeadline, budgetDeadline)'),
   'budget pacing must extend, not replace, the normal provider-control timeout');
 
 console.log('account-budget-content: pacing stays outside sendPrompt and preserves drafts');
+
+const core = require('./autopilot-core.js');
+assert.equal(core.budgetWaitLabel(20000, 1000), 'Presupuesto compartido: esperando 19 s');
+assert.equal(core.budgetWaitLabel(null, 1000), 'Verificando presupuesto compartido');
+console.log('account-budget-content: live pacing status is deterministic');

@@ -521,14 +521,17 @@
 
   async function waitForBudgetBeforeSend(prompt) {
     if (!budgetGuard?.waitUntilReady) return true;
-    const budgetAt = budgetGuard.nextAllowedAt?.();
-    if (Number.isSafeInteger(budgetAt) && budgetAt > Date.now()) {
-      const seconds = Math.max(1, Math.ceil((budgetAt - Date.now()) / 1000));
-      setStatus(`Presupuesto compartido: esperando ${seconds} s`);
-    } else {
-      setStatus('Verificando presupuesto compartido');
+    const updateBudgetStatus = () => {
+      setStatus(core.budgetWaitLabel(budgetGuard.nextAllowedAt?.()));
+    };
+    updateBudgetStatus();
+    const statusTimer = setInterval(updateBudgetStatus, 1000);
+    let budgetReady = false;
+    try {
+      budgetReady = await budgetGuard.waitUntilReady();
+    } finally {
+      clearInterval(statusTimer);
     }
-    const budgetReady = await budgetGuard.waitUntilReady();
     if (!budgetReady || !state.enabled) return false;
     const field = core.composer(document);
     const currentText = core.composerText(field);

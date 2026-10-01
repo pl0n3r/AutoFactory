@@ -235,6 +235,12 @@
     }
     return Object.freeze({ signalCode: signal.code, alertText });
   }
+  function budgetWaitLabel(nextAllowedAt, now = Date.now()) {
+    if (Number.isSafeInteger(nextAllowedAt) && nextAllowedAt > now) {
+      return `Presupuesto compartido: esperando ${Math.max(1, Math.ceil((nextAllowedAt - now) / 1000))} s`;
+    }
+    return 'Verificando presupuesto compartido';
+  }
   function normalize(value) {
     return String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').trim();
   }
@@ -330,6 +336,7 @@
     composerText,
     isOwnedDraft,
     replaceComposerText,
+    budgetWaitLabel,
     canSend
   };
 });
