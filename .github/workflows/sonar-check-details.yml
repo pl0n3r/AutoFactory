@@ -88,8 +88,9 @@ jobs:
           npm init -y >/dev/null 2>&1
           npm install --ignore-scripts --no-audit --no-fund --save-dev eslint@9 eslint-plugin-sonarjs >/dev/null 2>&1
           node <<'NODE'
-          const { ESLint } = require('eslint');
-          const sonarjs = require('eslint-plugin-sonarjs');
+          const { ESLint } = await import('eslint');
+          const sonarjsModule = await import('eslint-plugin-sonarjs');
+          const sonarjs = sonarjsModule.default ?? sonarjsModule;
           const recommended = sonarjs.configs?.recommended;
           if (!recommended) throw new Error('eslint-plugin-sonarjs recommended config unavailable');
           const eslint = new ESLint({
