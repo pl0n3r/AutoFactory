@@ -198,34 +198,12 @@ function budgetSummary(row, policy, now) {
     }
   }
 
-  function factoryPolicyTimes(value, now) {
-    return {
-      current: budgetClock(now),
-      observedAt: value.observedAt === null ? null : budgetClock(value.observedAt),
-      expiresAt: value.expiresAt === null ? null : budgetClock(value.expiresAt)
-    };
-  }
-
-  function validateFactoryUnknown(value, observedAt, expiresAt) {
-    if (value.budget !== null || observedAt !== null || expiresAt !== null ||
-        value.source !== 'conservative-default') {
-      throw new TypeError('Invalid Factory UNKNOWN policy');
-    }
-  }
-
   function validateFactoryFreshness(observedAt, expiresAt, current) {
     if (observedAt === null || expiresAt === null ||
         expiresAt <= observedAt ||
         expiresAt - observedAt > MAX_FACTORY_POLICY_TTL_MS ||
         observedAt > current) {
       throw new TypeError('Invalid Factory budget policy freshness');
-    }
-  }
-
-  function validateFactoryStale(value, expiresAt, current) {
-    if (value.budget !== null ||
-        (value.source !== 'conservative-default' && expiresAt > current)) {
-      throw new TypeError('Invalid Factory STALE policy');
     }
   }
 
@@ -255,15 +233,23 @@ function budgetSummary(row, policy, now) {
     const wanted = accountAlias(alias);
     if (accountAlias(value.accountAlias) !== wanted) return null;
     validateFactoryPolicyState(value);
-    const { current, observedAt, expiresAt } = factoryPolicyTimes(value, now);
+    const current = budgetClock(now);
+    const observedAt = value.observedAt === null ? null : budgetClock(value.observedAt);
+    const expiresAt = value.expiresAt === null ? null : budgetClock(value.expiresAt);
 
     if (value.status === 'UNKNOWN') {
-      validateFactoryUnknown(value, observedAt, expiresAt);
+      if (value.budget !== null || observedAt !== null || expiresAt !== null ||
+          value.source !== 'conservative-default') {
+        throw new TypeError('Invalid Factory UNKNOWN policy');
+      }
       return null;
     }
     validateFactoryFreshness(observedAt, expiresAt, current);
     if (value.status === 'STALE') {
-      validateFactoryStale(value, expiresAt, current);
+      if (value.budget !== null ||
+          (value.source !== 'conservative-default' && expiresAt > current)) {
+        throw new TypeError('Invalid Factory STALE policy');
+      }
       return null;
     }
     if (expiresAt <= current || value.budget === null) return null;
