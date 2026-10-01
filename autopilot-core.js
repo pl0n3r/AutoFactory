@@ -1,8 +1,19 @@
 (function (root, factory) {
-  const api = factory();
+  function recoverableState(raw) {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      if (error instanceof SyntaxError) return {};
+      throw error;
+    }
+  }
+
+  const api = factory(recoverableState);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ChatGPTAutopilotCore = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (recoverableState) {
   'use strict';
 
   const COMPOSER_SELECTORS = [
@@ -304,6 +315,7 @@
     additionalSafetyCheck,
     isSafeRecoverySignal,
     recoverableEscalation,
+    recoverableState,
     pageSignal,
     providerAccountSignal,
     normalize,

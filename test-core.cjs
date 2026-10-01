@@ -42,6 +42,12 @@ function page(html) {
   assert.equal(core.recoverableEscalation(2), 'retry');
   assert.equal(core.recoverableEscalation(3), 'reload');
   assert.equal(core.recoverableEscalation(4), 'new-chat');
+  assert.deepEqual(core.recoverableState(null), {});
+  assert.deepEqual(core.recoverableState('{"path":"/c/1","attempts":2}'), {
+    path: '/c/1', attempts: 2
+  });
+  assert.deepEqual(core.recoverableState('{broken'), {});
+  assert.deepEqual(core.recoverableState('[]'), {});
 }
 {
   const doc = page('<button>Confirmar compra</button><button>Permitir acceso</button>');

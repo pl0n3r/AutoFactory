@@ -644,9 +644,9 @@
       const signal = core.pageSignal(document);
       if (core.isSafeRecoverySignal(signal)
           && Date.now() - state.lastRecoveryAt > 10000) {
-        let previous = {};
-        try { previous = JSON.parse(sessionStorage.getItem(RECOVERABLE_STATE_KEY) || '{}'); }
-        catch (_error) {}
+        const previous = core.recoverableState(
+          sessionStorage.getItem(RECOVERABLE_STATE_KEY)
+        );
         const attempts = previous.path === location.pathname
           ? Math.max(0, Number(previous.attempts) || 0) + 1 : 1;
         sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify({
