@@ -36,20 +36,32 @@ function fakeStorage(initial = {}) {
   assert.equal(second.snapshot.sent, 2);
 
   storage.values[budget.FACTORY_POLICY_KEY] = {
-    accountAlias: 'primary', limit: 4, windowMs: 60000
+    version: budget.FACTORY_POLICY_VERSION,
+    accountAlias: 'primary',
+    limit: 4,
+    windowMs: 60000,
+    observedAt: now,
+    expiresAt: 160000
   };
   const updated = await controller.status();
   assert.equal(updated.snapshot.source, 'factory');
   assert.equal(updated.snapshot.budget, 4,
-    'Factory policy must replace fallback without restarting the controller');
+    'fresh Factory policy must replace fallback without restarting the controller');
 
   now = 145000;
   const third = await controller.consume({ reasoningLevel: 'high' });
   assert.equal(third.allowed, true, 'live Factory policy should immediately change pacing');
 
+  now = 160001;
+  const stale = await controller.status();
+  assert.equal(stale.snapshot.source, 'default');
+  assert.equal(stale.snapshot.budget, 2,
+    'expired Factory policy must automatically return to the conservative fallback');
+
+  now = 170000;
   const limited = await controller.recordLimit({ reasoningLevel: 'high', resetAt: 200000 });
   assert.equal(limited.snapshot.limitEvents, 1);
-  now = 150000;
+  now = 175000;
   const blocked = await controller.consume({ reasoningLevel: 'high' });
   assert.equal(blocked.allowed, false);
   assert.equal(blocked.snapshot.nextAllowedAt, 200000);
