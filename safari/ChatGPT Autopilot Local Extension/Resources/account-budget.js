@@ -24,20 +24,24 @@ function budgetPruneAccount(row, now, policy) {
 }
 
 function budgetCapacityAt(row, policy) {
-  if (row.sends.length < policy.limit) return 0;
+  if (policy.limit === 0 || row.sends.length < policy.limit) return 0;
   return Math.min(...row.sends.map(item => item.at + policy.windowMs));
 }
 
 function budgetPaceAt(row, policy) {
-  if (!row.sends.length) return 0;
+  if (policy.limit === 0 || !row.sends.length) return 0;
   const latest = Math.max(...row.sends.map(item => item.at));
-  return latest + Math.ceil(policy.windowMs / policy.limit);
+  const interval = policy.minIntervalMs || Math.ceil(policy.windowMs / policy.limit);
+  return latest + interval;
 }
 
 function budgetSummary(row, policy, now) {
   const sent = row.sends.length;
+  const policyPauseAt = policy.source === 'factory' && policy.limit === 0
+    ? policy.expiresAt : 0;
   const nextAllowedAt = Math.max(
     row.blockedUntil,
+    policyPauseAt || 0,
     budgetCapacityAt(row, policy),
     budgetPaceAt(row, policy)
   );
@@ -72,8 +76,15 @@ function budgetSummary(row, policy, now) {
   const REASONING = /^(?:high|medium|low|unknown)$/;
   const ACCOUNT_FIELDS = new Set(['sends', 'limits', 'blockedUntil']);
   const FACTORY_POLICY_FIELDS = new Set([
-    'version', 'accountAlias', 'limit', 'windowMs', 'observedAt', 'expiresAt'
+    'version', 'accountAlias', 'status', 'budget', 'observedAt', 'expiresAt',
+    'source', 'capacityFingerprint', 'fingerprint'
   ]);
+  const FACTORY_BUDGET_FIELDS = new Set(['limit', 'windowMs', 'minIntervalMs']);
+  const FACTORY_STATUSES = new Set(['UNKNOWN', 'FRESH', 'STALE']);
+  const FACTORY_SOURCES = new Set([
+    'conservative-default', 'observed-limit', 'observed-success'
+  ]);
+  const FINGERPRINT = /^[0-9a-f]{64}$/;
 
   function accountAlias(value) {
     if (typeof value !== 'string' || !ALIAS.test(value) || value.includes('@')) {
@@ -96,6 +107,25 @@ function budgetSummary(row, policy, now) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       throw new TypeError('Invalid budget policy');
     }
+    if (!['default', 'factory'].includes(source)) {
+      throw new TypeError('Invalid budget policy source');
+    }
+    if (source === 'factory') {
+      const limit = budgetPositiveInteger(input.limit, 0, MAX_EVENTS, 'budget limit');
+      const windowMs = budgetPositiveInteger(
+        input.windowMs, 1000, 24 * 60 * 60 * 1000, 'budget window'
+      );
+      const minIntervalMs = budgetPositiveInteger(
+        input.minIntervalMs, 1, 24 * 60 * 60 * 1000, 'budget interval'
+      );
+      const expiresAt = budgetClock(input.expiresAt);
+      if (limit > 0 && minIntervalMs < Math.ceil(windowMs / limit)) {
+        throw new TypeError('Invalid Factory budget pace');
+      }
+      return Object.freeze({
+        limit, windowMs, minIntervalMs, expiresAt, source
+      });
+    }
     const limit = budgetPositiveInteger(
       input.limit === undefined ? DEFAULT_LIMIT : input.limit,
       1, MAX_EVENTS, 'budget limit'
@@ -104,9 +134,6 @@ function budgetSummary(row, policy, now) {
       input.windowMs === undefined ? DEFAULT_WINDOW_MS : input.windowMs,
       60 * 1000, 24 * 60 * 60 * 1000, 'budget window'
     );
-    if (!['default', 'factory'].includes(source)) {
-      throw new TypeError('Invalid budget policy source');
-    }
     return Object.freeze({ limit, windowMs, source });
   }
 
@@ -139,15 +166,59 @@ function budgetSummary(row, policy, now) {
     }
     const wanted = accountAlias(alias);
     if (accountAlias(value.accountAlias) !== wanted) return null;
+    if (!FACTORY_STATUSES.has(value.status) || !FACTORY_SOURCES.has(value.source)) {
+      throw new TypeError('Invalid Factory budget policy state');
+    }
+    if (typeof value.capacityFingerprint !== 'string' ||
+        !FINGERPRINT.test(value.capacityFingerprint) ||
+        typeof value.fingerprint !== 'string' ||
+        !FINGERPRINT.test(value.fingerprint)) {
+      throw new TypeError('Invalid Factory budget policy fingerprint');
+    }
+
     const current = budgetClock(now);
-    const observedAt = budgetClock(value.observedAt);
-    const expiresAt = budgetClock(value.expiresAt);
-    if (expiresAt <= observedAt ||
+    const observedAt = value.observedAt === null ? null : budgetClock(value.observedAt);
+    const expiresAt = value.expiresAt === null ? null : budgetClock(value.expiresAt);
+
+    if (value.status === 'UNKNOWN') {
+      if (value.budget !== null || observedAt !== null || expiresAt !== null ||
+          value.source !== 'conservative-default') {
+        throw new TypeError('Invalid Factory UNKNOWN policy');
+      }
+      return null;
+    }
+    if (observedAt === null || expiresAt === null ||
+        expiresAt <= observedAt ||
         expiresAt - observedAt > MAX_FACTORY_POLICY_TTL_MS) {
       throw new TypeError('Invalid Factory budget policy freshness');
     }
-    if (observedAt > current || expiresAt <= current) return null;
-    return normalizePolicy({ limit: value.limit, windowMs: value.windowMs }, 'factory');
+    if (observedAt > current) {
+      throw new TypeError('Invalid Factory budget policy freshness');
+    }
+    if (value.status === 'STALE') {
+      if (value.budget !== null || value.source !== 'conservative-default') {
+        throw new TypeError('Invalid Factory STALE policy');
+      }
+      return null;
+    }
+    if (expiresAt <= current || value.budget === null) return null;
+    if (value.source === 'conservative-default' ||
+        !value.budget || typeof value.budget !== 'object' ||
+        Array.isArray(value.budget)) {
+      throw new TypeError('Invalid Factory FRESH policy');
+    }
+    const budgetKeys = Object.keys(value.budget);
+    if (budgetKeys.length !== FACTORY_BUDGET_FIELDS.size ||
+        budgetKeys.some(key => !FACTORY_BUDGET_FIELDS.has(key)) ||
+        [...FACTORY_BUDGET_FIELDS].some(key => !Object.hasOwn(value.budget, key))) {
+      throw new TypeError('Invalid Factory budget payload');
+    }
+    return normalizePolicy({
+      limit: value.budget.limit,
+      windowMs: value.budget.windowMs,
+      minIntervalMs: value.budget.minIntervalMs,
+      expiresAt
+    }, 'factory');
   }
 
   function effectivePolicy(settings, remote, alias, now) {

@@ -38,10 +38,17 @@ function fakeStorage(initial = {}) {
   storage.values[budget.FACTORY_POLICY_KEY] = {
     version: budget.FACTORY_POLICY_VERSION,
     accountAlias: 'primary',
-    limit: 4,
-    windowMs: 60000,
+    status: 'FRESH',
+    budget: {
+      limit: 4,
+      windowMs: 60000,
+      minIntervalMs: 15000
+    },
     observedAt: now,
-    expiresAt: 160000
+    expiresAt: 160000,
+    source: 'observed-success',
+    capacityFingerprint: 'a'.repeat(64),
+    fingerprint: 'b'.repeat(64)
   };
   const updated = await controller.status();
   assert.equal(updated.snapshot.source, 'factory');
