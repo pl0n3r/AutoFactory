@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.9 — 2026-10-01
+
+- Detiene inmediatamente la generación cuando ChatGPT informa una conexión interrumpida.
+- Espera hasta 30 segundos después de Stop y recarga únicamente si el bloqueo persiste.
+- Mantiene la misma política de recuperación en Chrome y Safari.
+
 ## 1.6.8 — 2026-09-29
 
 - Evita el ciclo infinito cuando ChatGPT no puede cargar una conversación.

@@ -790,21 +790,26 @@
         if (!state.connectionFirstSeenAt) state.connectionFirstSeenAt = Date.now();
         const interruptedFor = Date.now() - state.connectionFirstSeenAt;
         recordErrorOnce(signal);
-        if (generating && interruptedFor >= 120000 && !state.connectionCancelAt) {
+        const connectionAction = core.connectionRecoveryAction({
+          generating, cancelRequested: Boolean(state.connectionCancelAt)
+        });
+        if (connectionAction === 'cancel-generation') {
           const stop = core.stopButton(document);
           if (stop) {
             stop.click();
             state.connectionCancelAt = Date.now();
             state.lastRecovery = { code: 'connection', action: 'cancel-generation' };
             saveLearning('recovery');
-            log('recovery', { code: 'connection', action: 'cancel-generation' });
-            setStatus('Conexión bloqueada; cancelación segura solicitada', 'error');
+            log('recovery', { code: 'connection', action: 'cancel-generation', immediate: true });
+            setStatus('Conexión interrumpida; deteniendo respuesta para recuperar', 'error');
             return;
           }
         }
         const waitingForCancel = state.connectionCancelAt
           && Date.now() - state.connectionCancelAt < 30000;
-        if (interruptedFor < (generating ? 120000 : 30000) || waitingForCancel) {
+        const waitingForReconnect = !state.connectionCancelAt && !generating
+          && interruptedFor < 30000;
+        if (waitingForCancel || waitingForReconnect) {
           setStatus(`Conexión interrumpida; esperando reconexión (${Math.ceil(interruptedFor / 1000)} s)`, 'error');
           return;
         }

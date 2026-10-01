@@ -137,6 +137,10 @@
     const pattern = /(?:conexi[oó]n interrumpida|connection interrupted|network interrupted)(?:\.|\s|$)/i;
     return documentTextMatches(doc, pattern, 180);
   }
+  function connectionRecoveryAction({ generating = false, cancelRequested = false } = {}) {
+    if (generating && !cancelRequested) return 'cancel-generation';
+    return 'wait';
+  }
   function documentTextMatches(doc, pattern, maximumLength = 300) {
     const root = doc.body || doc.documentElement;
     const showText = doc.defaultView?.NodeFilter?.SHOW_TEXT
@@ -311,6 +315,7 @@
     recoveryButton,
     conversationLimitButton,
     interruptedConnection,
+    connectionRecoveryAction,
     platformReview,
     additionalSafetyCheck,
     isSafeRecoverySignal,

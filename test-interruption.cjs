@@ -27,7 +27,10 @@ const healthy = documentFixture(['ChatGPT está respondiendo']);
 assert.equal(core.interruptedConnection(healthy), false);
 assert.deepEqual(core.pageSignal(healthy), { code: 'ready', action: 'continue' });
 
-console.log('Interrupción: mensaje visible detectado y clasificado como conexión');
+assert.equal(core.connectionRecoveryAction({ generating: true, cancelRequested: false }), 'cancel-generation');
+assert.equal(core.connectionRecoveryAction({ generating: true, cancelRequested: true }), 'wait');
+assert.equal(core.connectionRecoveryAction({ generating: false, cancelRequested: false }), 'wait');
+console.log('Interrupción: mensaje visible detectado y cancelación inmediata clasificada');
 
 assert.equal(core.isOwnedDraft({ value: ' Continuar proyecto ' }, 'Continuar proyecto'), true);
 assert.equal(core.isOwnedDraft({ value: 'Texto escrito por la persona' }, 'Continuar proyecto'), false);
