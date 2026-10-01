@@ -171,8 +171,7 @@ function budgetSummary(row, policy, now) {
     return normalizePolicy({ limit, windowMs: windowMinutes * 60000 });
   }
 
-  function factoryPolicy(value, alias, now) {
-    if (value === undefined || value === null) return null;
+  function validateFactoryPolicyShape(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       throw new TypeError('Invalid Factory budget policy');
     }
@@ -185,8 +184,9 @@ function budgetSummary(row, policy, now) {
     if (value.version !== FACTORY_POLICY_VERSION) {
       throw new TypeError('Unsupported Factory budget policy version');
     }
-    const wanted = accountAlias(alias);
-    if (accountAlias(value.accountAlias) !== wanted) return null;
+  }
+
+  function validateFactoryPolicyState(value) {
     if (!FACTORY_STATUSES.has(value.status) || !FACTORY_SOURCES.has(value.source)) {
       throw new TypeError('Invalid Factory budget policy state');
     }
@@ -196,34 +196,40 @@ function budgetSummary(row, policy, now) {
         !FINGERPRINT.test(value.fingerprint)) {
       throw new TypeError('Invalid Factory budget policy fingerprint');
     }
+  }
 
-    const current = budgetClock(now);
-    const observedAt = value.observedAt === null ? null : budgetClock(value.observedAt);
-    const expiresAt = value.expiresAt === null ? null : budgetClock(value.expiresAt);
+  function factoryPolicyTimes(value, now) {
+    return {
+      current: budgetClock(now),
+      observedAt: value.observedAt === null ? null : budgetClock(value.observedAt),
+      expiresAt: value.expiresAt === null ? null : budgetClock(value.expiresAt)
+    };
+  }
 
-    if (value.status === 'UNKNOWN') {
-      if (value.budget !== null || observedAt !== null || expiresAt !== null ||
-          value.source !== 'conservative-default') {
-        throw new TypeError('Invalid Factory UNKNOWN policy');
-      }
-      return null;
+  function validateFactoryUnknown(value, observedAt, expiresAt) {
+    if (value.budget !== null || observedAt !== null || expiresAt !== null ||
+        value.source !== 'conservative-default') {
+      throw new TypeError('Invalid Factory UNKNOWN policy');
     }
+  }
+
+  function validateFactoryFreshness(observedAt, expiresAt, current) {
     if (observedAt === null || expiresAt === null ||
         expiresAt <= observedAt ||
-        expiresAt - observedAt > MAX_FACTORY_POLICY_TTL_MS) {
+        expiresAt - observedAt > MAX_FACTORY_POLICY_TTL_MS ||
+        observedAt > current) {
       throw new TypeError('Invalid Factory budget policy freshness');
     }
-    if (observedAt > current) {
-      throw new TypeError('Invalid Factory budget policy freshness');
+  }
+
+  function validateFactoryStale(value, expiresAt, current) {
+    if (value.budget !== null ||
+        (value.source !== 'conservative-default' && expiresAt > current)) {
+      throw new TypeError('Invalid Factory STALE policy');
     }
-    if (value.status === 'STALE') {
-      if (value.budget !== null ||
-          (value.source !== 'conservative-default' && expiresAt > current)) {
-        throw new TypeError('Invalid Factory STALE policy');
-      }
-      return null;
-    }
-    if (expiresAt <= current || value.budget === null) return null;
+  }
+
+  function factoryFreshPolicy(value, expiresAt) {
     if (value.source === 'conservative-default' ||
         !value.budget || typeof value.budget !== 'object' ||
         Array.isArray(value.budget)) {
@@ -241,6 +247,27 @@ function budgetSummary(row, policy, now) {
       minIntervalMs: value.budget.minIntervalMs,
       expiresAt
     }, 'factory');
+  }
+
+  function factoryPolicy(value, alias, now) {
+    if (value === undefined || value === null) return null;
+    validateFactoryPolicyShape(value);
+    const wanted = accountAlias(alias);
+    if (accountAlias(value.accountAlias) !== wanted) return null;
+    validateFactoryPolicyState(value);
+    const { current, observedAt, expiresAt } = factoryPolicyTimes(value, now);
+
+    if (value.status === 'UNKNOWN') {
+      validateFactoryUnknown(value, observedAt, expiresAt);
+      return null;
+    }
+    validateFactoryFreshness(observedAt, expiresAt, current);
+    if (value.status === 'STALE') {
+      validateFactoryStale(value, expiresAt, current);
+      return null;
+    }
+    if (expiresAt <= current || value.budget === null) return null;
+    return factoryFreshPolicy(value, expiresAt);
   }
 
   function effectivePolicy(settings, remote, alias, now) {
