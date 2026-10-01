@@ -11,14 +11,25 @@ function consume(state, { at, limit = 4, windowMs = 60000, reasoningLevel = 'hig
   });
 }
 function factoryPolicy(now, overrides = {}) {
-  return {
+  const base = {
     version: budget.FACTORY_POLICY_VERSION,
     accountAlias: 'primary',
-    limit: 55,
-    windowMs: 3600000,
+    status: 'FRESH',
+    budget: {
+      limit: 55,
+      windowMs: 3600000,
+      minIntervalMs: Math.ceil(3600000 / 55)
+    },
     observedAt: now - 1000,
     expiresAt: now + 60000,
-    ...overrides
+    source: 'observed-success',
+    capacityFingerprint: 'a'.repeat(64),
+    fingerprint: 'b'.repeat(64)
+  };
+  return {
+    ...base,
+    ...overrides,
+    budget: Object.hasOwn(overrides, 'budget') ? overrides.budget : base.budget
   };
 }
 
@@ -31,25 +42,68 @@ function factoryPolicy(now, overrides = {}) {
   const learned = budget.effectivePolicy(
     localSettings, factoryPolicy(now), 'primary', now
   );
-  assert.deepEqual(learned, { limit: 55, windowMs: 3600000, source: 'factory' });
+  assert.deepEqual(learned, {
+    limit: 55,
+    windowMs: 3600000,
+    minIntervalMs: Math.ceil(3600000 / 55),
+    expiresAt: now + 60000,
+    source: 'factory'
+  });
 
   const stale = budget.effectivePolicy(
     localSettings,
-    factoryPolicy(now, { observedAt: now - 61000, expiresAt: now }),
+    factoryPolicy(now, {
+      status: 'STALE',
+      budget: null,
+      observedAt: now - 61000,
+      expiresAt: now - 1000,
+      source: 'conservative-default'
+    }),
     'primary',
     now
   );
   assert.deepEqual(stale, fallback,
+    'STALE Factory evidence must fall back exactly to conservative local policy');
+
+  const expired = budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, { expiresAt: now }),
+    'primary',
+    now
+  );
+  assert.deepEqual(expired, fallback,
     'expired Factory evidence must fall back exactly to conservative local policy');
 
-  const future = budget.effectivePolicy(
+  const noBudget = budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, { budget: null }),
+    'primary',
+    now
+  );
+  assert.deepEqual(noBudget, fallback,
+    'FRESH evidence without a budget must fall back conservatively');
+
+  const unknown = budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, {
+      status: 'UNKNOWN',
+      budget: null,
+      observedAt: null,
+      expiresAt: null,
+      source: 'conservative-default'
+    }),
+    'primary',
+    now
+  );
+  assert.deepEqual(unknown, fallback,
+    'UNKNOWN Factory evidence must fall back exactly to conservative local policy');
+
+  assert.throws(() => budget.effectivePolicy(
     localSettings,
     factoryPolicy(now, { observedAt: now + 1, expiresAt: now + 60001 }),
     'primary',
     now
-  );
-  assert.deepEqual(future, fallback,
-    'future Factory evidence is unknown and must not override the fallback');
+  ), /freshness/, 'future Factory evidence must fail closed');
 
   assert.equal(budget.localPolicy({ accountBudgetLimit: 9999 }).limit, budget.MAX_EVENTS);
   assert.throws(() => budget.normalizePolicy({ limit: budget.MAX_EVENTS + 1, windowMs: 60000 }));
@@ -60,11 +114,65 @@ function factoryPolicy(now, overrides = {}) {
     {}, { ...factoryPolicy(now), freeText: 'forbidden' }, 'primary', now
   ));
   assert.throws(() => budget.effectivePolicy(
+    {}, factoryPolicy(now, { source: 'unknown-source' }), 'primary', now
+  ));
+  assert.throws(() => budget.effectivePolicy(
+    {}, factoryPolicy(now, { capacityFingerprint: 'x' }), 'primary', now
+  ));
+  assert.throws(() => budget.effectivePolicy(
     {}, factoryPolicy(now, {
       observedAt: now - budget.MAX_FACTORY_POLICY_TTL_MS - 1,
       expiresAt: now + 1
     }), 'primary', now
   ));
+}
+
+{
+  const now = 2000000;
+  const fallback = budget.localPolicy({ accountBudgetLimit: 40, accountBudgetWindowMinutes: 60 });
+  const pauseEnvelope = factoryPolicy(now, {
+    budget: { limit: 0, windowMs: 60000, minIntervalMs: 60000 },
+    source: 'observed-limit',
+    expiresAt: now + 45000
+  });
+  const pausePolicy = budget.effectivePolicy({}, pauseEnvelope, 'primary', now);
+  assert.equal(pausePolicy.limit, 0);
+  assert.equal(pausePolicy.minIntervalMs, 60000);
+  assert.equal(pausePolicy.expiresAt, now + 45000);
+
+  const paused = budget.consume({}, {
+    accountAlias: 'primary',
+    now,
+    policy: pausePolicy,
+    reasoningLevel: 'high'
+  });
+  assert.equal(paused.allowed, false, 'Factory limit=0 must be an authoritative pause');
+  assert.equal(paused.snapshot.remaining, 0);
+  assert.equal(paused.snapshot.nextAllowedAt, now + 45000);
+
+  const resumed = budget.effectivePolicy({}, pauseEnvelope, 'primary', now + 45001);
+  assert.deepEqual(resumed, fallback, 'expired zero-limit policy must return to local fallback');
+}
+
+{
+  const now = 3000000;
+  const stricter = budget.effectivePolicy(
+    {},
+    factoryPolicy(now, {
+      budget: { limit: 4, windowMs: 60000, minIntervalMs: 30000 }
+    }),
+    'primary',
+    now
+  );
+  const sent = budget.consume({}, {
+    accountAlias: 'primary',
+    now,
+    policy: stricter,
+    reasoningLevel: 'high'
+  });
+  assert.equal(sent.allowed, true);
+  assert.equal(sent.snapshot.nextAllowedAt, now + 30000,
+    'Factory minIntervalMs must control pacing when stricter than window/limit');
 }
 
 {
