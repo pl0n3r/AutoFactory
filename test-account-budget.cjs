@@ -65,6 +65,46 @@ function factoryPolicy(now, overrides = {}) {
   assert.deepEqual(stale, fallback,
     'STALE Factory evidence must fall back exactly to conservative local policy');
 
+  const expiredObserved = budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, {
+      status: 'STALE',
+      budget: null,
+      observedAt: now - 61000,
+      expiresAt: now - 1000,
+      source: 'observed-limit'
+    }),
+    'primary',
+    now
+  );
+  assert.deepEqual(expiredObserved, fallback,
+    'Factory FRESH evidence degraded to observed STALE must use local fallback');
+
+  assert.throws(() => budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, {
+      status: 'STALE',
+      budget: null,
+      observedAt: now - 1000,
+      expiresAt: now + 1000,
+      source: 'observed-success'
+    }),
+    'primary',
+    now
+  ), /STALE/, 'observed STALE evidence cannot claim an unexpired window');
+
+  assert.throws(() => budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, {
+      status: 'STALE',
+      observedAt: now - 61000,
+      expiresAt: now - 1000,
+      source: 'observed-limit'
+    }),
+    'primary',
+    now
+  ), /STALE/, 'STALE Factory evidence cannot carry an authoritative budget');
+
   const expired = budget.effectivePolicy(
     localSettings,
     factoryPolicy(now, { expiresAt: now }),
@@ -173,6 +213,68 @@ function factoryPolicy(now, overrides = {}) {
   assert.equal(sent.allowed, true);
   assert.equal(sent.snapshot.nextAllowedAt, now + 30000,
     'Factory minIntervalMs must control pacing when stricter than window/limit');
+}
+
+{
+  const startedAt = 4000000;
+  const remoteNow = startedAt + 120000;
+  const localSettings = { accountBudgetLimit: 40, accountBudgetWindowMinutes: 60 };
+  const fallback = budget.effectivePolicy(localSettings, null, 'primary', startedAt);
+  const first = budget.consume({}, {
+    accountAlias: 'primary', now: startedAt, policy: fallback, reasoningLevel: 'high'
+  });
+  assert.equal(first.allowed, true);
+
+  const shortEnvelope = factoryPolicy(remoteNow, {
+    budget: { limit: 4, windowMs: 60000, minIntervalMs: 15000 },
+    observedAt: remoteNow - 1000,
+    expiresAt: remoteNow + 30000
+  });
+  const remote = budget.effectivePolicy(localSettings, shortEnvelope, 'primary', remoteNow);
+  assert.equal(remote.retentionWindowMs, fallback.windowMs,
+    'short Factory policy must retain the longer local fallback window');
+
+  const duringRemote = budget.refresh(first.state, 'primary', remote, remoteNow);
+  assert.equal(duringRemote.snapshot.sent, 0,
+    'retained history outside the active Factory window must not affect remote enforcement');
+  assert.equal(duringRemote.state.accounts.primary.sends.length, 1,
+    'short Factory window must not erase history still relevant to local fallback');
+
+  const afterExpiryAt = remoteNow + 30001;
+  const resumed = budget.effectivePolicy(
+    localSettings, shortEnvelope, 'primary', afterExpiryAt
+  );
+  assert.deepEqual(resumed, fallback);
+  const afterExpiry = budget.refresh(
+    duringRemote.state, 'primary', resumed, afterExpiryAt
+  );
+  assert.equal(afterExpiry.snapshot.sent, 1,
+    'local fallback must recover sends retained across the shorter Factory window');
+}
+
+{
+  const now = 5000000;
+  const localSettings = { accountBudgetLimit: 40, accountBudgetWindowMinutes: 60 };
+  const shortEnvelope = factoryPolicy(now, {
+    budget: { limit: budget.MAX_EVENTS, windowMs: 60000, minIntervalMs: 118 },
+    observedAt: now - 1000,
+    expiresAt: now + 30000
+  });
+  const remote = budget.effectivePolicy(localSettings, shortEnvelope, 'primary', now);
+  const retainedSends = Array.from({ length: budget.MAX_EVENTS }, (_, index) => ({
+    at: now - 120000 + index,
+    reasoningLevel: 'high'
+  }));
+  const result = budget.consume({
+    accounts: { primary: { sends: retainedSends, limits: [], blockedUntil: 0 } }
+  }, {
+    accountAlias: 'primary', now, policy: remote, reasoningLevel: 'high'
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.state.accounts.primary.sends.length, budget.MAX_EVENTS,
+    'adding an active send must keep retained state within MAX_EVENTS');
+  assert.equal(result.snapshot.sent, 1,
+    'retained history outside the remote window must not consume remote capacity');
 }
 
 {
