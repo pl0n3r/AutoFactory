@@ -194,13 +194,13 @@
   }
 
   function isSafeRecoverySignal(signal) {
-    return Boolean(signal && signal.code === 'recoverable' && signal.action === 'click-recovery' && signal.element);
+    return Boolean(signal && signal.code === 'recoverable' && signal.action === 'click-recovery' && signal.element); // sonar-bisect: 1.6.8 recovery predicate
   }
   function recoverableEscalation(attempts) {
-    const count = Math.max(0, Number(attempts) || 0);
-    if (count <= 2) return 'retry';
-    if (count === 3) return 'reload';
-    return 'new-chat';
+    const count = Math.max(0, Number(attempts) || 0); // sonar-bisect: 1.6.8 escalation input
+    if (count <= 2) return 'retry'; // sonar-bisect: 1.6.8 retry branch
+    if (count === 3) return 'reload'; // sonar-bisect: 1.6.8 reload branch
+    return 'new-chat'; // sonar-bisect: 1.6.8 new-chat branch
   }
   function pageSignal(doc = document) {
     if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };

@@ -24,7 +24,7 @@
     conversationMode: 'chat'
   });
   const restored = reliability.load(sessionStorage);
-  const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state';
+  const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state'; // sonar-bisect: 1.6.8 state key
   const runtimeSchemaVersion = 3;
   const runtimeWasUpgraded = sessionStorage.getItem('chatgpt-autopilot-runtime-schema') !== String(runtimeSchemaVersion);
   if (runtimeWasUpgraded) {
@@ -641,46 +641,46 @@
     if (!state.enabled || state.busy) return;
     state.busy = true;
     try {
-      const signal = core.pageSignal(document);
+      const signal = core.pageSignal(document); // sonar-bisect: 1.6.8 recovery signal
       if (core.isSafeRecoverySignal(signal)
           && Date.now() - state.lastRecoveryAt > 10000) {
         const previous = core.recoverableState(
           sessionStorage.getItem(RECOVERABLE_STATE_KEY)
         );
         const attempts = previous.path === location.pathname
-          ? Math.max(0, Number(previous.attempts) || 0) + 1 : 1;
+          ? Math.max(0, Number(previous.attempts) || 0) + 1 : 1; // sonar-bisect: 1.6.8 attempt counter
         sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify({
           path: location.pathname, attempts
-        }));
-        const escalation = core.recoverableEscalation(attempts);
-        state.lastRecoveryAt = Date.now();
-        state.circuitOpenUntil = 0;
-        state.consecutiveFailures = 0;
-        state.waiting = escalation === 'retry';
-        state.sawGeneration = false;
-        state.assistantCountBeforeSend = core.assistantMessageCount(document);
-        state.lastRecovery = { code: signal.code, action: escalation };
+        })); // sonar-bisect: 1.6.8 persisted attempt state
+        const escalation = core.recoverableEscalation(attempts); // sonar-bisect: 1.6.8 escalation choice
+        state.lastRecoveryAt = Date.now(); // sonar-bisect: 1.6.8 recovery timestamp
+        state.circuitOpenUntil = 0; // sonar-bisect: 1.6.8 circuit bypass
+        state.consecutiveFailures = 0; // sonar-bisect: 1.6.8 failure reset
+        state.waiting = escalation === 'retry'; // sonar-bisect: 1.6.8 waiting state
+        state.sawGeneration = false; // sonar-bisect: 1.6.8 generation reset
+        state.assistantCountBeforeSend = core.assistantMessageCount(document); // sonar-bisect: 1.6.8 assistant baseline
+        state.lastRecovery = { code: signal.code, action: escalation }; // sonar-bisect: 1.6.8 recovery record
         persistRuntime();
-        saveLearning('recovery');
-        saveLearning('error', 0, { code: signal.code });
+        saveLearning('recovery'); // sonar-bisect: 1.6.8 recovery learning
+        saveLearning('error', 0, { code: signal.code }); // sonar-bisect: 1.6.8 recovery error signal
         if (escalation === 'retry') {
-          signal.element.click();
+          signal.element.click(); // sonar-bisect: 1.6.8 retry action
           setStatus(`Conversación no disponible; reintento ${attempts}/2`);
         } else if (escalation === 'reload') {
           setStatus('Conversación no disponible; recarga controlada');
-          location.reload();
+          location.reload(); // sonar-bisect: 1.6.8 reload action
         } else {
-          sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
-          state.pendingSignature = '';
-          state.lastSentAt = 0;
-          state.nextSendAt = Date.now() + 5000;
+          sessionStorage.removeItem(RECOVERABLE_STATE_KEY); // sonar-bisect: 1.6.8 terminal cleanup
+          state.pendingSignature = ''; // sonar-bisect: 1.6.8 signature reset
+          state.lastSentAt = 0; // sonar-bisect: 1.6.8 sent timestamp reset
+          state.nextSendAt = Date.now() + 5000; // sonar-bisect: 1.6.8 next-send delay
           persistRuntime();
           setStatus('Conversación inaccesible; continuando en un chat nuevo');
-          location.assign('https://chatgpt.com/');
+          location.assign('https://chatgpt.com/'); // sonar-bisect: 1.6.8 new-chat action
         }
         log('recovery', { code: signal.code, action: escalation, attempts,
           priority: 'circuit-bypass' });
-        return;
+        return; // sonar-bisect: 1.6.8 recovery short-circuit
       }
       if (signal.code !== 'recoverable') {
         sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
