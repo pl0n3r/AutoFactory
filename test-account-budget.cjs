@@ -10,22 +10,60 @@ function consume(state, { at, limit = 4, windowMs = 60000, reasoningLevel = 'hig
     accountAlias: 'primary', now: at, policy: policy(limit, windowMs), reasoningLevel
   });
 }
+function factoryPolicy(now, overrides = {}) {
+  return {
+    version: budget.FACTORY_POLICY_VERSION,
+    accountAlias: 'primary',
+    limit: 55,
+    windowMs: 3600000,
+    observedAt: now - 1000,
+    expiresAt: now + 60000,
+    ...overrides
+  };
+}
 
 {
-  const fallback = budget.effectivePolicy(
-    { accountBudgetLimit: 40, accountBudgetWindowMinutes: 60 }, null, 'primary'
-  );
+  const now = 1000000;
+  const localSettings = { accountBudgetLimit: 40, accountBudgetWindowMinutes: 60 };
+  const fallback = budget.effectivePolicy(localSettings, null, 'primary', now);
   assert.deepEqual(fallback, { limit: 40, windowMs: 3600000, source: 'default' });
+
   const learned = budget.effectivePolicy(
-    { accountBudgetLimit: 40, accountBudgetWindowMinutes: 60 },
-    { accountAlias: 'primary', limit: 55, windowMs: 3600000 },
-    'primary'
+    localSettings, factoryPolicy(now), 'primary', now
   );
   assert.deepEqual(learned, { limit: 55, windowMs: 3600000, source: 'factory' });
+
+  const stale = budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, { observedAt: now - 61000, expiresAt: now }),
+    'primary',
+    now
+  );
+  assert.deepEqual(stale, fallback,
+    'expired Factory evidence must fall back exactly to conservative local policy');
+
+  const future = budget.effectivePolicy(
+    localSettings,
+    factoryPolicy(now, { observedAt: now + 1, expiresAt: now + 60001 }),
+    'primary',
+    now
+  );
+  assert.deepEqual(future, fallback,
+    'future Factory evidence is unknown and must not override the fallback');
+
   assert.equal(budget.localPolicy({ accountBudgetLimit: 9999 }).limit, budget.MAX_EVENTS);
   assert.throws(() => budget.normalizePolicy({ limit: budget.MAX_EVENTS + 1, windowMs: 60000 }));
   assert.throws(() => budget.effectivePolicy(
-    {}, { accountAlias: 'person@example.com', limit: 55, windowMs: 3600000 }, 'primary'
+    {}, factoryPolicy(now, { accountAlias: 'person@example.com' }), 'primary', now
+  ));
+  assert.throws(() => budget.effectivePolicy(
+    {}, { ...factoryPolicy(now), freeText: 'forbidden' }, 'primary', now
+  ));
+  assert.throws(() => budget.effectivePolicy(
+    {}, factoryPolicy(now, {
+      observedAt: now - budget.MAX_FACTORY_POLICY_TTL_MS - 1,
+      expiresAt: now + 1
+    }), 'primary', now
   ));
 }
 
