@@ -519,6 +519,26 @@
     return 'unavailable';
   }
 
+  async function waitForBudgetBeforeSend(prompt) {
+    if (!budgetGuard?.waitUntilReady) return true;
+    const budgetAt = budgetGuard.nextAllowedAt?.();
+    if (Number.isSafeInteger(budgetAt) && budgetAt > Date.now()) {
+      const seconds = Math.max(1, Math.ceil((budgetAt - Date.now()) / 1000));
+      setStatus(`Presupuesto compartido: esperando ${seconds} s`);
+    } else {
+      setStatus('Verificando presupuesto compartido');
+    }
+    const budgetReady = await budgetGuard.waitUntilReady();
+    if (!budgetReady || !state.enabled) return false;
+    const field = core.composer(document);
+    const currentText = core.composerText(field);
+    if (currentText && !core.isOwnedDraft(field, prompt)) {
+      setStatus('Pausado: el campo contiene texto', 'error');
+      return false;
+    }
+    return true;
+  }
+
   function waitForSendButton(timeoutMs = 10000) {
     const started = Date.now();
     const localDeadline = started + timeoutMs;
@@ -559,27 +579,11 @@
   }
 
   async function sendPrompt(prompt) {
+    const field = core.composer(document);
+    if (!field) throw new Error('No encontré #prompt-textarea');
     const signature = reliability.signature(prompt);
     if (state.pendingSignature === signature) {
       throw new Error('Ya existe un envío pendiente; se evitó un duplicado');
-    }
-    if (budgetGuard?.waitUntilReady) {
-      const budgetAt = budgetGuard.nextAllowedAt?.();
-      if (Number.isSafeInteger(budgetAt) && budgetAt > Date.now()) {
-        const seconds = Math.max(1, Math.ceil((budgetAt - Date.now()) / 1000));
-        setStatus(`Presupuesto compartido: esperando ${seconds} s`);
-      } else {
-        setStatus('Verificando presupuesto compartido');
-      }
-      const budgetReady = await budgetGuard.waitUntilReady();
-      if (!budgetReady || !state.enabled) return false;
-    }
-    const field = core.composer(document);
-    if (!field) throw new Error('No encontré #prompt-textarea');
-    const currentText = core.composerText(field);
-    if (currentText && !core.isOwnedDraft(field, prompt)) {
-      setStatus('Pausado: el campo contiene texto', 'error');
-      return false;
     }
     log('send-start', { promptLength: core.normalize(prompt).length, signature });
     if (!core.replaceComposerText(field, prompt, document)) {
@@ -631,7 +635,6 @@
     persistRuntime();
     log('send-confirmed', { promptLength: core.normalize(prompt).length, signature });
     setStatus('Mensaje confirmado; esperando respuesta');
-    return true;
   }
 
   async function tick() {
@@ -951,6 +954,7 @@
       if (reasoningResult === 'unavailable') {
         setStatus('Nivel Alto no verificable; continuando con el nivel actual');
       }
+      if (!await waitForBudgetBeforeSend(prompt)) return;
       await sendPrompt(prompt);
     } catch (error) {
       saveLearning('failure');
