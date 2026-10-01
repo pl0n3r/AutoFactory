@@ -11,6 +11,7 @@
   if (typeof originalClick !== 'function') return;
 
   const AUTHORIZATION_TTL_MS = 5000;
+  const WAIT_POLL_MS = 250;
   let enabled = null;
   let ready = false;
   let snapshot = null;
@@ -18,8 +19,12 @@
   let authorizationInFlight = false;
   let authorizedButton = null;
   let authorizedAt = 0;
-  let refreshInFlight = false;
+  let refreshInFlight = null;
   let limitActive = false;
+
+  function delay(milliseconds) {
+    return new Promise(resolve => setTimeout(resolve, milliseconds));
+  }
 
   function runtimeMessage(payload) {
     return new Promise((resolve, reject) => {
@@ -29,8 +34,10 @@
           if (error || !response) reject(new Error('budget-runtime-unavailable'));
           else resolve(response);
         });
-        if (typeof result?.then === 'function') result.then(resolve, reject);
-      } catch (error) { reject(error); }
+        if (typeof result?.then === 'function') void result.then(resolve, reject);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -61,17 +68,46 @@
   }
 
   async function refreshStatus() {
-    if (refreshInFlight) return;
-    refreshInFlight = true;
-    try {
-      const response = await runtimeMessage({ type: 'autopilot:budget-status' });
-      if (!response?.ok || !applySnapshot(response.snapshot)) ready = false;
-    } catch (_error) {
-      // Runtime failures are intentionally reduced to a fail-closed local state;
-      // raw extension/provider errors are never persisted or logged here.
-      ready = false;
-    } finally {
-      refreshInFlight = false;
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = runtimeMessage({ type: 'autopilot:budget-status' })
+      .then(response => {
+        if (!response?.ok || !applySnapshot(response.snapshot)) {
+          ready = false;
+          return false;
+        }
+        return true;
+      }, () => {
+        ready = false;
+        return false;
+      })
+      .finally(() => { refreshInFlight = null; });
+    return refreshInFlight;
+  }
+
+  function nextAllowedAt() {
+    return ready && snapshot ? snapshot.nextAllowedAt : null;
+  }
+
+  async function waitUntilReady() {
+    while (true) {
+      if (enabled === false) return false;
+      if (enabled !== true || !ready || !snapshot) {
+        const refreshed = await refreshStatus();
+        if (!refreshed) {
+          await delay(WAIT_POLL_MS);
+          continue;
+        }
+      }
+      if (enabled === false) return false;
+      if (snapshot.nextAllowedAt === null && snapshot.remaining > 0) return true;
+      const current = Date.now();
+      const waitMs = snapshot.nextAllowedAt !== null && snapshot.nextAllowedAt > current
+        ? Math.min(1000, Math.max(50, snapshot.nextAllowedAt - current))
+        : WAIT_POLL_MS;
+      await delay(waitMs);
+      if (snapshot?.nextAllowedAt !== null && Date.now() >= snapshot.nextAllowedAt) {
+        ready = false;
+      }
     }
   }
 
@@ -102,8 +138,7 @@
         if (core.sendButton(document) !== button || !originalCanSend(button)) return;
         authorizedButton = button;
         authorizedAt = Date.now();
-      })
-      .catch(() => { ready = false; })
+      }, () => { ready = false; })
       .finally(() => { authorizationInFlight = false; });
   }
 
@@ -128,7 +163,7 @@
           resetAt: null
         }).then(response => {
           if (response?.ok) applySnapshot(response.snapshot);
-        }).catch(() => { ready = false; });
+        }, () => { ready = false; });
       }
     } else {
       limitActive = false;
@@ -172,6 +207,11 @@
     enabled = Boolean(values.masterEnabled);
     reasoningLevel = values.reasoningLevel === 'high' ? 'high' : 'unknown';
     if (!applySnapshot(values.accountBudgetSnapshotV1)) void refreshStatus();
+  });
+
+  globalThis.ChatGPTAutopilotBudgetGuard = Object.freeze({
+    waitUntilReady,
+    nextAllowedAt
   });
 
   setInterval(() => {
