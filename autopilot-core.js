@@ -194,7 +194,7 @@
   }
 
   function isSafeRecoverySignal(signal) {
-    return Boolean(signal && signal.code === 'recoverable' && signal.action === 'click-recovery' && signal.element);
+    return Boolean(signal?.code === 'recoverable' && signal.action === 'click-recovery' && signal.element);
   }
   function recoverableEscalation(attempts) {
     const count = Math.max(0, Number(attempts) || 0);

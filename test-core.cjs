@@ -38,6 +38,8 @@ function page(html) {
   assert.equal(core.recoveryButton(doc).getAttribute('aria-label'), 'Reintentar');
   assert.equal(core.isSafeRecoverySignal(core.pageSignal(doc)), true);
   assert.equal(core.isSafeRecoverySignal({ code: 'connection', action: 'reload' }), false);
+  assert.equal(core.isSafeRecoverySignal(null), false);
+  assert.equal(core.isSafeRecoverySignal(undefined), false);
   assert.equal(core.recoverableEscalation(1), 'retry');
   assert.equal(core.recoverableEscalation(2), 'retry');
   assert.equal(core.recoverableEscalation(3), 'reload');
