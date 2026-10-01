@@ -46,7 +46,7 @@
 
   const hint = document.createElement('div');
   hint.className = 'hint';
-  hint.textContent = 'Factory sustituye este fallback automáticamente cuando publica una política válida.';
+  hint.textContent = 'Factory sustituye este fallback automáticamente cuando publica una política fresca y válida.';
 
   card.append(title, metrics, details, aliasLabel, alias, grid, hint);
   root.insertBefore(card, root.lastElementChild || null);
@@ -88,16 +88,20 @@
           if (error || !response) reject(new Error('budget-runtime-unavailable'));
           else resolve(response);
         });
-        if (typeof result?.then === 'function') result.then(resolve, reject);
-      } catch (error) { reject(error); }
+        if (typeof result?.then === 'function') void result.then(resolve, reject);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
   function setLocal(values) {
     return new Promise((resolve, reject) => {
       try {
         const result = extensionApi.storage.local.set(values, resolve);
-        if (typeof result?.then === 'function') result.then(resolve, reject);
-      } catch (error) { reject(error); }
+        if (typeof result?.then === 'function') void result.then(resolve, reject);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
   function formatNext(timestamp) {
@@ -117,14 +121,13 @@
     events.textContent = `Límites detectados en ventana: ${snapshot.limitEvents ?? 0} · Alto: ${snapshot.highReasoningSends ?? 0}`;
   }
   async function refresh() {
-    try {
-      const response = await runtimeMessage({ type: 'autopilot:budget-status' });
-      if (response?.ok) render(response.snapshot);
-    } catch (_error) {
-      // Runtime failures are represented only as a local availability message;
-      // the underlying exception is intentionally not surfaced or persisted.
-      next.textContent = 'Presupuesto no disponible; los envíos fallan cerrado.';
+    const response = await runtimeMessage({ type: 'autopilot:budget-status' })
+      .then(value => value, () => null);
+    if (response?.ok) {
+      render(response.snapshot);
+      return;
     }
+    next.textContent = 'Presupuesto no disponible; los envíos fallan cerrado.';
   }
   function saveSettings() {
     clearTimeout(saveTimer);
@@ -142,7 +145,7 @@
         accountBudgetLimit: wantedLimit,
         accountBudgetWindowMinutes: wantedWindow
       }).then(
-        () => refresh(),
+        () => { void refresh(); },
         () => { next.textContent = 'No se pudieron guardar los ajustes del presupuesto.'; }
       );
     }, 250);
