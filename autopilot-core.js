@@ -191,6 +191,15 @@
     if (count === 3) return 'reload';
     return 'new-chat';
   }
+  function recoverableState(raw) {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_error) {
+      return {};
+    }
+  }
   function pageSignal(doc = document) {
     if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };
     const recovery = recoveryButton(doc);
@@ -304,6 +313,7 @@
     additionalSafetyCheck,
     isSafeRecoverySignal,
     recoverableEscalation,
+    recoverableState,
     pageSignal,
     providerAccountSignal,
     normalize,
