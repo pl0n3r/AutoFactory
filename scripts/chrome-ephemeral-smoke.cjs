@@ -4,40 +4,40 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { buildReleaseAttestation } = require('./release-artifact-attestation.cjs');
 
-const {
-  buildReleaseAttestation,
-} = require('./release-artifact-attestation.cjs');
+const CHROME_BINARIES = Object.freeze({
+  darwin: Object.freeze([
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  ]),
+  linux: Object.freeze([
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/opt/google/chrome/chrome',
+  ]),
+  win32: Object.freeze([
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ]),
+});
 
 function fail(reason) {
   throw new TypeError('Chrome ephemeral smoke: ' + reason);
 }
 
-function regularExecutable(chromeBinary) {
-  if (typeof chromeBinary !== 'string' || !path.isAbsolute(chromeBinary)) {
-    fail('chrome binary must be an absolute path');
-  }
-  let info;
-  try {
-    info = fs.lstatSync(chromeBinary);
-  } catch (_error) {
-    fail('chrome binary is missing');
-  }
-  if (info.isSymbolicLink() || !info.isFile()) {
-    fail('chrome binary must be a regular file');
-  }
-  try {
-    fs.accessSync(chromeBinary, fs.constants.X_OK);
-  } catch (_error) {
-    fail('chrome binary is not executable');
-  }
-  return chromeBinary;
+function resolveChromeBinary(platform = process.platform) {
+  const candidates = CHROME_BINARIES[platform];
+  if (!Array.isArray(candidates)) fail('unsupported platform');
+  const binary = candidates.find(candidate => fs.existsSync(candidate));
+  if (!binary) fail('trusted Chrome binary was not found');
+  return binary;
 }
 
 function copyAttestedAssets(root, extensionDir, attestation) {
   for (const asset of attestation.assets) {
-    const source = path.join(root, ...asset.path.split('/'));
-    const target = path.join(extensionDir, ...asset.path.split('/'));
+    const segments = asset.path.split('/');
+    const source = path.join(root, ...segments);
+    const target = path.join(extensionDir, ...segments);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL);
   }
@@ -74,45 +74,32 @@ function sanitizedEnvironment(profileDir) {
   return env;
 }
 
-function runtimeFailure(output) {
-  const patterns = [
-    /failed to load extension/i,
-    /extension[^\n]*(?:error|failed)/i,
-    /manifest[^\n]*(?:error|invalid)/i,
-  ];
-  return patterns.some(pattern => pattern.test(output));
-}
-
-function launchChrome(chromeBinary, args, profileDir, timeoutMs, spawn = spawnSync) {
+function launchChrome(chromeBinary, args, profileDir, timeoutMs, spawn) {
   const result = spawn(chromeBinary, args, {
     encoding: 'utf8',
     env: sanitizedEnvironment(profileDir),
     timeout: timeoutMs,
     windowsHide: true,
   });
-  if (result.error) {
-    fail('chrome process error: ' + result.error.message);
-  }
+  if (result.error) fail('chrome process error: ' + result.error.message);
   if (result.status !== 0) {
     fail('chrome process failed with exit code ' + String(result.status));
   }
   const output = String(result.stderr || '') + '\n' + String(result.stdout || '');
-  if (runtimeFailure(output)) {
+  if (/failed to load extension|extension[^\n]*(?:error|failed)|manifest[^\n]*(?:error|invalid)/i.test(output)) {
     fail('chrome reported an extension runtime/load error');
   }
-  return output;
 }
 
 function runChromeSmoke({
   root,
   tag,
   commitSha,
-  chromeBinary,
   tempRoot = os.tmpdir(),
   timeoutMs = 15000,
   spawn = spawnSync,
+  binaryResolver = resolveChromeBinary,
 }) {
-  regularExecutable(chromeBinary);
   if (typeof tempRoot !== 'string' || !path.isAbsolute(tempRoot)) {
     fail('temp root must be an absolute path');
   }
@@ -120,10 +107,10 @@ function runChromeSmoke({
     fail('timeout must be between 1000 and 60000 ms');
   }
 
+  const chromeBinary = binaryResolver();
   const attestation = buildReleaseAttestation(root, tag, commitSha);
   const profileDir = fs.mkdtempSync(path.join(tempRoot, 'autofactory-chrome-profile-'));
   const extensionDir = fs.mkdtempSync(path.join(tempRoot, 'autofactory-chrome-extension-'));
-  let verified = false;
   try {
     copyAttestedAssets(root, extensionDir, attestation);
     launchChrome(
@@ -133,14 +120,13 @@ function runChromeSmoke({
       timeoutMs,
       spawn
     );
-    verified = true;
   } finally {
     fs.rmSync(profileDir, { recursive: true, force: true });
     fs.rmSync(extensionDir, { recursive: true, force: true });
   }
 
   return Object.freeze({
-    verified,
+    verified: true,
     runtime: 'chrome',
     profile_mode: 'ephemeral',
     extension_mode: 'attested-copy',
@@ -153,29 +139,24 @@ function runChromeSmoke({
 
 if (require.main === module) {
   try {
-    if (process.argv.length !== 5) {
-      fail('expected <chrome-binary> <tag> <commit-sha>');
-    }
+    if (process.argv.length !== 4) fail('expected <tag> <commit-sha>');
     const result = runChromeSmoke({
       root: path.resolve(__dirname, '..'),
-      chromeBinary: path.resolve(process.argv[2]),
-      tag: process.argv[3],
-      commitSha: process.argv[4],
+      tag: process.argv[2],
+      commitSha: process.argv[3],
     });
     console.log(JSON.stringify(result));
   } catch (error) {
-    const message = error instanceof Error
-      ? error.message
-      : 'Chrome ephemeral smoke failed';
-    console.error(message);
+    console.error(error instanceof Error ? error.message : 'Chrome ephemeral smoke failed');
     process.exitCode = 1;
   }
 }
 
 module.exports = {
+  CHROME_BINARIES,
   chromeArgs,
   launchChrome,
+  resolveChromeBinary,
   runChromeSmoke,
-  runtimeFailure,
   sanitizedEnvironment,
 };
