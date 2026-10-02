@@ -28,9 +28,28 @@ function fail(reason) {
 function resolveChromeBinary(platform = process.platform) {
   const candidates = CHROME_BINARIES[platform];
   if (!Array.isArray(candidates)) fail('unsupported platform');
-  const binary = candidates.find(candidate => fs.existsSync(candidate));
-  if (!binary) fail('trusted Chrome binary was not found');
-  return binary;
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) continue;
+
+    let info;
+    try {
+      info = fs.lstatSync(candidate);
+    } catch (_error) {
+      fail('trusted Chrome binary is unreadable');
+    }
+    if (info.isSymbolicLink() || !info.isFile()) {
+      fail('trusted Chrome binary must be a regular file');
+    }
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+    } catch (_error) {
+      fail('trusted Chrome binary is not executable');
+    }
+    return candidate;
+  }
+
+  fail('trusted Chrome binary was not found');
 }
 
 function copyAttestedAssets(root, extensionDir, attestation) {
