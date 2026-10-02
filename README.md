@@ -40,8 +40,9 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 | UNKNOWN | UNKNOWN | UNKNOWN |
 <!-- factory:progress-readiness:end -->
 
-## Versión 1.6.13
+## Versión 1.6.14
 
+- Usa el botón de envío vivo después del último render y detiene reintentos ambiguos durante cinco minutos.
 - Restaura de forma segura el mensaje si React reemplaza el compositor por uno vacío justo antes de enviarlo.
 - Evita falsos bloqueos durante la reconstrucción transitoria del compositor y valida el mensaje justo antes de enviarlo.
 - Mantiene el presupuesto compartido desactivado por defecto; puede activarse voluntariamente desde el popup.

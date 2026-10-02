@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.14 — 2026-10-02
+
+- Recupera el botón de envío vivo justo antes del clic para evitar referencias reemplazadas por React.
+- Activa la protección durante cinco minutos ante un envío ambiguo, evitando reintentos y duplicados.
+- Mantiene el mismo comportamiento seguro en Chrome y Safari.
+
 ## 1.6.13 — 2026-10-02
 
 - Restaura una sola vez el mensaje cuando React sustituye el compositor por uno vacío antes del envío.

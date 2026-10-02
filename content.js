@@ -609,6 +609,10 @@
         throw new Error('El contenido cambió antes del envío');
       }
     }
+    button = core.sendButton(document);
+    if (!button?.isConnected || !core.canSend(button)) {
+      throw new Error('El botón real de enviar no está disponible');
+    }
     const userCountBeforeSend = core.userMessageCount(document);
     state.assistantCountBeforeSend = core.assistantMessageCount(document);
     button.click();
@@ -960,13 +964,18 @@
       await sendPrompt(prompt);
     } catch (error) {
       saveLearning('failure');
+      const ambiguousSendFailure = error?.message === 'ChatGPT no confirmó el mensaje dentro de la conversación';
       const failure = reliability.afterFailure(runtimeSnapshot());
+      if (ambiguousSendFailure) {
+        failure.circuitOpenUntil = Date.now() + 300000;
+        failure.retryAt = failure.circuitOpenUntil;
+      }
       Object.assign(state, failure);
       state.nextSendAt = failure.retryAt;
       persistRuntime();
       log('failure', { message: String(error.message || error), failures: state.consecutiveFailures, retryAt: state.nextSendAt });
       setStatus(state.circuitOpenUntil > Date.now()
-        ? 'Protección activa tras fallos repetidos'
+        ? ambiguousSendFailure ? 'Protección activa: envío no confirmado' : 'Protección activa tras fallos repetidos'
         : `${error.message || 'Error'}; reintento controlado`, 'error');
     } finally {
       state.busy = false;
