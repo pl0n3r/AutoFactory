@@ -583,7 +583,7 @@
     if (!core.replaceComposerText(field, prompt, document)) {
       throw new Error('El campo no contiene exactamente el mensaje');
     }
-    const button = await waitForSendButton();
+    let button = await waitForSendButton();
     if (!button) {
       log('send-control-missing', {
         controls: core.sendControlSnapshot(document),
@@ -596,11 +596,18 @@
       throw new Error('El botón real de enviar no está disponible');
     }
     const currentField = core.composer(document);
-    if (core.composerText(currentField) !== core.normalize(prompt)) {
-      if (core.composerText(currentField) === core.composerText(field)) {
-        core.replaceComposerText(currentField, '', document);
+    let currentText = core.composerText(currentField);
+    if (currentText !== core.normalize(prompt)) {
+      if (!currentText) {
+        if (!core.replaceComposerText(currentField, prompt, document)) {
+          throw new Error('El contenido cambió antes del envío');
+        }
+        button = await waitForSendButton(3000);
+        currentText = core.composerText(core.composer(document));
       }
-      throw new Error('El contenido cambió antes del envío');
+      if (!button || currentText !== core.normalize(prompt)) {
+        throw new Error('El contenido cambió antes del envío');
+      }
     }
     const userCountBeforeSend = core.userMessageCount(document);
     state.assistantCountBeforeSend = core.assistantMessageCount(document);

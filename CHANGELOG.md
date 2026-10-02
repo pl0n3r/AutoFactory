@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.13 — 2026-10-02
+
+- Restaura una sola vez el mensaje cuando React sustituye el compositor por uno vacío antes del envío.
+- Conserva cualquier texto diferente introducido por el usuario y cancela el envío en ese caso.
+- Mantiene la protección contra duplicados y la misma recuperación en Chrome y Safari.
+
 ## 1.6.12 — 2026-10-02
 
 - Evita falsos bloqueos cuando React reconstruye transitoriamente el compositor después de escribir.
