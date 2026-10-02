@@ -572,15 +572,6 @@
     });
   }
 
-  async function composerRemainsExact(field, prompt) {
-    const expected = core.normalize(prompt);
-    for (let check = 0; check < 6; check += 1) {
-      await new Promise(resolve => setTimeout(resolve, 150));
-      if (core.composerText(core.composer(document)) !== expected) return false;
-    }
-    return true;
-  }
-
   async function sendPrompt(prompt) {
     const field = core.composer(document);
     if (!field) throw new Error('No encontré #prompt-textarea');
@@ -591,10 +582,6 @@
     log('send-start', { promptLength: core.normalize(prompt).length, signature });
     if (!core.replaceComposerText(field, prompt, document)) {
       throw new Error('El campo no contiene exactamente el mensaje');
-    }
-    if (!await composerRemainsExact(field, prompt)) {
-      core.replaceComposerText(field, '', document);
-      throw new Error('ChatGPT modificó el mensaje; envío cancelado');
     }
     const button = await waitForSendButton();
     if (!button) {

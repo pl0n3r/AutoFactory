@@ -40,8 +40,9 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 | UNKNOWN | UNKNOWN | UNKNOWN |
 <!-- factory:progress-readiness:end -->
 
-## Versión 1.6.11
+## Versión 1.6.12
 
+- Evita falsos bloqueos durante la reconstrucción transitoria del compositor y valida el mensaje justo antes de enviarlo.
 - Mantiene el presupuesto compartido desactivado por defecto; puede activarse voluntariamente desde el popup.
 - Muestra en tiempo real la cuenta regresiva del presupuesto compartido y continúa automáticamente al liberarse el turno.
 - Detiene inmediatamente una generación cuando ChatGPT informa una conexión interrumpida; recarga solo si no se estabiliza en 30 segundos.

@@ -8,6 +8,7 @@ assert.match(popup, /savedPrompt\.length>0/);
 assert.doesNotMatch(popup, /prompt[^\n]{0,120}length>=220/);
 assert.match(content, /prompt\.length === 0/);
 assert.doesNotMatch(content, /prompt\.length < 220/);
+assert.doesNotMatch(content, /composerRemainsExact/, 'no debe validar durante la reconstrucción transitoria de React');
 
 console.log('Mensaje personalizado: cualquier texto no vacío se conserva y se envía');
 
