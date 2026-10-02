@@ -50,6 +50,27 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
             text=True,
         )
 
+    def _binary_boundary(self, mode):
+        expression = (
+            "const fs=require('node:fs');"
+            "const m=require(process.argv[1]);"
+            "const mode=process.argv[2];"
+            "fs.existsSync=()=>true;"
+            "fs.lstatSync=()=>({"
+            "isSymbolicLink:()=>mode==='symlink',"
+            "isFile:()=>mode!=='directory'"
+            "});"
+            "fs.accessSync=()=>{if(mode==='not-executable')throw new Error('denied')};"
+            "try{console.log(m.resolveChromeBinary('linux'))}"
+            "catch(e){console.error(e.message);process.exit(1)}"
+        )
+        return subprocess.run(
+            ["node", "-e", expression, str(SCRIPT), mode],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
     def test_ephemeral_profile_loads_packaged_extension_without_user_data(self):
         result = self._smoke()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -93,6 +114,18 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         permission = self._smoke()
         self.assertNotEqual(permission.returncode, 0)
         self.assertIn("unexpected permission", permission.stderr)
+
+        symlink_binary = self._binary_boundary("symlink")
+        self.assertNotEqual(symlink_binary.returncode, 0)
+        self.assertIn("regular file", symlink_binary.stderr)
+
+        directory_binary = self._binary_boundary("directory")
+        self.assertNotEqual(directory_binary.returncode, 0)
+        self.assertIn("regular file", directory_binary.stderr)
+
+        non_executable = self._binary_boundary("not-executable")
+        self.assertNotEqual(non_executable.returncode, 0)
+        self.assertIn("not executable", non_executable.stderr)
 
 
 if __name__ == "__main__":
