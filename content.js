@@ -535,7 +535,7 @@
     if (!budgetReady || !state.enabled) return false;
     const field = core.composer(document);
     const currentText = core.composerText(field);
-    if (currentText && !core.isOwnedDraft(field, prompt)) {
+    if (currentText && !promptMatches(currentText, prompt)) {
       setStatus('Pausado: el campo contiene texto', 'error');
       return false;
     }
@@ -572,6 +572,11 @@
     });
   }
 
+  function promptMatches(value, prompt) {
+    return Boolean(core.normalize(value))
+      && reliability.signature(value) === reliability.signature(prompt);
+  }
+
   async function sendPrompt(prompt) {
     const field = core.composer(document);
     if (!field) throw new Error('No encontré #prompt-textarea');
@@ -580,7 +585,8 @@
       throw new Error('Ya existe un envío pendiente; se evitó un duplicado');
     }
     log('send-start', { promptLength: core.normalize(prompt).length, signature });
-    if (!core.replaceComposerText(field, prompt, document)) {
+    if (!promptMatches(core.composerText(field), prompt)
+        && !core.replaceComposerText(field, prompt, document)) {
       throw new Error('El campo no contiene exactamente el mensaje');
     }
     let button = await waitForSendButton();
@@ -590,14 +596,14 @@
         composer: core.interfaceSnapshot(document)
       });
       const currentField = core.composer(document);
-      if (core.composerText(currentField) === core.normalize(prompt)) {
+      if (promptMatches(core.composerText(currentField), prompt)) {
         core.replaceComposerText(currentField, '', document);
       }
       throw new Error('El botón real de enviar no está disponible');
     }
     const currentField = core.composer(document);
     let currentText = core.composerText(currentField);
-    if (currentText !== core.normalize(prompt)) {
+    if (!promptMatches(currentText, prompt)) {
       if (!currentText) {
         if (!core.replaceComposerText(currentField, prompt, document)) {
           throw new Error('El contenido cambió antes del envío');
@@ -605,7 +611,7 @@
         button = await waitForSendButton(3000);
         currentText = core.composerText(core.composer(document));
       }
-      if (!button || currentText !== core.normalize(prompt)) {
+      if (!button || !promptMatches(currentText, prompt)) {
         throw new Error('El contenido cambió antes del envío');
       }
     }
@@ -949,7 +955,7 @@
         return;
       }
       const composerHasText = Boolean(core.composerText(field));
-      const resumableDraft = core.isOwnedDraft(field, prompt);
+      const resumableDraft = promptMatches(core.composerText(field), prompt);
       if (composerHasText && !resumableDraft) {
         setStatus('Pausado: el campo contiene texto', 'error');
         return;

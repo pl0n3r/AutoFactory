@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.15 — 2026-10-02
+
+- Reconoce como propio el borrador que ChatGPT normaliza visualmente con otros espacios o saltos.
+- Retoma ese borrador sin reescribirlo ni provocar otro render del compositor.
+- Sigue pausando ante cualquier contenido realmente diferente del usuario.
+
 ## 1.6.14 — 2026-10-02
 
 - Recupera el botón de envío vivo justo antes del clic para evitar referencias reemplazadas por React.

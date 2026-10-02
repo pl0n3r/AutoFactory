@@ -17,6 +17,10 @@ assert.match(content, /button = core\.sendButton\(document\);[\s\S]*button\?\.is
   'debe recuperar y pulsar el botón vivo después del último render de React');
 assert.match(content, /ambiguousSendFailure[\s\S]*circuitOpenUntil = Date\.now\(\) \+ 300000/,
   'un envío no confirmado debe abrir la protección sin reintentos ambiguos');
+assert.match(content, /function promptMatches\(value, prompt\)[\s\S]*reliability\.signature\(value\) === reliability\.signature\(prompt\)/,
+  'debe reconocer su borrador aunque el editor normalice espacios o saltos');
+assert.match(content, /const resumableDraft = promptMatches\(core\.composerText\(field\), prompt\)/,
+  'el ciclo debe retomar un borrador propio normalizado');
 
 console.log('Mensaje personalizado: cualquier texto no vacío se conserva y se envía');
 

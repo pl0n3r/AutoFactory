@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Autopilot Local",
-  "version": "1.6.14",
+  "version": "1.6.15",
   "description": "Continúa chats usando el campo y botón reales del HTML, sin coordenadas de pantalla.",
   "permissions": [
     "activeTab",

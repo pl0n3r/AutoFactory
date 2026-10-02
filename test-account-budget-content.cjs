@@ -11,7 +11,7 @@ assert.ok(budgetHelperStart >= 0 && sendButtonStart > budgetHelperStart,
 const budgetHelper = source.slice(budgetHelperStart, sendButtonStart);
 assert.ok(budgetHelper.includes('await budgetGuard.waitUntilReady()'),
   'budget helper must await shared account capacity explicitly');
-assert.ok(budgetHelper.includes("if (currentText && !core.isOwnedDraft(field, prompt))"),
+assert.ok(budgetHelper.includes("if (currentText && !promptMatches(currentText, prompt))"),
   'user text typed during a long budget wait must be preserved');
 assert.equal(budgetHelper.includes('replaceComposerText'), false,
   'normal budget pacing must never create or clear a composer draft');
