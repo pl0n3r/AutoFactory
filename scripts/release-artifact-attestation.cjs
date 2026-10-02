@@ -30,7 +30,7 @@ const EXPECTED_RUNTIME_ASSETS = Object.freeze([
   'popup.html',
   'popup.js',
   'reliability.js',
-].sort());
+].sort((left, right) => left.localeCompare(right)));
 
 function fail(reason) {
   throw new TypeError('Release artifact attestation: ' + reason);
@@ -106,6 +106,43 @@ function popupScriptRefs(html) {
   return refs;
 }
 
+function addContentScriptRefs(manifest, refs) {
+  for (const content of manifest.content_scripts) {
+    if (!content || !Array.isArray(content.js)) fail('invalid content scripts');
+    for (const file of content.js) refs.add(assetName(file));
+  }
+}
+
+function addIconRefs(manifest, refs) {
+  for (const icons of [manifest.icons, manifest.action.default_icon]) {
+    if (!icons || typeof icons !== 'object' || Array.isArray(icons)) {
+      fail('missing extension icons');
+    }
+    for (const file of Object.values(icons)) refs.add(assetName(file));
+  }
+}
+
+function addPopupRefs(root, popup, refs) {
+  const html = readRegular(root, popup).toString('utf8');
+  for (const file of popupScriptRefs(html)) refs.add(file);
+}
+
+function addWorkerImportRefs(root, background, refs) {
+  const queue = [background];
+  const visited = new Set();
+  while (queue.length > 0) {
+    const file = queue.shift();
+    if (visited.has(file)) continue;
+    visited.add(file);
+    const imports = workerImportRefs(readRegular(root, file).toString('utf8'));
+    for (const imported of imports) {
+      const safe = assetName(imported);
+      refs.add(safe);
+      if (safe.endsWith('.js') && !visited.has(safe)) queue.push(safe);
+    }
+  }
+}
+
 function manifestRuntimeAssets(root) {
   const manifest = readJson(root, 'manifest.json');
   if (
@@ -124,37 +161,11 @@ function manifestRuntimeAssets(root) {
   const popup = assetName(manifest.action.default_popup);
   refs.add(background);
   refs.add(popup);
-
-  for (const content of manifest.content_scripts) {
-    if (!content || !Array.isArray(content.js)) fail('invalid content scripts');
-    for (const file of content.js) refs.add(assetName(file));
-  }
-  for (const icons of [manifest.icons, manifest.action.default_icon]) {
-    if (!icons || typeof icons !== 'object' || Array.isArray(icons)) {
-      fail('missing extension icons');
-    }
-    for (const file of Object.values(icons)) refs.add(assetName(file));
-  }
-
-  for (const file of popupScriptRefs(readRegular(root, popup).toString('utf8'))) {
-    refs.add(file);
-  }
-
-  const queue = [background];
-  const visited = new Set();
-  while (queue.length > 0) {
-    const file = queue.shift();
-    if (visited.has(file)) continue;
-    visited.add(file);
-    const imports = workerImportRefs(readRegular(root, file).toString('utf8'));
-    for (const imported of imports) {
-      const safe = assetName(imported);
-      if (!refs.has(safe)) refs.add(safe);
-      if (safe.endsWith('.js') && !visited.has(safe)) queue.push(safe);
-    }
-  }
-
-  return [...refs].sort();
+  addContentScriptRefs(manifest, refs);
+  addIconRefs(manifest, refs);
+  addPopupRefs(root, popup, refs);
+  addWorkerImportRefs(root, background, refs);
+  return [...refs].sort((left, right) => left.localeCompare(right));
 }
 
 function sha256(buffer) {
@@ -219,8 +230,11 @@ if (require.main === module) {
     const root = path.resolve(__dirname, '..');
     const result = buildReleaseAttestation(root, process.argv[2], process.argv[3]);
     console.log(JSON.stringify(result));
-  } catch (_error) {
-    console.error('Release artifact attestation failed');
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : 'Release artifact attestation failed';
+    console.error(message);
     process.exitCode = 1;
   }
 }
