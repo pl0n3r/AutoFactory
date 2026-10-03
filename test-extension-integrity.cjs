@@ -110,4 +110,13 @@ assert.throws(() => validateExtensionTree(ROOT,
   mutated(path.join(SAFARI, 'manifest.json'),
     Buffer.concat([read('manifest.json'), Buffer.from('\n')]))),
 /Chrome\/Safari asset mismatch/);
+const coreSource = read('autopilot-core.js').toString('utf8');
+const contentSource = read('content.js').toString('utf8');
+assert.ok(coreSource.includes(String.raw`.replaceAll('\u00a0', ' ').replaceAll('\r\n', '\n')`));
+assert.equal(coreSource.includes(String.raw`.replace(/\u00a0/g`), false);
+assert.equal(coreSource.includes(String.raw`.replace(/\r\n/g`), false);
+assert.ok(contentSource.includes("if (message?.type === 'autopilot:heartbeat') void tick();"));
+assert.ok(contentSource.includes(`mutationTimer = 0;
+      void tick();`));
+assert.equal((contentSource.match(/(?<!void )tick\(\);/g) || []).length, 0);
 console.log('Extension preflight: versions, Chrome/Safari parity, declared assets and permissions pass');

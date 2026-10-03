@@ -242,7 +242,7 @@
     return 'Verificando presupuesto compartido';
   }
   function normalize(value) {
-    return String(value || '').replace(/\u00a0/g, ' ').replace(/\r\n/g, '\n').trim();
+    return String(value || '').replaceAll('\u00a0', ' ').replaceAll('\r\n', '\n').trim();
   }
   function reasoningLevelFromText(value) {
     const text = normalize(value).toLowerCase();
