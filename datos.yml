@@ -124,6 +124,28 @@
       "providers": []
     },
     {
+      "id": "local_factory_control_instance_identity",
+      "category": "authentication",
+      "fields": [
+        "instanceId",
+        "browser",
+        "profileAlias",
+        "deviceAlias",
+        "extensionVersion",
+        "protocolVersion",
+        "grant.instanceId",
+        "grant.expiresAt",
+        "grant.revoked",
+        "grant.actions",
+        "grant.tabIds"
+      ],
+      "purpose": "local_factory_control_instance_identity_and_consent",
+      "basis": "review_required",
+      "retention": "identity_local_until_explicit_reset; grant_maximum_24_hours_and_revocable; no_remote_transmission_until_D-061",
+      "consent": "required_before_activation",
+      "providers": []
+    },
+    {
       "id": "planned_factory_control_heartbeat_status",
       "category": "usage",
       "fields": [
