@@ -116,6 +116,7 @@ assert.ok(coreSource.includes(String.raw`.replaceAll('\u00a0', ' ').replaceAll('
 assert.equal(coreSource.includes(String.raw`.replace(/\u00a0/g`), false);
 assert.equal(coreSource.includes(String.raw`.replace(/\r\n/g`), false);
 assert.ok(contentSource.includes("if (message?.type === 'autopilot:heartbeat') void tick();"));
-assert.ok(contentSource.includes("mutationTimer = 0;\n      void tick();"));
+assert.ok(contentSource.includes(`mutationTimer = 0;
+      void tick();`));
 assert.equal((contentSource.match(/(?<!void )tick\(\);/g) || []).length, 0);
 console.log('Extension preflight: versions, Chrome/Safari parity, declared assets and permissions pass');
