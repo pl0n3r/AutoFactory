@@ -1,8 +1,26 @@
 (function (root, factory) {
-  const api = factory();
+  function alias(value, label) {
+    if (typeof value !== 'string' || value.trim() !== value ||
+        value.length < 1 || value.length > 64 || /[@\x00-\x1f]/.test(value) ||
+        !/^[A-Za-z0-9][A-Za-z0-9 ._-]*$/.test(value)) {
+      throw new TypeError('Invalid ' + label);
+    }
+    return value;
+  }
+
+  function clock(now) {
+    let value;
+    try { value = now(); } catch (_error) { throw new Error('Instance clock unavailable'); }
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error('Instance clock unavailable');
+    }
+    return value;
+  }
+
+  const api = factory(alias, clock);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.ChatGPTAutopilotFactoryInstance = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (alias, clock) {
   'use strict';
 
   const STATE_VERSION = 1;
@@ -30,24 +48,6 @@
           typeof descriptor.get === 'function' || typeof descriptor.set === 'function') {
         throw new TypeError('Invalid ' + label);
       }
-    }
-    return value;
-  }
-
-  function alias(value, label) {
-    if (typeof value !== 'string' || value.trim() !== value ||
-        value.length < 1 || value.length > 64 || /[@\r\n\x00-\x1f]/.test(value) ||
-        !/^[A-Za-z0-9][A-Za-z0-9 ._-]*$/.test(value)) {
-      throw new TypeError('Invalid ' + label);
-    }
-    return value;
-  }
-
-  function clock(now) {
-    let value;
-    try { value = now(); } catch (_error) { throw new Error('Instance clock unavailable'); }
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error('Instance clock unavailable');
     }
     return value;
   }
