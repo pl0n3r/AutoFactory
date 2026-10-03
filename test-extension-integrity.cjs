@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { validateExtensionTree } = require('./scripts/verify-extension-assets.cjs');
+const { declaredExtensionAssets, validateExtensionTree } = require('./scripts/verify-extension-assets.cjs');
 
 const ROOT = __dirname;
 const SAFARI = path.join('safari', 'ChatGPT Autopilot Local Extension', 'Resources');
@@ -30,9 +30,26 @@ function withManifest(change, filename = 'manifest.json') {
   return mutated(filename, JSON.stringify(value));
 }
 const actual = validateExtensionTree(ROOT);
+const declaredAssets = declaredExtensionAssets(ROOT);
 assert.match(actual.version, /^\d+\.\d+\.\d+$/);
 assert.ok(actual.assets >= 9);
+assert.equal(actual.assets, declaredAssets.length);
 assert.deepEqual(validateExtensionTree(ROOT), actual);
+for (const required of [
+  'manifest.json',
+  'popup.html',
+  'popup.js',
+  'background-entry.js',
+  'content.js',
+  'icons/icon-16.png',
+  'factory-control-instance-transport.js'
+]) {
+  assert.ok(declaredAssets.includes(required), 'missing declared build asset: ' + required);
+}
+const safariBuildSource = read('build-safari.sh').toString('utf8');
+assert.ok(safariBuildSource.includes('declaredExtensionAssets'));
+assert.ok(safariBuildSource.includes('node "$ROOT/scripts/verify-extension-assets.cjs"'));
+assert.equal(safariBuildSource.includes('for file in manifest.json'), false);
 
 assert.throws(() => validateExtensionTree(ROOT, withManifest(m => {
   m.version = '9.9.9';
