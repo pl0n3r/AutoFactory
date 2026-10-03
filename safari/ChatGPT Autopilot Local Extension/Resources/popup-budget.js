@@ -67,6 +67,33 @@
   const windowMinutes = card.querySelector('#budget-window-input');
   let saveTimer = 0;
 
+  const healthCard = document.createElement('section');
+  healthCard.className = 'card';
+  healthCard.setAttribute('aria-label', 'Estado local de pestañas');
+  const healthTitle = document.createElement('div');
+  healthTitle.className = 'card-title';
+  healthTitle.textContent = 'Estado de pestañas';
+  const healthSource = document.createElement('span');
+  healthSource.className = 'hint';
+  healthSource.textContent = 'solo local';
+  healthTitle.appendChild(healthSource);
+  const healthSummary = document.createElement('div');
+  healthSummary.className = 'details';
+  healthSummary.textContent = 'Leyendo pestañas…';
+  const healthThresholdLabel = label('tab-health-stall-minutes', 'Marcar «sin avance» tras (minutos)');
+  const healthThreshold = input('tab-health-stall-minutes', 'number', '30', {
+    min: '1', max: '1440'
+  });
+  const healthTabs = document.createElement('div');
+  healthTabs.className = 'details';
+  const healthHint = document.createElement('div');
+  healthHint.className = 'hint';
+  healthHint.textContent = 'La extensión conserva solo marcas de tiempo, estado y huellas hash; nunca texto del chat.';
+  healthCard.append(
+    healthTitle, healthSummary, healthThresholdLabel, healthThreshold, healthTabs, healthHint
+  );
+  root.insertBefore(healthCard, root.lastElementChild || null);
+
   function metric(id, text) {
     const box = document.createElement('div');
     box.className = 'metric';
@@ -144,6 +171,75 @@
     next.textContent = formatNext(snapshot.nextAllowedAt);
     events.textContent = `Límites detectados en ventana: ${snapshot.limitEvents ?? 0} · Alto: ${snapshot.highReasoningSends ?? 0}`;
   }
+  function formatHealthTime(timestamp) {
+    if (!Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0) return '—';
+    try {
+      return new Date(Number(timestamp)).toLocaleTimeString([], {
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (_error) {
+      return '—';
+    }
+  }
+
+  function renderHealth(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.tabs)) return;
+    const summary = snapshot.summary || {};
+    healthThreshold.value = String(snapshot.thresholdMinutes || 30);
+    healthSummary.textContent =
+      `Activas: ${summary.active || 0} · Pausadas: ${summary.paused || 0} · ` +
+      `En límite: ${summary.rateLimited || 0} · Sin avance: ${summary.stalled || 0}`;
+    healthTabs.replaceChildren();
+    if (summary.allSameReply === true) {
+      const same = document.createElement('div');
+      same.className = 'status paused';
+      same.textContent = 'Todas las pestañas repiten la misma huella de respuesta.';
+      healthTabs.appendChild(same);
+    }
+    if (snapshot.tabs.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = 'No hay pestañas de ChatGPT con estado local todavía.';
+      healthTabs.appendChild(empty);
+      return;
+    }
+    for (const tab of snapshot.tabs) {
+      const row = document.createElement('div');
+      row.className = 'status';
+      if (tab.stalled === true) row.classList.add('paused');
+      else if (tab.paused !== true) row.classList.add('active');
+
+      const heading = document.createElement('b');
+      heading.textContent = `${tab.accountAlias || 'primary'} · pestaña ${tab.tabId}`;
+      const stateLine = document.createElement('div');
+      const flags = [];
+      flags.push(tab.paused === true ? 'PAUSADA' : 'ACTIVA');
+      if (Number(tab.rateLimitedSince) > 0) {
+        flags.push(`LÍMITE desde ${formatHealthTime(tab.rateLimitedSince)}`);
+      }
+      if (tab.stalled === true) {
+        flags.push(tab.stalledReason === 'no-reply' ? 'SIN AVANCE · sin respuesta' : 'SIN AVANCE · respuesta repetida');
+      }
+      stateLine.textContent = flags.join(' · ');
+      const times = document.createElement('div');
+      times.className = 'hint';
+      times.textContent =
+        `Último envío: ${formatHealthTime(tab.lastSendAt)} · ` +
+        `Última respuesta: ${formatHealthTime(tab.lastReplyAt)}`;
+      row.append(heading, stateLine, times);
+      healthTabs.appendChild(row);
+    }
+  }
+
+  async function refreshHealth() {
+    const response = await runtimeMessage({ type: 'autopilot:tab-health-status' })
+      .then(value => value, () => null);
+    if (response?.ok && response.snapshot) {
+      renderHealth(response.snapshot);
+      return;
+    }
+    healthSummary.textContent = 'Estado de pestañas no disponible.';
+  }
+
   async function refresh() {
     const response = await runtimeMessage({ type: 'autopilot:budget-status' })
       .then(value => value, () => null);
@@ -181,16 +277,27 @@
     accountBudgetAccountAlias: 'primary',
     accountBudgetLimit: 40,
     accountBudgetWindowMinutes: 60,
-    accountBudgetSnapshotV1: null
+    accountBudgetSnapshotV1: null,
+    tabHealthStallMinutes: 30
   }, values => {
     renderEnabled(values.accountBudgetEnabled === true);
     alias.value = values.accountBudgetAccountAlias || 'primary';
     fallbackLimit.value = String(values.accountBudgetLimit || 40);
     windowMinutes.value = String(values.accountBudgetWindowMinutes || 60);
     render(values.accountBudgetSnapshotV1);
+    healthThreshold.value = String(values.tabHealthStallMinutes || 30);
     void refresh();
+    void refreshHealth();
   });
   for (const node of [enabledToggle, alias, fallbackLimit, windowMinutes]) node.addEventListener('change', saveSettings);
+  healthThreshold.addEventListener('change', () => {
+    const minutes = Math.max(1, Math.min(1440, Number(healthThreshold.value) || 30));
+    healthThreshold.value = String(minutes);
+    void setLocal({ tabHealthStallMinutes: minutes }).then(
+      () => { void refreshHealth(); },
+      () => { healthSummary.textContent = 'No se pudo guardar el umbral de «sin avance».'; }
+    );
+  });
   extensionApi.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.accountBudgetEnabled) {
       renderEnabled(changes.accountBudgetEnabled.newValue === true);
@@ -198,6 +305,13 @@
     if (area === 'local' && changes.accountBudgetSnapshotV1?.newValue) {
       render(changes.accountBudgetSnapshotV1.newValue);
     }
+    if (area === 'local' && changes.tabHealthStallMinutes?.newValue) {
+      healthThreshold.value = String(changes.tabHealthStallMinutes.newValue || 30);
+      void refreshHealth();
+    }
   });
-  setInterval(() => { void refresh(); }, 5000);
+  setInterval(() => {
+    void refresh();
+    void refreshHealth();
+  }, 5000);
 })();
