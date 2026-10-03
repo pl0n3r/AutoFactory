@@ -644,51 +644,57 @@
     setStatus('Mensaje confirmado; esperando respuesta');
   }
 
+  function handleRecoverableSignal(signal) {
+    if (!core.isSafeRecoverySignal(signal)
+        || Date.now() - state.lastRecoveryAt <= 10000) return false;
+    const transition = core.recoverableTransition(
+      sessionStorage.getItem(RECOVERABLE_STATE_KEY),
+      location.pathname
+    );
+    sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify({
+      path: transition.path, attempts: transition.attempts
+    }));
+    state.lastRecoveryAt = Date.now();
+    state.circuitOpenUntil = 0;
+    state.consecutiveFailures = 0;
+    state.waiting = transition.escalation === 'retry';
+    state.sawGeneration = false;
+    state.assistantCountBeforeSend = core.assistantMessageCount(document);
+    state.lastRecovery = { code: signal.code, action: transition.escalation };
+    persistRuntime();
+    saveLearning('recovery');
+    saveLearning('error', 0, { code: signal.code });
+
+    if (transition.escalation === 'retry') {
+      signal.element.click();
+      setStatus(`Conversación no disponible; reintento ${transition.attempts}/2`);
+    } else if (transition.escalation === 'reload') {
+      setStatus('Conversación no disponible; recarga controlada');
+      location.reload();
+    } else {
+      sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
+      state.pendingSignature = '';
+      state.lastSentAt = 0;
+      state.nextSendAt = Date.now() + 5000;
+      persistRuntime();
+      setStatus('Conversación inaccesible; continuando en un chat nuevo');
+      location.assign('https://chatgpt.com/');
+    }
+    log('recovery', {
+      code: signal.code,
+      action: transition.escalation,
+      attempts: transition.attempts,
+      priority: 'circuit-bypass'
+    });
+    return true;
+  }
+
   async function tick() {
     if (!state.enabled || state.busy) return;
     state.busy = true;
     try {
       const signal = core.pageSignal(document);
-      if (core.isSafeRecoverySignal(signal)
-          && Date.now() - state.lastRecoveryAt > 10000) {
-        const previous = core.recoverableState(
-          sessionStorage.getItem(RECOVERABLE_STATE_KEY)
-        );
-        const attempts = previous.path === location.pathname
-          ? Math.max(0, Number(previous.attempts) || 0) + 1 : 1;
-        sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify({
-          path: location.pathname, attempts
-        }));
-        const escalation = core.recoverableEscalation(attempts);
-        state.lastRecoveryAt = Date.now();
-        state.circuitOpenUntil = 0;
-        state.consecutiveFailures = 0;
-        state.waiting = escalation === 'retry';
-        state.sawGeneration = false;
-        state.assistantCountBeforeSend = core.assistantMessageCount(document);
-        state.lastRecovery = { code: signal.code, action: escalation };
-        persistRuntime();
-        saveLearning('recovery');
-        saveLearning('error', 0, { code: signal.code });
-        if (escalation === 'retry') {
-          signal.element.click();
-          setStatus(`Conversación no disponible; reintento ${attempts}/2`);
-        } else if (escalation === 'reload') {
-          setStatus('Conversación no disponible; recarga controlada');
-          location.reload();
-        } else {
-          sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
-          state.pendingSignature = '';
-          state.lastSentAt = 0;
-          state.nextSendAt = Date.now() + 5000;
-          persistRuntime();
-          setStatus('Conversación inaccesible; continuando en un chat nuevo');
-          location.assign('https://chatgpt.com/');
-        }
-        log('recovery', { code: signal.code, action: escalation, attempts,
-          priority: 'circuit-bypass' });
-        return;
-      }
+      if (handleRecoverableSignal(signal)) return;
       if (signal.code !== 'recoverable') {
         sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
       }
