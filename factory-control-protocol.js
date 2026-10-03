@@ -323,6 +323,14 @@
     };
   }
 
+  const validationV2 = Object.freeze({
+    exactObject,
+    instanceId,
+    tabIds(value, label) {
+      return denseTabs(value, label, tabId);
+    }
+  });
+
   return Object.freeze({
     VERSION,
     VERSION_2,
@@ -332,6 +340,7 @@
     acknowledgement,
     presenceV2,
     commandV2,
-    acknowledgementV2
+    acknowledgementV2,
+    validationV2
   });
 });

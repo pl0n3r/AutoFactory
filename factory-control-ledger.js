@@ -13,10 +13,6 @@
     'ok', 'invalid', 'not_found', 'not_ready', 'timeout', 'unauthorized',
     'already_handled', 'failed'
   ]);
-  const INSTANCE_CODES = new Set([
-    'ok', 'invalid', 'not_ready', 'timeout', 'unauthorized',
-    'already_handled', 'failed'
-  ]);
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
   const COMMAND_KEY_RE = /^(?:pause|resume):(?:instance|[0-9]+):[0-9]+:[0-9]+$/;
 
@@ -88,46 +84,6 @@
     return Object.freeze({ execute });
   }
 
-  function exactDataObject(value, fields) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return false;
-    const ownKeys = Reflect.ownKeys(value);
-    if (ownKeys.length !== fields.length ||
-        ownKeys.some(key => typeof key !== 'string' || !fields.includes(key))) return false;
-    return fields.every(field => {
-      const descriptor = Object.getOwnPropertyDescriptor(value, field);
-      return Object.hasOwn(value, field) && descriptor && descriptor.enumerable &&
-        typeof descriptor.get !== 'function' && typeof descriptor.set !== 'function';
-    });
-  }
-
-  function validIdentifier(value) {
-    return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(value);
-  }
-
-  function validInstanceId(value) {
-    return typeof value === 'string' && UUID_RE.test(value);
-  }
-
-  function checkedTabs(values) {
-    if (!Array.isArray(values) || values.length > 40) {
-      throw new TypeError('Invalid persisted v2 applied tabs');
-    }
-    const seen = new Set();
-    const result = [];
-    for (let index = 0; index < values.length; index++) {
-      if (!Object.hasOwn(values, index) ||
-          !Number.isSafeInteger(values[index]) || values[index] < 0 ||
-          seen.has(values[index])) {
-        throw new TypeError('Invalid persisted v2 applied tabs');
-      }
-      seen.add(values[index]);
-      result.push(values[index]);
-    }
-    return result;
-  }
-
   function commandKey(command) {
     return [
       command.action,
@@ -138,9 +94,16 @@
   }
 
   function createInstanceLedger({ instanceId, load, save, maxEntries = 256 } = {}) {
+    let normalizedInstanceId;
+    try {
+      normalizedInstanceId = protocol?.validationV2?.instanceId(instanceId);
+    } catch (_error) {
+      normalizedInstanceId = null;
+    }
     if (!protocol || typeof protocol.commandV2 !== 'function' ||
         typeof protocol.acknowledgementV2 !== 'function' ||
-        !validInstanceId(instanceId) ||
+        !protocol.validationV2 ||
+        normalizedInstanceId !== instanceId ||
         typeof load !== 'function' || typeof save !== 'function' ||
         !Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 4096) {
       throw new TypeError('A v2 instance, storage adapter and bounded capacity are required');
@@ -162,20 +125,31 @@
           'id', 'instanceId', 'commandKey', 'state',
           'code', 'enabled', 'appliedTabs'
         ];
-        if (!exactDataObject(receipt, fields) ||
-            !validIdentifier(receipt.id) ||
-            !validInstanceId(receipt.instanceId) ||
-            receipt.instanceId !== instanceId ||
+        let validatedAck;
+        try {
+          protocol.validationV2.exactObject(
+            receipt, fields, 'persisted v2 command receipt'
+          );
+          validatedAck = protocol.acknowledgementV2({
+            version: 2,
+            kind: 'ack',
+            id: receipt.id,
+            instanceId: receipt.instanceId,
+            ok: receipt.code === 'ok',
+            code: receipt.code,
+            enabled: receipt.enabled,
+            appliedTabs: receipt.appliedTabs
+          });
+        } catch (_error) {
+          throw new TypeError('Invalid persisted v2 command receipt');
+        }
+        const appliedTabs = validatedAck.appliedTabs;
+        if (validatedAck.instanceId !== instanceId ||
             typeof receipt.commandKey !== 'string' ||
             !COMMAND_KEY_RE.test(receipt.commandKey) ||
             !['pending', 'done'].includes(receipt.state) ||
-            !INSTANCE_CODES.has(receipt.code) ||
-            typeof receipt.enabled !== 'boolean') {
-          throw new TypeError('Invalid persisted v2 command receipt');
-        }
-        const appliedTabs = checkedTabs(receipt.appliedTabs);
-        if (receipt.state === 'pending' &&
-            (receipt.code !== 'not_ready' || receipt.enabled !== false || appliedTabs.length !== 0)) {
+            (receipt.state === 'pending' &&
+              (receipt.code !== 'not_ready' || receipt.enabled !== false || appliedTabs.length !== 0))) {
           throw new TypeError('Invalid persisted v2 command receipt');
         }
         if (ids.has(receipt.id)) {
