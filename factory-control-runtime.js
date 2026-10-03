@@ -349,15 +349,14 @@
     }
 
     async function deliver(tabList, action, enabled) {
-      const results = await Promise.all(tabList.map(async tabId => {
-        try {
-          const result = await sendTab(tabId, Object.freeze({ action, enabled }));
-          return result === true || result?.ok === true ? tabId : null;
-        } catch (_error) {
-          // Adapter details are intentionally collapsed at this trust boundary.
-          return null;
-        }
-      }));
+      const results = await Promise.all(tabList.map(tabId =>
+        Promise.resolve()
+          .then(() => sendTab(tabId, Object.freeze({ action, enabled })))
+          .then(
+            result => result === true || result?.ok === true ? tabId : null,
+            () => null
+          )
+      ));
       const appliedTabs = results.filter(tabId => tabId !== null);
       return Object.freeze({
         failed: appliedTabs.length !== tabList.length,
@@ -365,8 +364,8 @@
       });
     }
 
-    async function presence() {
-      try {
+    function presence() {
+      return Promise.resolve().then(async () => {
         const snapshot = await identity();
         if (snapshot === null) return null;
         const tabList = await tabs();
@@ -383,10 +382,10 @@
           tabs: tabList.map(tabId => ({ tabId, enabled })),
           observedAt
         });
-      } catch (_error) {
-        // Presence is public/minimized; internal adapter details must not escape.
-        throw new Error('Instance runtime unavailable');
-      }
+      }).then(
+        value => value,
+        () => Promise.reject(new Error('Instance runtime unavailable'))
+      );
     }
 
     async function execute(input) {
@@ -442,8 +441,8 @@
       });
     }
 
-    async function reconcile() {
-      try {
+    function reconcile() {
+      return Promise.resolve().then(async () => {
         const snapshot = await identity();
         if (snapshot === null) {
           return Object.freeze({
@@ -464,13 +463,15 @@
           enabled,
           appliedTabs: delivery.appliedTabs
         });
-      } catch (_error) {
-        // Reconciliation is fail-closed and never exposes adapter/runtime details.
-        reconciliationPending = true;
-        return Object.freeze({
-          ok: false, code: 'failed', enabled: false, appliedTabs: []
-        });
-      }
+      }).then(
+        value => value,
+        () => {
+          reconciliationPending = true;
+          return Object.freeze({
+            ok: false, code: 'failed', enabled: false, appliedTabs: []
+          });
+        }
+      );
     }
 
     function status() {
