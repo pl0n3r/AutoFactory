@@ -156,6 +156,8 @@ async function failClosed() {
   });
   stalePumpRuntime.start({ profileAlias: 'perfil-1', cursor: 'cursor:before' });
   const pendingPump = stalePumpRuntime.runCommands();
+  // Let the resolved context continuation enter pump.runOnce before stopping.
+  await Promise.resolve();
   stalePumpRuntime.stop();
   assert.deepEqual(
     stalePumpRuntime.start({ profileAlias: 'perfil-2', cursor: 'cursor:fresh' }),
