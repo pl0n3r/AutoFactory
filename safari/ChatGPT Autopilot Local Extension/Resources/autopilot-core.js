@@ -206,6 +206,18 @@
     if (count === 3) return 'reload';
     return 'new-chat';
   }
+  function recoverableTransition(raw, pathname) {
+    const previous = recoverableState(raw);
+    const previousAttempts = Number.isSafeInteger(previous.attempts) && previous.attempts > 0
+      ? previous.attempts : 0;
+    const samePath = typeof pathname === 'string' && previous.path === pathname;
+    const attempts = samePath ? Math.min(previousAttempts + 1, 4) : 1;
+    return Object.freeze({
+      path: typeof pathname === 'string' ? pathname : '',
+      attempts,
+      escalation: recoverableEscalation(attempts)
+    });
+  }
   function pageSignal(doc = document) {
     if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };
     const recovery = recoveryButton(doc);
@@ -326,6 +338,7 @@
     additionalSafetyCheck,
     isSafeRecoverySignal,
     recoverableEscalation,
+    recoverableTransition,
     recoverableState,
     pageSignal,
     providerAccountSignal,
