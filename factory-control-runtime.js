@@ -349,18 +349,20 @@
     }
 
     async function deliver(tabList, action, enabled) {
-      const appliedTabs = [];
-      let failed = false;
-      for (const tabId of tabList) {
+      const results = await Promise.all(tabList.map(async tabId => {
         try {
           const result = await sendTab(tabId, Object.freeze({ action, enabled }));
-          if (result !== true && result?.ok !== true) throw new Error('tab rejected');
-          appliedTabs.push(tabId);
+          return result === true || result?.ok === true ? tabId : null;
         } catch (_error) {
-          failed = true;
+          // Adapter details are intentionally collapsed at this trust boundary.
+          return null;
         }
-      }
-      return Object.freeze({ failed, appliedTabs });
+      }));
+      const appliedTabs = results.filter(tabId => tabId !== null);
+      return Object.freeze({
+        failed: appliedTabs.length !== tabList.length,
+        appliedTabs
+      });
     }
 
     async function presence() {
@@ -382,6 +384,7 @@
           observedAt
         });
       } catch (_error) {
+        // Presence is public/minimized; internal adapter details must not escape.
         throw new Error('Instance runtime unavailable');
       }
     }
@@ -462,6 +465,7 @@
           appliedTabs: delivery.appliedTabs
         });
       } catch (_error) {
+        // Reconciliation is fail-closed and never exposes adapter/runtime details.
         reconciliationPending = true;
         return Object.freeze({
           ok: false, code: 'failed', enabled: false, appliedTabs: []
