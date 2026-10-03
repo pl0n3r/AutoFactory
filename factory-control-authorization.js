@@ -25,10 +25,6 @@
       value.length <= 64 && value.trim() === value && !/[@\r\n\x00-\x1f]/.test(value);
   }
 
-  function validInstanceId(value) {
-    return typeof value === 'string' && UUID_RE.test(value);
-  }
-
   function tabId(value) {
     return Number.isSafeInteger(value) && value >= 0;
   }
@@ -48,20 +44,6 @@
     return value && typeof value === 'object' && !Array.isArray(value) &&
       Object.keys(value).length === fields.length &&
       fields.every(field => Object.hasOwn(value, field));
-  }
-
-  function exactDataObject(value, fields) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return false;
-    const ownKeys = Reflect.ownKeys(value);
-    if (ownKeys.length !== fields.length ||
-        ownKeys.some(key => typeof key !== 'string' || !fields.includes(key))) return false;
-    return fields.every(field => {
-      const descriptor = Object.getOwnPropertyDescriptor(value, field);
-      return Object.hasOwn(value, field) && descriptor && descriptor.enumerable &&
-        typeof descriptor.get !== 'function' && typeof descriptor.set !== 'function';
-    });
   }
 
   function createCommandAuthorizer({ loadVerifiedGrant, now } = {}) {
@@ -110,6 +92,7 @@
 
   function createInstanceCommandAuthorizer({ loadVerifiedGrant, now } = {}) {
     if (!protocol || typeof protocol.commandV2 !== 'function' ||
+        !protocol.validationV2 ||
         typeof loadVerifiedGrant !== 'function' || typeof now !== 'function') {
       throw new TypeError('Verified instance grant and clock adapters are required');
     }
@@ -117,24 +100,31 @@
     async function authorize(input, context) {
       try {
         const command = protocol.commandV2(input);
-        if (!exactDataObject(context, ['instanceId', 'enabledTabIds']) ||
-            !validInstanceId(context.instanceId) ||
-            command.instanceId !== context.instanceId) deny();
+        protocol.validationV2.exactObject(
+          context, ['instanceId', 'enabledTabIds'], 'instance context'
+        );
+        const contextInstanceId = protocol.validationV2.instanceId(context.instanceId);
+        if (command.instanceId !== contextInstanceId) deny();
 
         const current = now();
         if (!Number.isSafeInteger(current) || current < 0 ||
             command.issuedAt > current || command.expiresAt <= current) deny();
 
-        const enabledTabs = denseUnique(context.enabledTabIds, 40, tabId);
+        const enabledTabs = new Set(
+          protocol.validationV2.tabIds(context.enabledTabIds, 'instance context tabs')
+        );
         const grant = await loadVerifiedGrant();
-        if (!exactDataObject(grant, [
-          'instanceId', 'expiresAt', 'revoked', 'actions', 'tabIds'
-        ]) || !validInstanceId(grant.instanceId) ||
-            !Number.isSafeInteger(grant.expiresAt) ||
+        protocol.validationV2.exactObject(
+          grant,
+          ['instanceId', 'expiresAt', 'revoked', 'actions', 'tabIds'],
+          'instance grant'
+        );
+        const grantInstanceId = protocol.validationV2.instanceId(grant.instanceId);
+        if (!Number.isSafeInteger(grant.expiresAt) ||
             typeof grant.revoked !== 'boolean') deny();
 
-        if (grant.revoked || grant.instanceId !== command.instanceId ||
-            grant.instanceId !== context.instanceId ||
+        if (grant.revoked || grantInstanceId !== command.instanceId ||
+            grantInstanceId !== contextInstanceId ||
             grant.expiresAt <= current ||
             grant.expiresAt > current + 86400000) deny();
 
@@ -143,7 +133,9 @@
           INSTANCE_ACTIONS.size,
           value => typeof value === 'string' && INSTANCE_ACTIONS.has(value)
         );
-        const allowedTabs = denseUnique(grant.tabIds, 40, tabId);
+        const allowedTabs = new Set(
+          protocol.validationV2.tabIds(grant.tabIds, 'instance grant tabs')
+        );
         if (!actions.has(command.action)) deny();
 
         if (command.target === 'instance') {
