@@ -12,6 +12,10 @@
     'unauthorized', 'failed', 'ack_failed', 'busy'
   ]);
   const PUMP_SUCCESS_CODES = new Set(['empty', 'handled']);
+  const ACK_CODES = new Set([
+    'ok', 'invalid', 'not_found', 'not_ready', 'timeout',
+    'unauthorized', 'already_handled', 'failed'
+  ]);
 
   function result(ok, code, cursorValue) {
     if (arguments.length < 3) return Object.freeze({ ok, code });
@@ -52,6 +56,14 @@
     if (typeof value !== 'string' || value.length < 1 || value.length > 128 ||
         !/^[A-Za-z0-9._:-]+$/.test(value)) {
       throw new TypeError('cursor is invalid');
+    }
+    return value;
+  }
+
+  function commandId(value) {
+    if (typeof value !== 'string' || value.length < 1 || value.length > 80 ||
+        !/^[A-Za-z0-9._:-]+$/.test(value)) {
+      throw new TypeError('commandId is invalid');
     }
     return value;
   }
@@ -115,6 +127,12 @@
       ? ['ok', 'code', 'cursor']
       : ['ok', 'code', 'cursor', 'commandId', 'outcome'];
     const success = exactObject(value, fields, 'pump success');
+    if (success.code === 'handled') {
+      commandId(success.commandId);
+      if (typeof success.outcome !== 'string' || !ACK_CODES.has(success.outcome)) {
+        throw new TypeError('pump result is invalid');
+      }
+    }
     return result(true, success.code, cursor(success.cursor));
   }
 
