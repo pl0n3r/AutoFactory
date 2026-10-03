@@ -147,6 +147,27 @@
       "retention": "no_remote_transmission_or_persistence_until_D-061",
       "consent": "required_before_activation",
       "providers": []
+    },
+    {
+      "id": "local_factory_control_instance_identity",
+      "category": "authentication",
+      "fields": [
+        "instanceId",
+        "browser",
+        "profileAlias",
+        "deviceAlias",
+        "extensionVersion",
+        "protocolVersion",
+        "grant.id",
+        "grant.actions",
+        "grant.expiresAt",
+        "grant.revoked"
+      ],
+      "purpose": "local_factory_control_instance_identity_and_consent",
+      "basis": "review_required",
+      "retention": "identity_local_until_extension_data_removed; grant_maximum_24_hours_and_revocable",
+      "consent": "required_before_activation",
+      "providers": []
     }
   ]
 }
