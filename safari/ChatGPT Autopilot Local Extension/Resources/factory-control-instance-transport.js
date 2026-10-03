@@ -110,6 +110,8 @@
     let retryToken = null;
     let nextRetryMs = null;
     let connection = null;
+    let connectionEpoch = 0;
+    let activeEpoch = 0;
     let frames = 0;
     let failures = 0;
     let changedAt = checkedNow(clock);
@@ -136,8 +138,10 @@
       return Object.freeze({ ok: false, code });
     }
 
-    async function handleFrame(frame, metadata) {
-      if (!running || state !== 'connected') return safeFailure('not_ready');
+    async function handleFrame(frame, metadata, sourceEpoch) {
+      if (!running || state !== 'connected' || sourceEpoch !== activeEpoch) {
+        return safeFailure('not_ready');
+      }
 
       let authenticated;
       try {
@@ -202,7 +206,9 @@
       }
     }
 
-    async function handleClose() {
+    async function handleClose(sourceEpoch) {
+      if (sourceEpoch !== activeEpoch) return;
+      activeEpoch = 0;
       connection = null;
       if (running) scheduleReconnect();
     }
@@ -211,10 +217,15 @@
       if (!running) return status();
       clearRetry();
       transition('connecting');
+      const sourceEpoch = ++connectionEpoch;
       try {
         const candidate = await connect(Object.freeze({
-          onFrame: handleFrame,
-          onClose: handleClose
+          onFrame(frame, metadata) {
+            return handleFrame(frame, metadata, sourceEpoch);
+          },
+          onClose() {
+            return handleClose(sourceEpoch);
+          }
         }));
         if (!candidate || typeof candidate !== 'object' ||
             typeof candidate.close !== 'function') {
@@ -225,6 +236,7 @@
           return status();
         }
         connection = candidate;
+        activeEpoch = sourceEpoch;
         attempt = 0;
         transition('connected');
       } catch (_error) {
@@ -246,6 +258,7 @@
       running = false;
       clearRetry();
       const active = connection;
+      activeEpoch = 0;
       connection = null;
       if (active) {
         try {
