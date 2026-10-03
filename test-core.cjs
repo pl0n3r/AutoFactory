@@ -48,6 +48,18 @@ function page(html) {
   });
   assert.deepEqual(core.recoverableState('{broken'), {});
   assert.deepEqual(core.recoverableState('[]'), {});
+  assert.deepEqual(core.recoverableTransition(null, '/c/1'), {
+    path: '/c/1', attempts: 1, escalation: 'retry'
+  });
+  assert.deepEqual(core.recoverableTransition('{"path":"/c/1","attempts":2}', '/c/1'), {
+    path: '/c/1', attempts: 3, escalation: 'reload'
+  });
+  assert.deepEqual(core.recoverableTransition('{"path":"/c/1","attempts":999}', '/c/1'), {
+    path: '/c/1', attempts: 4, escalation: 'new-chat'
+  });
+  assert.deepEqual(core.recoverableTransition('{"path":"/c/1","attempts":"bad"}', '/c/1'), {
+    path: '/c/1', attempts: 1, escalation: 'retry'
+  });
 }
 {
   const doc = page('<button>Confirmar compra</button><button>Permitir acceso</button>');
