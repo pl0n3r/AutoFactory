@@ -473,3 +473,4 @@ function accountBudgetSafeReasoning(value) {
     createTabHealthController,
     install
   });
+});
