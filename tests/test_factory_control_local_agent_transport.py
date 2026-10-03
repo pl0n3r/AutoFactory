@@ -38,7 +38,9 @@ class FactoryControlLocalAgentTransportTests(unittest.TestCase):
         self.assertIn("MAX_RETRY_MS = 30_000", source)
         self.assertIn("nextRetryMs", source)
         self.assertIn("serialized.includes(forbidden)", test)
-        self.assertNotIn("instanceId,", source[source.index("function status()"):source.index("function safeFailure")])
+        status_source = source[source.index("function status()"):source.index("function safeFailure")]
+        self.assertNotIn("instanceId,", status_source)
+        self.assertNotIn("changedAt", status_source)
 
     def test_background_and_popup_remain_disabled_without_remote_origin_or_permission_expansion(self) -> None:
         module = (ROOT / "factory-control-instance-transport.js").read_text()
