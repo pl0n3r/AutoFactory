@@ -48,6 +48,8 @@ function page(html) {
   });
   assert.deepEqual(core.recoverableState('{broken'), {});
   assert.deepEqual(core.recoverableState('[]'), {});
+  assert.equal(core.normalize('  A\u00a0B\r\nC  '), 'A B\nC');
+  assert.equal(core.normalize('A\u00a0\u00a0B\r\nC\r\nD'), 'A  B\nC\nD');
 }
 {
   const doc = page('<button>Confirmar compra</button><button>Permitir acceso</button>');
