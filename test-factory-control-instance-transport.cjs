@@ -175,7 +175,7 @@ function harness({ execute = async () => okReceipt, connectPlan = [] } = {}) {
 
     const serialized = JSON.stringify(h.boundary.status());
     for (const forbidden of [
-      command.instanceId, 'perfil-local', 'mac-local', command.id, 'pause', 'receipt'
+      command.instanceId, 'perfil-local', 'mac-local', command.id, 'pause', 'receipt', 'changedAt'
     ]) assert.equal(serialized.includes(forbidden), false);
 
     await h.boundary.stop();
