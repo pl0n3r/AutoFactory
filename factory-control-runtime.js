@@ -34,8 +34,8 @@
     const copy = {};
     for (const field of fields) {
       const descriptor = Object.getOwnPropertyDescriptor(value, field);
-      if (!descriptor || descriptor.enumerable !== true ||
-          !Object.hasOwn(descriptor, 'value')) {
+      if (descriptor?.enumerable !== true ||
+          !Object.hasOwn(descriptor ?? {}, 'value')) {
         throw new TypeError(label + ' is invalid');
       }
       copy[field] = descriptor.value;
@@ -45,7 +45,7 @@
 
   function profileAlias(value) {
     if (typeof value !== 'string' || value.length < 1 || value.length > 64 ||
-        value.trim() !== value || /[@\r\n\x00-\x1f]/.test(value)) {
+        value.trim() !== value || /[@\x00-\x1f]/.test(value)) {
       throw new TypeError('profileAlias is invalid');
     }
     return value;
@@ -104,9 +104,9 @@
     }
     const okDescriptor = Object.getOwnPropertyDescriptor(value, 'ok');
     const codeDescriptor = Object.getOwnPropertyDescriptor(value, 'code');
-    if (!okDescriptor || !codeDescriptor ||
-        okDescriptor.enumerable !== true || codeDescriptor.enumerable !== true ||
-        !Object.hasOwn(okDescriptor, 'value') || !Object.hasOwn(codeDescriptor, 'value') ||
+    if (okDescriptor?.enumerable !== true || codeDescriptor?.enumerable !== true ||
+        !Object.hasOwn(okDescriptor ?? {}, 'value') ||
+        !Object.hasOwn(codeDescriptor ?? {}, 'value') ||
         typeof okDescriptor.value !== 'boolean' || typeof codeDescriptor.value !== 'string') {
       throw new TypeError('pump result is invalid');
     }
@@ -167,6 +167,7 @@
         alias = profileAlias(initial.profileAlias);
         initialCursor = cursor(initial.cursor);
       } catch (_error) {
+        // Fail closed at the public input boundary; never reflect validation details.
         return result(false, 'invalid');
       }
 
@@ -181,6 +182,7 @@
           stop: ports.stop.bind(instance)
         });
       } catch (_error) {
+        // Heartbeat adapters are untrusted ports; collapse failures to a fixed code.
         heartbeat = null;
         return result(false, 'failed');
       }
@@ -205,6 +207,7 @@
         }
         return result(['sent', 'busy', 'throttled'].includes(code), code);
       } catch (_error) {
+        // Async heartbeat failures remain opaque and cannot revive a stopped generation.
         return current(observedGeneration)
           ? result(false, 'failed')
           : result(false, 'stopped');
@@ -253,6 +256,7 @@
         }
         return normalized;
       } catch (_error) {
+        // Context/pump failures stay opaque and preserve the pre-call cursor.
         return current(observed.generation)
           ? result(false, 'failed', observed.cursor)
           : result(false, 'stopped');
@@ -271,6 +275,7 @@
         activeHeartbeat.stop();
         return result(true, 'stopped');
       } catch (_error) {
+        // stop() is best-effort cleanup; adapter exceptions never expose internals.
         return result(false, 'failed');
       }
     }
