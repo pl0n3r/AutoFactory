@@ -198,6 +198,14 @@ Ante conexiones interrumpidas, espera recuperación antes de cancelar o recargar
 
 El seguimiento visual usa desplazamiento progresivo de contenedores relevantes y respeta pausas manuales. Las acciones automáticas permitidas se limitan a esperas, recarga controlada, **Reintentar** y **Continuar generando**; autenticación o autorización requieren intervención humana.
 
+## Estado local por pestaña
+
+El popup muestra una tarjeta **Estado de pestañas** con el alias local de cuenta, último envío, última respuesta, límite temporal, pausa y señal **SIN AVANCE**. El umbral es configurable y parte de 30 minutos.
+
+**SIN AVANCE** significa una de dos cosas: no llegó respuesta después del umbral o varias respuestas consecutivas conservaron la misma huella hash durante ese periodo. No implica por sí solo un fallo de ChatGPT. Abre la pestaña indicada, revisa si está pausada o en límite y, si hace falta, reanuda o corrige el trabajo desde la propia conversación.
+
+El badge de la extensión muestra cuántas pestañas están en **SIN AVANCE**. El registro de salud conserva como máximo 200 eventos y solo guarda marcas de tiempo, estado, identificador local de pestaña y huellas hash; nunca texto de conversación.
+
 ## Log de diagnóstico
 
 El service worker conserva un historial local acotado de eventos técnicos. No guarda mensajes ni contenido del chat; las rutas se anonimizan por categoría y se excluyen identificadores de conversación. **COPIAR LOG** produce una salida sanitizada y **BORRAR LOG** elimina la copia local.
