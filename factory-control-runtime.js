@@ -384,7 +384,7 @@
         });
       }).then(
         value => value,
-        () => Promise.reject(new Error('Instance runtime unavailable'))
+        () => { throw new Error('Instance runtime unavailable'); }
       );
     }
 
