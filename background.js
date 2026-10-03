@@ -187,4 +187,101 @@
       return true;
     }
   });
+
+  const FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED = false;
+
+  function storageRemove(key) {
+    return new Promise((resolve, reject) => {
+      try {
+        const result = extensionApi.storage.local.remove(key, resolve);
+        if (result?.then) result.then(resolve, reject);
+      } catch (error) { reject(error); }
+    });
+  }
+
+  function localFactoryControlAdapters() {
+    return Object.freeze({
+      listChatTabs: async () => {
+        const tabs = await extensionApi.tabs.query({ url: ['https://chatgpt.com/*'] });
+        return tabs.map(tab => tab.id)
+          .filter(tabId => Number.isSafeInteger(tabId) && tabId >= 0);
+      },
+      sendTab: async (tabId, message) => {
+        const response = await extensionApi.tabs.sendMessage(tabId, message);
+        return Object.freeze({ ok: response?.ok === true });
+      },
+      loadMasterEnabled: async () => {
+        const state = await storageGet({ factoryControlMasterEnabledV2: false });
+        return state.factoryControlMasterEnabledV2 === true;
+      },
+      saveMasterEnabled: async enabled => {
+        if (typeof enabled !== 'boolean') throw new TypeError('Invalid master state');
+        await storageSet({ factoryControlMasterEnabledV2: enabled });
+      }
+    });
+  }
+
+  async function initializeFactoryControlInstanceRuntime() {
+    if (!FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED) return null;
+    const protocol = globalThis.ChatGPTAutopilotFactoryProtocol;
+    const authorization = globalThis.ChatGPTAutopilotFactoryAuthorization;
+    const ledgerApi = globalThis.ChatGPTAutopilotFactoryLedger;
+    const instanceApi = globalThis.ChatGPTAutopilotFactoryInstance;
+    const runtimeApi = globalThis.ChatGPTAutopilotFactoryRuntime;
+    if (!protocol || !authorization || !ledgerApi || !instanceApi || !runtimeApi) {
+      throw new Error('Factory Control local modules unavailable');
+    }
+
+    const localStorage = Object.freeze({
+      get: async key => (await storageGet({ [key]: null }))[key],
+      set: async (key, value) => storageSet({ [key]: value }),
+      remove: storageRemove
+    });
+    const browser = globalThis.browser && !globalThis.chrome ? 'safari' : 'chrome';
+    const version = extensionApi.runtime.getManifest().version;
+    const instanceStore = instanceApi.createInstanceStore({
+      storage: localStorage,
+      uuid: () => globalThis.crypto.randomUUID(),
+      now: Date.now,
+      browser,
+      extensionVersion: version
+    });
+    const snapshot = await instanceStore.safeSnapshot();
+    if (!snapshot) return null;
+
+    const adapters = localFactoryControlAdapters();
+    const authorizer = authorization.createInstanceCommandAuthorizer({
+      loadVerifiedGrant: async () => {
+        const state = await instanceStore.load();
+        if (!state?.grant) throw new Error('Instance grant unavailable');
+        return {
+          instanceId: state.instanceId,
+          expiresAt: state.grant.expiresAt,
+          revoked: state.grant.revoked,
+          actions: [...state.grant.actions],
+          tabIds: await adapters.listChatTabs()
+        };
+      },
+      now: Date.now
+    });
+    const ledgerKey = 'factoryControlInstanceLedgerV2:' + snapshot.instanceId;
+    const ledger = ledgerApi.createInstanceLedger({
+      instanceId: snapshot.instanceId,
+      load: async () => (await storageGet({ [ledgerKey]: [] }))[ledgerKey],
+      save: async receipts => storageSet({ [ledgerKey]: receipts })
+    });
+    return runtimeApi.createInstanceRuntime({
+      protocol,
+      authorizer,
+      ledger,
+      instanceStore,
+      ...adapters,
+      now: Date.now
+    });
+  }
+
+  if (FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED) {
+    initializeFactoryControlInstanceRuntime().catch(() => {});
+  }
+
 })();
