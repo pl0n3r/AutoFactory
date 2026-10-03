@@ -203,6 +203,26 @@ async function failClosed() {
   );
   malformedRuntime.stop();
 
+  const invalidOutcomeRuntime = createFactoryControlRuntime({
+    createHeartbeat: () => ({ tick: async () => 'sent', stop() {} }),
+    loadContext: async ({ profileAlias }) => ({ profileAlias, enabledTabIds: [7] }),
+    pump: {
+      runOnce: async () => ({
+        ok: true,
+        code: 'handled',
+        cursor: 'cursor:2',
+        commandId: 'command-2',
+        outcome: 'unexpected'
+      })
+    }
+  });
+  invalidOutcomeRuntime.start({ profileAlias: 'perfil-1', cursor: 'cursor:1' });
+  assert.deepEqual(
+    await invalidOutcomeRuntime.runCommands(),
+    { ok: false, code: 'failed', cursor: 'cursor:1' }
+  );
+  invalidOutcomeRuntime.stop();
+
   const tabsRuntime = createFactoryControlRuntime({
     createHeartbeat: () => ({ tick: async () => 'sent', stop() {} }),
     loadContext: async ({ profileAlias }) => {
