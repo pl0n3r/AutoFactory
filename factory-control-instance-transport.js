@@ -114,12 +114,12 @@
     let activeEpoch = 0;
     let frames = 0;
     let failures = 0;
-    let changedAt = checkedNow(clock);
+    checkedNow(clock);
 
     function transition(nextState) {
       if (!STATES.has(nextState)) throw new TypeError('transport state is invalid');
+      checkedNow(clock);
       state = nextState;
-      changedAt = checkedNow(clock);
     }
 
     function status() {
@@ -128,8 +128,7 @@
         attempt,
         nextRetryMs,
         frames,
-        failures,
-        changedAt
+        failures
       });
     }
 
