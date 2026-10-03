@@ -50,6 +50,13 @@
   function sendAccepted({ composerCleared, messageAppeared, generationStarted } = {}) {
     return composerCleared === true && (messageAppeared === true || generationStarted === true);
   }
+  function lateSendAccepted({
+    circuitOpen, generating, assistantCount, assistantCountBeforeSend
+  } = {}) {
+    if (circuitOpen !== true) return false;
+    if (generating === true) return true;
+    return Number(assistantCount) > Number(assistantCountBeforeSend);
+  }
   function afterSuccess(value) {
     return { ...normalize(value), consecutiveFailures: 0, circuitOpenUntil: 0 };
   }
@@ -102,7 +109,7 @@
   }
   return {
     SESSION_KEY, MAX_FAILURES, MAX_RELOADS, DEFAULT_PLATFORM_REVIEW_MAX_MS,
-    signature, normalize, load, save, backoffMs, sendAccepted, afterFailure,
+    signature, normalize, load, save, backoffMs, sendAccepted, lateSendAccepted, afterFailure,
     afterSuccess, beforeReload, canReload, platformReviewProgress
   };
 });

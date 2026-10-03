@@ -702,6 +702,24 @@
       if (signal.code !== 'recoverable') {
         sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
       }
+      const circuitWasOpen = Date.now() < state.circuitOpenUntil;
+      const generationIsActive = Boolean(core.stopButton(document));
+      if (reliability.lateSendAccepted({
+        circuitOpen: circuitWasOpen,
+        generating: generationIsActive,
+        assistantCount: core.assistantMessageCount(document),
+        assistantCountBeforeSend: state.assistantCountBeforeSend
+      })) {
+        const lastUserText = core.lastUserMessageText(document);
+        Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
+        state.waiting = generationIsActive;
+        state.sawGeneration = generationIsActive;
+        state.pendingSignature = generationIsActive && lastUserText
+          ? reliability.signature(lastUserText) : '';
+        state.nextSendAt = generationIsActive ? Number.POSITIVE_INFINITY : Date.now() + 15000;
+        persistRuntime();
+        log('circuit-reset', { reason: 'late-send-confirmation' });
+      }
       if (Date.now() < state.circuitOpenUntil
           && core.stopButton(document)
           && core.interruptedConnection(document)) {

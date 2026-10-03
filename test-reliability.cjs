@@ -36,6 +36,20 @@ assert.equal(reliability.sendAccepted({ composerCleared: false, messageAppeared:
 assert.equal(reliability.sendAccepted({ composerCleared: true, messageAppeared: false, generationStarted: false }), false);
 console.log('Envío: acepta generación iniciada sin exigir mensaje virtualizado y evita falsos positivos');
 
+assert.equal(reliability.lateSendAccepted({
+  circuitOpen: true, generating: false, assistantCount: 4, assistantCountBeforeSend: 3
+}), true);
+assert.equal(reliability.lateSendAccepted({
+  circuitOpen: true, generating: true, assistantCount: 3, assistantCountBeforeSend: 3
+}), true);
+assert.equal(reliability.lateSendAccepted({
+  circuitOpen: true, generating: false, assistantCount: 3, assistantCountBeforeSend: 3
+}), false);
+assert.equal(reliability.lateSendAccepted({
+  circuitOpen: false, generating: true, assistantCount: 3, assistantCountBeforeSend: 3
+}), false);
+console.log('Envío tardío: una respuesta real limpia la protección anterior');
+
 
 let platformReview = reliability.platformReviewProgress({}, 1000, 5000);
 assert.equal(platformReview.startedAt, 1000);

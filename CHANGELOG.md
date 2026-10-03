@@ -2,8 +2,11 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
-## En desarrollo — 2026-10-03
+## 1.6.16 — 2026-10-03
 
+- Limpia inmediatamente la protección si aparece una generación o respuesta posterior al envío ambiguo.
+- Reconcilia respuestas confirmadas tarde sin duplicar el mensaje ni esperar cinco minutos.
+- Mantiene la misma recuperación en Chrome y Safari.
 - Hace que el build de Safari derive su lista de archivos del mismo contrato que valida manifest, popup y service worker.
 - Sincroniza automáticamente los nuevos módulos Factory Control y cualquier asset local declarado en el futuro.
 - Ejecuta el preflight de paridad Chrome/Safari antes de invocar Xcode, sin ampliar permisos ni activar el bridge.
