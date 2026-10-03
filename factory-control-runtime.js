@@ -308,6 +308,8 @@
       throw new TypeError('Instance runtime dependencies are required');
     }
 
+    let reconciliationPending = false;
+
     async function snapshot() {
       const value = await instanceStore.safeSnapshot();
       protocol.validationV2.exactObject(value, [
@@ -334,14 +336,14 @@
       return JSON.stringify(a) === JSON.stringify(b);
     }
 
-    function denied(command, currentSnapshot, enabled) {
+    function denied(command, enabled, code = 'unauthorized') {
       return protocol.acknowledgementV2({
         version: 2,
         kind: 'ack',
         id: command.id,
-        instanceId: currentSnapshot.instanceId,
+        instanceId: command.instanceId,
         ok: false,
-        code: 'unauthorized',
+        code,
         enabled,
         appliedTabs: []
       });
@@ -373,10 +375,12 @@
       const currentSnapshot = await snapshot();
       const command = protocol.commandV2(input);
       const enabledBefore = await masterEnabled();
+      if (command.instanceId !== currentSnapshot.instanceId) {
+        return denied(command, enabledBefore, 'not_found');
+      }
       const currentTabs = await tabs();
-      if (command.instanceId !== currentSnapshot.instanceId ||
-          command.target !== 'instance') {
-        return denied(command, currentSnapshot, enabledBefore);
+      if (command.target !== 'instance') {
+        return denied(command, enabledBefore);
       }
 
       let approved;
@@ -386,10 +390,10 @@
           enabledTabIds: currentTabs
         });
       } catch (_error) {
-        return denied(command, currentSnapshot, enabledBefore);
+        return denied(command, enabledBefore);
       }
       if (!sameCommand(command, approved)) {
-        return denied(command, currentSnapshot, enabledBefore);
+        return denied(command, enabledBefore);
       }
 
       return ledger.execute(approved, async persistedCommand => {
@@ -417,11 +421,18 @@
         }
 
         const enabled = freshApproved.action === 'resume';
-        await saveMasterEnabled(enabled);
+        try {
+          await saveMasterEnabled(enabled);
+        } catch (_error) {
+          reconciliationPending = true;
+          return { ok: false, code: 'failed', enabled, appliedTabs: [] };
+        }
         const appliedTabs = await fanout(freshTabs, freshApproved.action, enabled);
+        const complete = appliedTabs.length === freshTabs.length;
+        reconciliationPending = !complete;
         return {
-          ok: appliedTabs.length === freshTabs.length,
-          code: appliedTabs.length === freshTabs.length ? 'ok' : 'failed',
+          ok: complete,
+          code: complete ? 'ok' : 'failed',
           enabled,
           appliedTabs
         };
@@ -447,20 +458,33 @@
     }
 
     async function reconcile() {
-      await snapshot();
-      const enabled = await masterEnabled();
-      const currentTabs = await tabs();
-      const action = enabled ? 'resume' : 'pause';
-      const appliedTabs = await fanout(currentTabs, action, enabled);
-      return Object.freeze({
-        ok: appliedTabs.length === currentTabs.length,
-        code: appliedTabs.length === currentTabs.length ? 'ok' : 'failed',
-        enabled,
-        appliedTabs: Object.freeze(appliedTabs)
-      });
+      try {
+        await snapshot();
+        const enabled = await masterEnabled();
+        const currentTabs = await tabs();
+        const action = enabled ? 'resume' : 'pause';
+        const appliedTabs = await fanout(currentTabs, action, enabled);
+        const complete = appliedTabs.length === currentTabs.length;
+        reconciliationPending = !complete;
+        return Object.freeze({
+          ok: complete,
+          code: complete ? 'ok' : 'failed',
+          enabled,
+          appliedTabs: Object.freeze(appliedTabs)
+        });
+      } catch (_error) {
+        reconciliationPending = true;
+        return Object.freeze({
+          ok: false, code: 'failed', enabled: false, appliedTabs: Object.freeze([])
+        });
+      }
     }
 
-    return Object.freeze({ presence, execute, reconcile });
+    function status() {
+      return Object.freeze({ reconciliationPending });
+    }
+
+    return Object.freeze({ presence, execute, reconcile, status });
   }
 
   return Object.freeze({ createFactoryControlRuntime, createInstanceRuntime });
