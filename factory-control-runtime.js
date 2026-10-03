@@ -473,6 +473,7 @@
           appliedTabs: Object.freeze(appliedTabs)
         });
       } catch (_error) {
+        // Reconciliation adapter failures stay opaque and keep the instance pending.
         reconciliationPending = true;
         return Object.freeze({
           ok: false, code: 'failed', enabled: false, appliedTabs: Object.freeze([])
