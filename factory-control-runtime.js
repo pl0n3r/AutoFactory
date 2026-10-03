@@ -309,6 +309,7 @@
     }
 
     let reconciliationPending = false;
+    let lastKnownEnabled = null;
 
     async function snapshot() {
       const value = await instanceStore.safeSnapshot();
@@ -327,6 +328,7 @@
     async function masterEnabled() {
       const value = await loadMasterEnabled();
       if (typeof value !== 'boolean') throw new TypeError('Invalid master state');
+      lastKnownEnabled = value;
       return value;
     }
 
@@ -423,6 +425,7 @@
         const enabled = freshApproved.action === 'resume';
         try {
           await saveMasterEnabled(enabled);
+          lastKnownEnabled = enabled;
         } catch (_error) {
           reconciliationPending = true;
           return { ok: false, code: 'failed', enabled, appliedTabs: [] };
@@ -476,7 +479,8 @@
         // Reconciliation adapter failures stay opaque and keep the instance pending.
         reconciliationPending = true;
         return Object.freeze({
-          ok: false, code: 'failed', enabled: false, appliedTabs: Object.freeze([])
+          ok: false, code: 'failed', enabled: lastKnownEnabled,
+          appliedTabs: Object.freeze([])
         });
       }
     }
