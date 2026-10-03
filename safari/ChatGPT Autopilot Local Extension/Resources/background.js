@@ -6,6 +6,7 @@
   const HEARTBEAT_ALARM = 'autopilot-heartbeat';
 
   const FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED = false;
+  const FACTORY_CONTROL_LOCAL_AGENT_ENABLED = false;
   const FACTORY_CONTROL_RECEIPTS_KEY = 'factoryControlInstanceReceiptsV2';
 
   function storageRemove(key) {
@@ -118,6 +119,20 @@
   globalThis.ChatGPTAutopilotFactoryControlBuildAhead = Object.freeze({
     enabled: FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED,
     create: createFactoryControlInstanceRuntime
+  });
+
+  function factoryControlLocalAgentStatus() {
+    const moduleLoaded = Boolean(globalThis.ChatGPTAutopilotFactoryInstanceTransport);
+    return Object.freeze({
+      enabled: FACTORY_CONTROL_LOCAL_AGENT_ENABLED,
+      state: FACTORY_CONTROL_LOCAL_AGENT_ENABLED && moduleLoaded ? 'ready' : 'disabled',
+      capabilities: Object.freeze({ pair: false, revoke: false })
+    });
+  }
+
+  globalThis.ChatGPTAutopilotFactoryControlLocalAgentBuildAhead = Object.freeze({
+    enabled: FACTORY_CONTROL_LOCAL_AGENT_ENABLED,
+    moduleLoaded: Boolean(globalThis.ChatGPTAutopilotFactoryInstanceTransport)
   });
 
   function ensureHeartbeat() {
@@ -274,6 +289,15 @@
   });
 
   extensionApi.runtime.onMessage.addListener((message, sender, reply) => {
+    if (message?.type === 'autopilot:factory-control-status') {
+      reply(factoryControlLocalAgentStatus());
+      return;
+    }
+    if (message?.type === 'autopilot:factory-control-pair' ||
+        message?.type === 'autopilot:factory-control-revoke') {
+      reply(Object.freeze({ ok: false, code: 'disabled' }));
+      return;
+    }
     if (message?.type === 'autopilot:log') {
       append(message, sender);
       reply({ ok: true });
