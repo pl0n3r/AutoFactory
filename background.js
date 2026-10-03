@@ -5,6 +5,12 @@
   const MAX_LOG_AGE_MS = 7 * 24 * 60 * 60 * 1000;
   const HEARTBEAT_ALARM = 'autopilot-heartbeat';
 
+  const FACTORY_CONTROL_BUILD_AHEAD = Object.freeze({
+    controlBridgeEnabled: false,
+    runtimeFactory: 'createInstanceRuntime'
+  });
+  globalThis.ChatGPTAutopilotFactoryBuildAhead = FACTORY_CONTROL_BUILD_AHEAD;
+
   function ensureHeartbeat() {
     if (!extensionApi.alarms?.create) return;
     try { extensionApi.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 0.5 }); } catch (_error) {}
