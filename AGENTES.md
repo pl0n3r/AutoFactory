@@ -20,6 +20,7 @@ Lee también [PLAN-AGENTES.md](https://github.com/pl0n3r/factory/blob/main/PLAN-
 - **Privacidad:** no registrar texto de conversaciones, tokens, correos ni rutas de chat identificables. Toda modificación de tratamientos personales exige actualizar `datos.yml` en el mismo PR y aplicar puertas legales cuando corresponda.
 - **Puente con ControlBot:** sin endpoints reales, emparejamiento, permisos ampliados ni datos reales hasta autorización, consentimientos verificables, validación de seguridad y puerta legal [ControlBot#20](https://github.com/pl0n3r/ControlBot/issues/20). Prohibido usar automatización para eludir límites o controles de plataforma.
 - **Production green de AutoFactory:** usar definición de extensión en `PLAN-AGENTES.md`, nunca inventar `/health`, despliegue de Hostinger o base de datos para un navegador.
+- **Salud por pestaña:** `SIN AVANCE` es una señal local tras el umbral configurado por ausencia de respuesta o huella repetida; inspeccionar la pestaña indicada antes de intervenir. El log asociado queda limitado a 200 eventos y solo admite timestamps, estado, tab ID local y hash; nunca contenido de conversación.
 
 ## Colisiones y handoff
 
