@@ -60,26 +60,46 @@
     if (!Array.isArray(value) || value.length > 40) {
       throw new TypeError('enabledTabIds is invalid');
     }
+    const keys = Reflect.ownKeys(value);
+    const allowed = new Set(['length']);
+    for (let index = 0; index < value.length; index += 1) {
+      allowed.add(String(index));
+    }
+    if (keys.length !== allowed.size ||
+        keys.some(key => typeof key !== 'string' || !allowed.has(key))) {
+      throw new TypeError('enabledTabIds is invalid');
+    }
+
     const seen = new Set();
     const copy = [];
     for (let index = 0; index < value.length; index += 1) {
-      if (!Object.hasOwn(value, index) || !Number.isSafeInteger(value[index]) ||
-          value[index] < 0 || seen.has(value[index])) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor || descriptor.enumerable !== true ||
+          !Object.hasOwn(descriptor, 'value') ||
+          !Number.isSafeInteger(descriptor.value) || descriptor.value < 0 ||
+          seen.has(descriptor.value)) {
         throw new TypeError('enabledTabIds is invalid');
       }
-      seen.add(value[index]);
-      copy.push(value[index]);
+      seen.add(descriptor.value);
+      copy.push(descriptor.value);
     }
     return Object.freeze(copy);
   }
 
   function normalizePump(value, previousCursor) {
-    if (!value || typeof value !== 'object' || Array.isArray(value) ||
-        typeof value.ok !== 'boolean' || typeof value.code !== 'string') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new TypeError('pump result is invalid');
+    }
+    const okDescriptor = Object.getOwnPropertyDescriptor(value, 'ok');
+    const codeDescriptor = Object.getOwnPropertyDescriptor(value, 'code');
+    if (!okDescriptor || !codeDescriptor ||
+        okDescriptor.enumerable !== true || codeDescriptor.enumerable !== true ||
+        !Object.hasOwn(okDescriptor, 'value') || !Object.hasOwn(codeDescriptor, 'value') ||
+        typeof okDescriptor.value !== 'boolean' || typeof codeDescriptor.value !== 'string') {
       throw new TypeError('pump result is invalid');
     }
 
-    if (value.ok === false) {
+    if (okDescriptor.value === false) {
       const failure = exactObject(value, ['ok', 'code', 'cursor'], 'pump failure');
       if (!PUMP_FAILURE_CODES.has(failure.code) ||
           cursor(failure.cursor) !== previousCursor) {
@@ -88,10 +108,10 @@
       return result(false, failure.code, previousCursor);
     }
 
-    if (!PUMP_SUCCESS_CODES.has(value.code)) {
+    if (!PUMP_SUCCESS_CODES.has(codeDescriptor.value)) {
       throw new TypeError('pump result is invalid');
     }
-    const fields = value.code === 'empty'
+    const fields = codeDescriptor.value === 'empty'
       ? ['ok', 'code', 'cursor']
       : ['ok', 'code', 'cursor', 'commandId', 'outcome'];
     const success = exactObject(value, fields, 'pump success');
