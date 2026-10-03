@@ -283,5 +283,198 @@
     return Object.freeze({ start, runHeartbeat, runCommands, stop });
   }
 
-  return Object.freeze({ createFactoryControlRuntime });
+
+  function createInstanceRuntime({
+    protocol,
+    authorizer,
+    ledger,
+    instanceStore,
+    listChatTabs,
+    sendTab,
+    loadMasterEnabled,
+    saveMasterEnabled,
+    now = Date.now
+  } = {}) {
+    if (!protocol || typeof protocol.presenceV2 !== 'function' ||
+        typeof protocol.commandV2 !== 'function' ||
+        typeof protocol.acknowledgementV2 !== 'function' ||
+        !authorizer || typeof authorizer.authorize !== 'function' ||
+        !ledger || typeof ledger.execute !== 'function' ||
+        !instanceStore || typeof instanceStore.safeSnapshot !== 'function' ||
+        typeof listChatTabs !== 'function' || typeof sendTab !== 'function' ||
+        typeof loadMasterEnabled !== 'function' ||
+        typeof saveMasterEnabled !== 'function' || typeof now !== 'function') {
+      throw new TypeError('Instance runtime dependencies are required');
+    }
+
+    let reconciliationPending = false;
+
+    function safeAck(command, ok, code, enabled, appliedTabs) {
+      return protocol.acknowledgementV2({
+        version: 2,
+        kind: 'ack',
+        id: command.id,
+        instanceId: command.instanceId,
+        ok,
+        code,
+        enabled,
+        appliedTabs
+      });
+    }
+
+    async function identity() {
+      const snapshot = await instanceStore.safeSnapshot();
+      if (snapshot === null || snapshot === undefined) return null;
+      const value = exactObject(snapshot, [
+        'instanceId', 'browser', 'profileAlias', 'deviceAlias',
+        'extensionVersion', 'protocolVersion'
+      ], 'instance snapshot');
+      if (typeof value.instanceId !== 'string' ||
+          value.protocolVersion !== 2) {
+        throw new TypeError('instance snapshot is invalid');
+      }
+      return value;
+    }
+
+    async function tabs() {
+      return tabIds(await listChatTabs());
+    }
+
+    async function masterEnabled() {
+      const enabled = await loadMasterEnabled();
+      if (typeof enabled !== 'boolean') {
+        throw new TypeError('master enabled state is invalid');
+      }
+      return enabled;
+    }
+
+    async function deliver(tabList, action, enabled) {
+      const appliedTabs = [];
+      let failed = false;
+      for (const tabId of tabList) {
+        try {
+          const result = await sendTab(tabId, Object.freeze({ action, enabled }));
+          if (result !== true && result?.ok !== true) throw new Error('tab rejected');
+          appliedTabs.push(tabId);
+        } catch (_error) {
+          failed = true;
+        }
+      }
+      return Object.freeze({ failed, appliedTabs });
+    }
+
+    async function presence() {
+      try {
+        const snapshot = await identity();
+        if (snapshot === null) return null;
+        const tabList = await tabs();
+        const enabled = await masterEnabled();
+        const observedAt = now();
+        if (!Number.isSafeInteger(observedAt) || observedAt < 0) {
+          throw new TypeError('instance clock is invalid');
+        }
+        return protocol.presenceV2({
+          version: 2,
+          kind: 'presence',
+          instanceId: snapshot.instanceId,
+          enabled,
+          tabs: tabList.map(tabId => ({ tabId, enabled })),
+          observedAt
+        });
+      } catch (_error) {
+        throw new Error('Instance runtime unavailable');
+      }
+    }
+
+    async function execute(input) {
+      const command = protocol.commandV2(input);
+      let snapshot;
+      try {
+        snapshot = await identity();
+      } catch (_error) {
+        return safeAck(command, false, 'failed', false, []);
+      }
+      if (snapshot === null || snapshot.instanceId !== command.instanceId) {
+        return safeAck(command, false, 'not_found', false, []);
+      }
+
+      let tabList;
+      try {
+        tabList = await tabs();
+      } catch (_error) {
+        return safeAck(command, false, 'failed', false, []);
+      }
+
+      return ledger.execute(command, async canonical => {
+        try {
+          await authorizer.authorize(canonical, Object.freeze({
+            instanceId: snapshot.instanceId,
+            enabledTabIds: tabList
+          }));
+        } catch (_error) {
+          return {
+            ok: false,
+            code: 'unauthorized',
+            enabled: false,
+            appliedTabs: []
+          };
+        }
+
+        const enabled = canonical.action === 'resume';
+        try {
+          await saveMasterEnabled(enabled);
+        } catch (_error) {
+          reconciliationPending = true;
+          return { ok: false, code: 'failed', enabled, appliedTabs: [] };
+        }
+
+        const delivery = await deliver(tabList, canonical.action, enabled);
+        reconciliationPending = delivery.failed;
+        return {
+          ok: !delivery.failed,
+          code: delivery.failed ? 'failed' : 'ok',
+          enabled,
+          appliedTabs: delivery.appliedTabs
+        };
+      });
+    }
+
+    async function reconcile() {
+      try {
+        const snapshot = await identity();
+        if (snapshot === null) {
+          return Object.freeze({
+            ok: false, code: 'not_ready', enabled: false, appliedTabs: []
+          });
+        }
+        const enabled = await masterEnabled();
+        const tabList = await tabs();
+        const delivery = await deliver(
+          tabList,
+          enabled ? 'resume' : 'pause',
+          enabled
+        );
+        reconciliationPending = delivery.failed;
+        return Object.freeze({
+          ok: !delivery.failed,
+          code: delivery.failed ? 'failed' : 'ok',
+          enabled,
+          appliedTabs: delivery.appliedTabs
+        });
+      } catch (_error) {
+        reconciliationPending = true;
+        return Object.freeze({
+          ok: false, code: 'failed', enabled: false, appliedTabs: []
+        });
+      }
+    }
+
+    function status() {
+      return Object.freeze({ reconciliationPending });
+    }
+
+    return Object.freeze({ presence, execute, reconcile, status });
+  }
+
+  return Object.freeze({ createFactoryControlRuntime, createInstanceRuntime });
 });
