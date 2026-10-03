@@ -134,6 +134,20 @@ function workerImportRefs(source) {
   }
   return refs;
 }
+function declaredExtensionAssets(root, io = fs) {
+  const manifest = readJson(root, 'manifest.json', io);
+  const popupScripts = popupScriptRefs(
+    regularFile(root, manifest.action.default_popup, io).toString('utf8')
+  );
+  const backgroundImports = workerImportRefs(
+    regularFile(root, manifest.background.service_worker, io).toString('utf8')
+  );
+  return Object.freeze([...new Set([
+    ...popupScripts,
+    ...backgroundImports,
+    ...assetRefs(manifest)
+  ])]);
+}
 function validateExtensionTree(root, io = fs) {
   const manifest = readJson(root, 'manifest.json', io);
   const pkg = readJson(root, 'package.json', io);
@@ -155,17 +169,7 @@ function validateExtensionTree(root, io = fs) {
       !validStringList(manifest.host_permissions, EXPECTED_HOSTS)) {
     fail('unexpected permission or host before legal go-live');
   }
-  const popupScripts = popupScriptRefs(
-    regularFile(root, manifest.action.default_popup, io).toString('utf8')
-  );
-  const backgroundImports = workerImportRefs(
-    regularFile(root, manifest.background.service_worker, io).toString('utf8')
-  );
-  const files = [...new Set([
-    ...popupScripts,
-    ...backgroundImports,
-    ...assetRefs(manifest)
-  ])];
+  const files = declaredExtensionAssets(root, io);
   const safariRoot = regularDirectory(root, SAFARI_RESOURCES, io);
   for (const file of files) {
     const chrome = regularFile(root, file, io);
@@ -188,4 +192,4 @@ if (require.main === module) {
     process.exitCode = 1;
   }
 }
-module.exports = { validateExtensionTree, workerImportRefs };
+module.exports = { declaredExtensionAssets, validateExtensionTree, workerImportRefs };

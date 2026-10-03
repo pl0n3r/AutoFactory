@@ -4,14 +4,26 @@ set -euo pipefail
 ROOT="${0:A:h}"
 PROJECT_ROOT="$ROOT/safari"
 RESOURCES="$PROJECT_ROOT/ChatGPT Autopilot Local Extension/Resources"
+ASSET_LIST="$(mktemp)"
+trap 'rm -f "$ASSET_LIST"' EXIT
 
-mkdir -p "$RESOURCES/icons"
-for file in manifest.json autopilot-core.js account-budget-guard.js learning.js reliability.js content.js popup.html popup.js popup-budget.js background-entry.js background.js account-budget.js account-budget-background.js; do
+node - "$ROOT" > "$ASSET_LIST" <<'NODE'
+const path = require('node:path');
+const root = process.argv[2];
+const { declaredExtensionAssets } = require(
+  path.join(root, 'scripts', 'verify-extension-assets.cjs')
+);
+for (const file of declaredExtensionAssets(root)) {
+  process.stdout.write(file + '\n');
+}
+NODE
+
+while IFS= read -r file; do
+  mkdir -p "$(dirname "$RESOURCES/$file")"
   cp "$ROOT/$file" "$RESOURCES/$file"
-done
-for file in icon-16.png icon-32.png icon-48.png icon-64.png icon-128.png; do
-  cp "$ROOT/icons/$file" "$RESOURCES/icons/$file"
-done
+done < "$ASSET_LIST"
+
+node "$ROOT/scripts/verify-extension-assets.cjs"
 
 xcodebuild \
   -project "$PROJECT_ROOT/ChatGPT Autopilot Local.xcodeproj" \
