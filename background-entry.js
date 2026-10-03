@@ -6,6 +6,7 @@ importScripts(
   'factory-control-ledger.js',
   'factory-control-instance.js',
   'factory-control-runtime.js',
+  'factory-control-instance-transport.js',
   'background.js',
   'account-budget-background.js'
 );

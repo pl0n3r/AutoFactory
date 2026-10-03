@@ -54,6 +54,32 @@ async function message(payload) {
   });
 }
 function showStatus(text,enabled){const status=$('status');status.textContent=text;status.classList.toggle('active',enabled===true);status.classList.toggle('paused',enabled===false);}
+const factoryControlBridgeStatus=$('factory-control-bridge-status');
+const factoryControlPair=$('factory-control-pair');
+const factoryControlRevoke=$('factory-control-revoke');
+function renderFactoryControlBridge(value={}) {
+  const state = value && typeof value === 'object' && value.state === 'ready' ? 'ready' : 'disabled';
+  const capabilities = value && typeof value.capabilities === 'object' && value.capabilities
+    ? value.capabilities : {};
+  factoryControlBridgeStatus.textContent = state === 'ready'
+    ? 'LISTO · adapter local disponible'
+    : 'DESHABILITADO · sin adapter local';
+  factoryControlBridgeStatus.classList.toggle('active', state === 'ready');
+  factoryControlBridgeStatus.classList.toggle('paused', state !== 'ready');
+  factoryControlPair.disabled = capabilities.pair !== true;
+  factoryControlRevoke.disabled = capabilities.revoke !== true;
+}
+async function refreshFactoryControlBridge() {
+  if (typeof extensionApi.runtime.sendMessage !== 'function') {
+    renderFactoryControlBridge({ state: 'disabled', capabilities: {} });
+    return;
+  }
+  try {
+    renderFactoryControlBridge(await runtimeMessage({type:'autopilot:factory-control-status'}));
+  } catch (_error) {
+    renderFactoryControlBridge({ state: 'disabled', capabilities: {} });
+  }
+}
 async function refresh(){try{const result=await message({type:'autopilot:get-status'});showStatus(`${result.enabled?'ACTIVO':'PAUSADO'} · ${result.status}`,result.enabled);}catch(error){showStatus(`v${extensionVersion} · ${error.message}`);}}
 const cleanSamples=(values,maximum)=>(Array.isArray(values)?values:[]).filter(value=>Number.isFinite(value)&&value>0&&value<=maximum);
 const average=(values,maximum)=>{const clean=cleanSamples(values,maximum);return clean.length?clean.reduce((a,b)=>a+b,0)/clean.length:0;};
@@ -128,6 +154,11 @@ async function copyText(text) {
 }
 $('copy-log').addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:get-log'});await copyText(JSON.stringify({exportedAt:new Date().toISOString(),extensionVersion,learning:(await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),{learning:{}})).learning,entries:result.entries||[]},null,2));$('status').textContent=`DIAGNÓSTICO COPIADO · ${(result.entries||[]).length} eventos`;}catch(error){$('status').textContent=`No pude copiar: ${error.message}`;}});
 $('clear-log').addEventListener('click',async()=>{try{await runtimeMessage({type:'autopilot:clear-log'});$('status').textContent='LOG BORRADO';}catch(error){$('status').textContent=`No pude borrar: ${error.message}`;}});
+factoryControlPair.addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:factory-control-pair'});if(result?.code==='disabled')renderFactoryControlBridge({state:'disabled',capabilities:{}});}catch(_error){ // NOSONAR: UI falls back to the fixed disabled state without exposing runtime details.
+renderFactoryControlBridge({state:'disabled',capabilities:{}});}});
+factoryControlRevoke.addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:factory-control-revoke'});if(result?.code==='disabled')renderFactoryControlBridge({state:'disabled',capabilities:{}});}catch(_error){ // NOSONAR: UI falls back to the fixed disabled state without exposing runtime details.
+renderFactoryControlBridge({state:'disabled',capabilities:{}});}});
+void refreshFactoryControlBridge();
 extensionApi.storage.local.get(DEFAULTS,values=>{if(values.settingsDefaultVersion!==SETTINGS_DEFAULT_VERSION){values={...values,settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,reloadCooldownMinutes:1,periodicReload:true,periodicReloadMinutes:15};extensionApi.storage.local.set({settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,reloadCooldownMinutes:1,periodicReload:true,periodicReloadMinutes:15});}const savedPrompt=String(values.prompt||'').trim();const valid=values.promptSchemaVersion===PROMPT_SCHEMA_VERSION&&savedPrompt.length>0;fields.prompt.value=valid?savedPrompt:DEFAULT_PROMPT;fields.delaySeconds.value=values.delaySeconds;fields.reasoningLevel.value=values.reasoningLevel||'high';renderConversationMode(values.conversationMode);fields.followScroll.checked=values.followScroll!==false;fields.scrollStepMin.value=values.scrollStepMin;fields.scrollStepMax.value=values.scrollStepMax;fields.scrollPollMs.value=values.scrollPollMs;fields.scrollStableChecks.value=values.scrollStableChecks;fields.scrollMaxSeconds.value=values.scrollMaxSeconds;fields.manualScrollPauseSeconds.value=values.manualScrollPauseSeconds;fields.autoReload.checked=values.autoReload!==false;fields.reloadCooldownMinutes.value=values.reloadCooldownMinutes;fields.periodicReload.checked=values.periodicReload===true;fields.periodicReloadMinutes.value=values.periodicReloadMinutes;showStatus(values.masterEnabled?'ACTIVO · todas las pestañas':'PAUSADO · todas las pestañas',values.masterEnabled);refreshLearning();refresh();});
 extensionApi.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.learning) {
