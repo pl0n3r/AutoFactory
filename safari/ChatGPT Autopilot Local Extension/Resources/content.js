@@ -306,6 +306,16 @@
     } catch (_error) {}
   }
 
+  function lastAssistantReplyFingerprint() {
+    const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
+    const last = messages[messages.length - 1];
+    const text = core.normalize(last?.innerText || last?.textContent);
+    if (!text) return '';
+    const parts = reliability.signature(text).split(':');
+    const hash = String(parts[1] || '').toLowerCase();
+    return /^[0-9a-f]{1,8}$/.test(hash) ? hash.padStart(8, '0') : '';
+  }
+
   function runtimeSnapshot() {
     return {
       pendingSignature: state.pendingSignature,
@@ -919,7 +929,11 @@
           setStatus('Esperando que inicie la respuesta');
           return;
         }
-        saveLearning('cycle', Date.now() - (state.generationStartedAt || state.lastSentAt));
+        saveLearning(
+          'cycle',
+          Date.now() - (state.generationStartedAt || state.lastSentAt),
+          { replyFingerprint: lastAssistantReplyFingerprint() }
+        );
         if (state.lastRecovery) {
           saveLearning('action-success', 0, state.lastRecovery);
           state.lastRecovery = null;
