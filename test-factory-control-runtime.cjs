@@ -341,6 +341,8 @@ async function instanceHappyPath() {
   const duplicate = await runtime.execute(pause);
   assert.deepEqual(duplicate, ack);
   assert.equal(harness.sends.length, sendsBeforeDuplicate);
+  assert.deepEqual(runtime.status(), { reconciliationPending: false });
+  console.log('factory-control instance runtime: duplicate receipt does not reapply after status repair');
 
   harness.setFailedTab(9);
   const partial = await runtime.execute(instanceCommand('instance-command-2', 'resume'));
@@ -360,8 +362,11 @@ async function instanceFailClosed() {
   const wrong = await runtime.execute(
     instanceCommand('instance-command-wrong', 'pause', OTHER_INSTANCE_ID)
   );
-  assert.equal(wrong.code, 'unauthorized');
+  assert.equal(wrong.code, 'not_found');
   assert.equal(harness.sends.length, 0);
+  assert.equal(harness.saves.length, 0);
+  assert.deepEqual(runtime.status(), { reconciliationPending: false });
+  console.log('factory-control instance runtime: wrong instance returns not_found with zero effects');
 
   harness.setRevoked(true);
   const revoked = await runtime.execute(instanceCommand('instance-command-revoked', 'pause'));
@@ -387,13 +392,15 @@ async function instanceReconcile() {
   harness.setFailedTab(9);
   const failed = await runtime.execute(instanceCommand('instance-command-resume', 'resume'));
   assert.equal(failed.code, 'failed');
+  assert.deepEqual(runtime.status(), { reconciliationPending: true });
 
   harness.setFailedTab(null);
-  runtime = harness.buildRuntime();
   const reconciled = await runtime.reconcile();
   assert.deepEqual(reconciled, {
     ok: true, code: 'ok', enabled: true, appliedTabs: [7, 9]
   });
+  assert.deepEqual(runtime.status(), { reconciliationPending: false });
+  console.log('factory-control instance runtime: partial failure sets reconciliation pending until full reconcile');
   const presence = await runtime.presence();
   assert.equal(presence.instanceId, INSTANCE_ID);
   assert.equal(presence.enabled, true);
