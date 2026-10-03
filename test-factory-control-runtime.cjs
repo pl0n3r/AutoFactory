@@ -1,7 +1,10 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { createFactoryControlRuntime } = require('./factory-control-runtime.js');
+const { createFactoryControlRuntime, createInstanceRuntime } = require('./factory-control-runtime.js');
+const protocol = require('./factory-control-protocol.js');
+const { createInstanceCommandAuthorizer } = require('./factory-control-authorization.js');
+const { createInstanceLedger } = require('./factory-control-ledger.js');
 
 function deferred() {
   let resolve;
@@ -242,13 +245,176 @@ async function failClosed() {
   tabsRuntime.stop();
 }
 
+
+const INSTANCE_ID = '11111111-1111-4111-8111-111111111111';
+const OTHER_INSTANCE_ID = '22222222-2222-4222-8222-222222222222';
+
+function instanceCommand(id, action, instanceId = INSTANCE_ID, issuedAt = 900, expiresAt = 1100) {
+  return {
+    version: 2, kind: 'command', id, instanceId,
+    action, target: 'instance', issuedAt, expiresAt
+  };
+}
+
+function instanceHarness() {
+  let receipts = [];
+  let masterEnabled = true;
+  let now = 1000;
+  let grantExpiresAt = 2000;
+  let grantRevoked = false;
+  let failedTab = null;
+  const sends = [];
+  const saves = [];
+
+  const instanceStore = {
+    safeSnapshot: async () => Object.freeze({
+      instanceId: INSTANCE_ID,
+      browser: 'chrome',
+      profileAlias: 'perfil-1',
+      deviceAlias: 'mac-local',
+      extensionVersion: '1.6.15',
+      protocolVersion: 2
+    })
+  };
+
+  function buildRuntime() {
+    const authorizer = createInstanceCommandAuthorizer({
+      loadVerifiedGrant: async () => ({
+        instanceId: INSTANCE_ID,
+        expiresAt: grantExpiresAt,
+        revoked: grantRevoked,
+        actions: ['pause', 'resume'],
+        tabIds: [7, 9]
+      }),
+      now: () => now
+    });
+    const ledger = createInstanceLedger({
+      instanceId: INSTANCE_ID,
+      load: async () => structuredClone(receipts),
+      save: async value => { receipts = structuredClone(value); }
+    });
+    return createInstanceRuntime({
+      protocol,
+      authorizer,
+      ledger,
+      instanceStore,
+      listChatTabs: async () => [7, 9],
+      sendTab: async (tabId, message) => {
+        sends.push({ tabId, message, masterEnabled });
+        return { ok: tabId !== failedTab };
+      },
+      loadMasterEnabled: async () => masterEnabled,
+      saveMasterEnabled: async enabled => {
+        masterEnabled = enabled;
+        saves.push(enabled);
+      },
+      now: () => now
+    });
+  }
+
+  return {
+    buildRuntime,
+    sends,
+    saves,
+    get masterEnabled() { return masterEnabled; },
+    setFailedTab(value) { failedTab = value; },
+    setRevoked(value) { grantRevoked = value; },
+    setNow(value) { now = value; },
+    setGrantExpiresAt(value) { grantExpiresAt = value; }
+  };
+}
+
+async function instanceHappyPath() {
+  const harness = instanceHarness();
+  let runtime = harness.buildRuntime();
+  const pause = instanceCommand('instance-command-1', 'pause');
+  const ack = await runtime.execute(pause);
+  assert.equal(ack.ok, true);
+  assert.equal(ack.code, 'ok');
+  assert.equal(ack.enabled, false);
+  assert.deepEqual(ack.appliedTabs, [7, 9]);
+  assert.deepEqual(harness.saves, [false]);
+  assert.equal(harness.sends.every(item => item.masterEnabled === false), true);
+
+  const sendsBeforeDuplicate = harness.sends.length;
+  runtime = harness.buildRuntime();
+  const duplicate = await runtime.execute(pause);
+  assert.deepEqual(duplicate, ack);
+  assert.equal(harness.sends.length, sendsBeforeDuplicate);
+
+  harness.setFailedTab(9);
+  const partial = await runtime.execute(instanceCommand('instance-command-2', 'resume'));
+  assert.equal(partial.ok, false);
+  assert.equal(partial.code, 'failed');
+  assert.equal(partial.enabled, true);
+  assert.deepEqual(partial.appliedTabs, [7]);
+  assert.equal(harness.masterEnabled, true);
+
+  console.log('factory-control instance runtime: persist-before-fanout and duplicate-safe');
+}
+
+async function instanceFailClosed() {
+  const harness = instanceHarness();
+  const runtime = harness.buildRuntime();
+
+  const wrong = await runtime.execute(
+    instanceCommand('instance-command-wrong', 'pause', OTHER_INSTANCE_ID)
+  );
+  assert.equal(wrong.code, 'unauthorized');
+  assert.equal(harness.sends.length, 0);
+
+  harness.setRevoked(true);
+  const revoked = await runtime.execute(instanceCommand('instance-command-revoked', 'pause'));
+  assert.equal(revoked.code, 'unauthorized');
+  assert.equal(harness.sends.length, 0);
+
+  harness.setRevoked(false);
+  harness.setNow(3000);
+  harness.setGrantExpiresAt(2500);
+  const expired = await runtime.execute(
+    instanceCommand('instance-command-expired', 'pause', INSTANCE_ID, 2900, 3100)
+  );
+  assert.equal(expired.code, 'unauthorized');
+  assert.equal(harness.sends.length, 0);
+
+  console.log('factory-control instance runtime: wrong-instance revoked and expired fail closed');
+}
+
+async function instanceReconcile() {
+  const harness = instanceHarness();
+  let runtime = harness.buildRuntime();
+  await runtime.execute(instanceCommand('instance-command-pause', 'pause'));
+  harness.setFailedTab(9);
+  const failed = await runtime.execute(instanceCommand('instance-command-resume', 'resume'));
+  assert.equal(failed.code, 'failed');
+
+  harness.setFailedTab(null);
+  runtime = harness.buildRuntime();
+  const reconciled = await runtime.reconcile();
+  assert.deepEqual(reconciled, {
+    ok: true, code: 'ok', enabled: true, appliedTabs: [7, 9]
+  });
+  const presence = await runtime.presence();
+  assert.equal(presence.instanceId, INSTANCE_ID);
+  assert.equal(presence.enabled, true);
+  assert.deepEqual(presence.tabs, [
+    { tabId: 7, enabled: true },
+    { tabId: 9, enabled: true }
+  ]);
+
+  console.log('factory-control instance runtime: reconcile follows local master state');
+}
+
 (async () => {
   const mode = process.argv[2] || 'all';
-  if (!['all', 'happy', 'failclosed'].includes(mode)) {
+  if (!['all', 'happy', 'failclosed', 'instance-happy', 'instance-failclosed', 'instance-reconcile'].includes(mode)) {
     throw new Error('unknown test mode');
   }
   if (mode === 'all' || mode === 'happy') await happyPath();
   if (mode === 'all' || mode === 'failclosed') await failClosed();
+  if (mode === 'all' || mode === 'instance-happy') await instanceHappyPath();
+  if (mode === 'all' || mode === 'instance-failclosed') await instanceFailClosed();
+  if (mode === 'all' || mode === 'instance-reconcile') await instanceReconcile();
   console.log('factory-control runtime lifecycle: ok');
 })().catch(error => {
   console.error(error);
