@@ -6,6 +6,7 @@
   'use strict';
 
   const VERSION = 1;
+  const VERSION_2 = 2;
   const TAB_STATES = new Set([
     'paused', 'waiting', 'generating', 'sending', 'error', 'limit', 'requires_login'
   ]);
@@ -15,8 +16,13 @@
   const ACTIONS = new Set([
     'pause', 'resume', 'open_chat', 'set_prompt', 'set_mode', 'send_message'
   ]);
+  const INSTANCE_ACTIONS = new Set(['pause', 'resume']);
   const ERROR_CODES = new Set([
     'ok', 'invalid', 'not_found', 'not_ready', 'timeout', 'unauthorized',
+    'already_handled', 'failed'
+  ]);
+  const INSTANCE_ERROR_CODES = new Set([
+    'ok', 'invalid', 'not_ready', 'timeout', 'unauthorized',
     'already_handled', 'failed'
   ]);
   const BUDGET_FIELDS = [
@@ -24,6 +30,8 @@
     'highReasoningSends', 'nextAllowedAt', 'source'
   ];
   const MAX_BUDGET_EVENTS = 512;
+  const MAX_INSTANCE_COMMAND_TTL_MS = 300000;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
   function object(value, label) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -38,9 +46,38 @@
     }
   }
 
+  function exactObject(value, fields, label) {
+    object(value, label);
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError(label + ' must be a plain object');
+    }
+    const ownKeys = Reflect.ownKeys(value);
+    if (ownKeys.length !== fields.length ||
+        ownKeys.some(key => typeof key !== 'string' || !fields.includes(key)) ||
+        fields.some(field => !Object.hasOwn(value, field))) {
+      throw new TypeError(label + ' must have an exact shape');
+    }
+    for (const field of fields) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, field);
+      if (!descriptor || !descriptor.enumerable ||
+          typeof descriptor.get === 'function' || typeof descriptor.set === 'function') {
+        throw new TypeError(label + ' must use plain data fields');
+      }
+    }
+    return value;
+  }
+
   function identifier(value, label) {
     if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(value)) {
       throw new TypeError(label + ' is invalid');
+    }
+    return value;
+  }
+
+  function instanceId(value) {
+    if (typeof value !== 'string' || UUID_RE.test(value) === false) {
+      throw new TypeError('Invalid instance ID');
     }
     return value;
   }
@@ -56,6 +93,23 @@
   function tabId(value) {
     if (!Number.isSafeInteger(value) || value < 0) throw new TypeError('Invalid tab ID');
     return value;
+  }
+
+  function denseTabs(value, label, mapper) {
+    if (!Array.isArray(value) || value.length > 40) {
+      throw new TypeError(label + ' must be a bounded array');
+    }
+    const seen = new Set();
+    const output = [];
+    for (let index = 0; index < value.length; index++) {
+      if (!Object.hasOwn(value, index)) throw new TypeError(label + ' must be dense');
+      const mapped = mapper(value[index]);
+      const id = typeof mapped === 'number' ? mapped : mapped.tabId;
+      if (seen.has(id)) throw new TypeError(label + ' contains duplicate tab IDs');
+      seen.add(id);
+      output.push(mapped);
+    }
+    return output;
   }
 
   function normalizedAccountState(value) {
@@ -191,5 +245,93 @@
     return { version: VERSION, kind: 'ack', id, ok: input.ok, code: input.code };
   }
 
-  return Object.freeze({ VERSION, heartbeat, command, acknowledgement });
+  function presenceV2(input) {
+    exactObject(
+      input,
+      ['version', 'kind', 'instanceId', 'enabled', 'tabs', 'observedAt'],
+      'presence v2'
+    );
+    if (input.version !== VERSION_2 || input.kind !== 'presence' ||
+        typeof input.enabled !== 'boolean' ||
+        !Number.isSafeInteger(input.observedAt) || input.observedAt < 0) {
+      throw new TypeError('Invalid presence v2');
+    }
+    const normalizedTabs = denseTabs(input.tabs, 'presence v2 tabs', tab => {
+      exactObject(tab, ['tabId', 'enabled'], 'presence v2 tab');
+      if (typeof tab.enabled !== 'boolean') throw new TypeError('Invalid presence v2 tab');
+      return { tabId: tabId(tab.tabId), enabled: tab.enabled };
+    });
+    return {
+      version: VERSION_2,
+      kind: 'presence',
+      instanceId: instanceId(input.instanceId),
+      enabled: input.enabled,
+      tabs: normalizedTabs,
+      observedAt: input.observedAt
+    };
+  }
+
+  function commandV2(input) {
+    exactObject(
+      input,
+      ['version', 'kind', 'id', 'instanceId', 'action', 'target', 'issuedAt', 'expiresAt'],
+      'command v2'
+    );
+    if (input.version !== VERSION_2 || input.kind !== 'command' ||
+        !INSTANCE_ACTIONS.has(input.action)) {
+      throw new TypeError('Invalid command v2');
+    }
+    const issuedAt = input.issuedAt;
+    const expiresAt = input.expiresAt;
+    if (!Number.isSafeInteger(issuedAt) || issuedAt < 0 ||
+        !Number.isSafeInteger(expiresAt) || expiresAt <= issuedAt ||
+        expiresAt - issuedAt > MAX_INSTANCE_COMMAND_TTL_MS) {
+      throw new TypeError('Invalid command v2 lifetime');
+    }
+    return {
+      version: VERSION_2,
+      kind: 'command',
+      id: identifier(input.id, 'command ID'),
+      instanceId: instanceId(input.instanceId),
+      action: input.action,
+      target: input.target === 'instance' ? 'instance' : tabId(input.target),
+      issuedAt,
+      expiresAt
+    };
+  }
+
+  function acknowledgementV2(input) {
+    exactObject(
+      input,
+      ['version', 'kind', 'id', 'instanceId', 'ok', 'code', 'enabled', 'appliedTabs'],
+      'acknowledgement v2'
+    );
+    if (input.version !== VERSION_2 || input.kind !== 'ack' ||
+        typeof input.ok !== 'boolean' || !INSTANCE_ERROR_CODES.has(input.code) ||
+        input.ok !== (input.code === 'ok') || typeof input.enabled !== 'boolean') {
+      throw new TypeError('Invalid acknowledgement v2');
+    }
+    return {
+      version: VERSION_2,
+      kind: 'ack',
+      id: identifier(input.id, 'command ID'),
+      instanceId: instanceId(input.instanceId),
+      ok: input.ok,
+      code: input.code,
+      enabled: input.enabled,
+      appliedTabs: denseTabs(input.appliedTabs, 'acknowledgement v2 appliedTabs', tabId)
+    };
+  }
+
+  return Object.freeze({
+    VERSION,
+    VERSION_2,
+    MAX_INSTANCE_COMMAND_TTL_MS,
+    heartbeat,
+    command,
+    acknowledgement,
+    presenceV2,
+    commandV2,
+    acknowledgementV2
+  });
 });

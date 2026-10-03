@@ -74,6 +74,122 @@ assert.deepEqual(protocol.acknowledgement({ id: 'cmd01', ok: false, code: 'not_r
 assert.throws(() => protocol.acknowledgement({ id: '1', ok: false, code: 'chat is private' }), /result/);
 assert.throws(() => protocol.acknowledgement({ id: '1', ok: true, code: 'failed' }), /result/);
 assert.throws(() => protocol.acknowledgement({ id: '1', ok: true, code: 'ok', message: 'private' }), /unsupported/);
+
+const INSTANCE_ID = '123e4567-e89b-42d3-a456-426614174000';
+const NOW = 1_800_000_000_000;
+const v2Command = (overrides = {}) => ({
+  version: 2,
+  kind: 'command',
+  id: 'v2-command',
+  instanceId: INSTANCE_ID,
+  action: 'pause',
+  target: 'instance',
+  issuedAt: NOW,
+  expiresAt: NOW + 60_000,
+  ...overrides
+});
+
+assert.equal(protocol.VERSION_2, 2);
+assert.equal(protocol.MAX_INSTANCE_COMMAND_TTL_MS, 300000);
+assert.deepEqual(protocol.presenceV2({
+  version: 2,
+  kind: 'presence',
+  instanceId: INSTANCE_ID,
+  enabled: true,
+  tabs: [{ tabId: 7, enabled: true }, { tabId: 9, enabled: false }],
+  observedAt: NOW
+}), {
+  version: 2,
+  kind: 'presence',
+  instanceId: INSTANCE_ID,
+  enabled: true,
+  tabs: [{ tabId: 7, enabled: true }, { tabId: 9, enabled: false }],
+  observedAt: NOW
+});
+assert.deepEqual(protocol.commandV2(v2Command()), v2Command());
+assert.deepEqual(protocol.commandV2(v2Command({
+  id: 'tab-pause',
+  target: 7
+})).target, 7);
+assert.deepEqual(protocol.acknowledgementV2({
+  version: 2,
+  kind: 'ack',
+  id: 'v2-command',
+  instanceId: INSTANCE_ID,
+  ok: true,
+  code: 'ok',
+  enabled: false,
+  appliedTabs: [7, 9]
+}), {
+  version: 2,
+  kind: 'ack',
+  id: 'v2-command',
+  instanceId: INSTANCE_ID,
+  ok: true,
+  code: 'ok',
+  enabled: false,
+  appliedTabs: [7, 9]
+});
+
+for (const invalid of [
+  v2Command({ instanceId: INSTANCE_ID.toUpperCase() }),
+  v2Command({ action: 'send_message' }),
+  v2Command({ target: 'all' }),
+  v2Command({ issuedAt: NOW, expiresAt: NOW }),
+  v2Command({ expiresAt: NOW + 300001 }),
+  { ...v2Command(), payload: { text: 'private chat text' } },
+  { ...v2Command(), accountId: 'private-account' }
+]) {
+  assert.throws(() => protocol.commandV2(invalid), /v2|instance|tab|shape/i);
+}
+assert.throws(() => protocol.presenceV2({
+  version: 2,
+  kind: 'presence',
+  instanceId: INSTANCE_ID,
+  enabled: true,
+  tabs: [{ tabId: 1, enabled: true, url: 'https://private.example/chat' }],
+  observedAt: NOW
+}), /shape/);
+assert.throws(() => protocol.presenceV2({
+  version: 2,
+  kind: 'presence',
+  instanceId: INSTANCE_ID,
+  enabled: true,
+  tabs: [{ tabId: 1, enabled: true }, { tabId: 1, enabled: false }],
+  observedAt: NOW
+}), /duplicate/);
+
+const symbolExtra = v2Command();
+symbolExtra[Symbol('secret')] = 'hidden';
+assert.throws(() => protocol.commandV2(symbolExtra), /shape/);
+const nonEnumerable = v2Command();
+Object.defineProperty(nonEnumerable, 'hidden', { value: 'private', enumerable: false });
+assert.throws(() => protocol.commandV2(nonEnumerable), /shape/);
+const accessor = v2Command();
+Object.defineProperty(accessor, 'action', { enumerable: true, get: () => 'pause' });
+assert.throws(() => protocol.commandV2(accessor), /data fields/);
+assert.throws(() => protocol.acknowledgementV2({
+  version: 2,
+  kind: 'ack',
+  id: 'v2-command',
+  instanceId: INSTANCE_ID,
+  ok: true,
+  code: 'failed',
+  enabled: false,
+  appliedTabs: []
+}), /acknowledgement v2/);
+assert.throws(() => protocol.acknowledgementV2({
+  version: 2,
+  kind: 'ack',
+  id: 'v2-command',
+  instanceId: INSTANCE_ID,
+  ok: false,
+  code: 'unauthorized',
+  enabled: false,
+  appliedTabs: [7, 7]
+}), /duplicate/);
+
 console.log('Factory Control protocol: heartbeat, command and ACK allowlists correct');
+console.log('Factory Control v2 protocol: exact, instance-scoped and data-minimized');
 require('./test-factory-governance.cjs');
 require('./test-release-workflow.cjs');

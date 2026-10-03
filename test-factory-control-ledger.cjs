@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
-const { createLedger } = require('./factory-control-ledger.js');
+const { createLedger, createInstanceLedger } = require('./factory-control-ledger.js');
+const { createInstanceCommandAuthorizer } = require('./factory-control-authorization.js');
 const {
   createChromeReceiptStore,
   createChromeProfileCredentialStore,
@@ -260,8 +261,229 @@ const memory = () => {
     JSON.stringify(persisted),
     /private chat text|password|session_cookie|pairing code/
   );
+
+  const INSTANCE_ID = '123e4567-e89b-42d3-a456-426614174000';
+  const OTHER_INSTANCE_ID = '123e4567-e89b-42d3-b456-426614174001';
+  const V2_NOW = 1_800_000_100_000;
+  const instanceCommand = (overrides = {}) => ({
+    version: 2,
+    kind: 'command',
+    id: 'instance-command',
+    instanceId: INSTANCE_ID,
+    action: 'pause',
+    target: 'instance',
+    issuedAt: V2_NOW - 1000,
+    expiresAt: V2_NOW + 60_000,
+    ...overrides
+  });
+
+  const grant = () => ({
+    instanceId: INSTANCE_ID,
+    expiresAt: V2_NOW + 3_600_000,
+    revoked: false,
+    actions: ['pause', 'resume'],
+    tabIds: [7, 9]
+  });
+  const authorizer = createInstanceCommandAuthorizer({
+    loadVerifiedGrant: async () => grant(),
+    now: () => V2_NOW
+  });
+  assert.deepEqual(
+    await authorizer.authorize(instanceCommand(), {
+      instanceId: INSTANCE_ID,
+      enabledTabIds: [7, 9]
+    }),
+    instanceCommand()
+  );
+  assert.equal(
+    (await authorizer.authorize(instanceCommand({
+      id: 'tab-resume',
+      action: 'resume',
+      target: 7
+    }), {
+      instanceId: INSTANCE_ID,
+      enabledTabIds: [7, 9]
+    })).target,
+    7
+  );
+
+  const deniedCases = [
+    {
+      command: instanceCommand({ instanceId: OTHER_INSTANCE_ID }),
+      context: { instanceId: INSTANCE_ID, enabledTabIds: [7, 9] },
+      load: async () => grant(),
+      now: () => V2_NOW
+    },
+    {
+      command: instanceCommand({ id: 'expired', expiresAt: V2_NOW }),
+      context: { instanceId: INSTANCE_ID, enabledTabIds: [7, 9] },
+      load: async () => grant(),
+      now: () => V2_NOW
+    },
+    {
+      command: instanceCommand({ id: 'future', issuedAt: V2_NOW + 1, expiresAt: V2_NOW + 1000 }),
+      context: { instanceId: INSTANCE_ID, enabledTabIds: [7, 9] },
+      load: async () => grant(),
+      now: () => V2_NOW
+    },
+    {
+      command: instanceCommand({ id: 'wrong-tab', target: 10 }),
+      context: { instanceId: INSTANCE_ID, enabledTabIds: [7, 10] },
+      load: async () => grant(),
+      now: () => V2_NOW
+    },
+    {
+      command: instanceCommand({ id: 'revoked' }),
+      context: { instanceId: INSTANCE_ID, enabledTabIds: [7, 9] },
+      load: async () => ({ ...grant(), revoked: true }),
+      now: () => V2_NOW
+    },
+    {
+      command: instanceCommand({ id: 'grant-expired' }),
+      context: { instanceId: INSTANCE_ID, enabledTabIds: [7, 9] },
+      load: async () => ({ ...grant(), expiresAt: V2_NOW }),
+      now: () => V2_NOW
+    },
+    {
+      command: instanceCommand({ id: 'grant-cross-instance' }),
+      context: { instanceId: INSTANCE_ID, enabledTabIds: [7, 9] },
+      load: async () => ({ ...grant(), instanceId: OTHER_INSTANCE_ID }),
+      now: () => V2_NOW
+    }
+  ];
+  for (const item of deniedCases) {
+    const deniedAuthorizer = createInstanceCommandAuthorizer({
+      loadVerifiedGrant: item.load,
+      now: item.now
+    });
+    await assert.rejects(
+      deniedAuthorizer.authorize(item.command, item.context),
+      error => error.message === 'Command not authorized'
+    );
+  }
+
+  const v2Store = memory();
+  const v2Ledger = createInstanceLedger({
+    instanceId: INSTANCE_ID,
+    load: v2Store.load,
+    save: v2Store.save
+  });
+  let v2Calls = 0;
+  const firstV2Ack = await v2Ledger.execute(instanceCommand(), async commandV2 => {
+    v2Calls += 1;
+    assert.equal(commandV2.instanceId, INSTANCE_ID);
+    return { ok: true, code: 'ok', enabled: false, appliedTabs: [7, 9] };
+  });
+  assert.deepEqual(firstV2Ack, {
+    version: 2,
+    kind: 'ack',
+    id: 'instance-command',
+    instanceId: INSTANCE_ID,
+    ok: true,
+    code: 'ok',
+    enabled: false,
+    appliedTabs: [7, 9]
+  });
+  const duplicateV2Ack = await createInstanceLedger({
+    instanceId: INSTANCE_ID,
+    load: v2Store.load,
+    save: v2Store.save
+  }).execute(instanceCommand(), async () => {
+    v2Calls += 1;
+    return { ok: true, code: 'ok', enabled: true, appliedTabs: [] };
+  });
+  assert.deepEqual(duplicateV2Ack, firstV2Ack);
+  assert.equal(v2Calls, 1);
+  assert.doesNotMatch(v2Store.snapshot(), /chat|url|email|token|cookie|secret|payload/i);
+
+  await assert.rejects(
+    v2Ledger.execute(instanceCommand({
+      action: 'resume',
+      target: 7
+    }), async () => {
+      v2Calls += 1;
+      return { ok: true, code: 'ok', enabled: true, appliedTabs: [7] };
+    }),
+    /already bound/
+  );
+  assert.equal(v2Calls, 1);
+
+  await assert.rejects(
+    v2Ledger.execute(instanceCommand({
+      id: 'other-instance',
+      instanceId: OTHER_INSTANCE_ID
+    }), async () => {
+      v2Calls += 1;
+      return { ok: true, code: 'ok', enabled: false, appliedTabs: [] };
+    }),
+    /does not match ledger/
+  );
+  assert.equal(v2Calls, 1);
+
+  const failedV2Store = memory();
+  const failedV2 = await createInstanceLedger({
+    instanceId: INSTANCE_ID,
+    load: failedV2Store.load,
+    save: failedV2Store.save
+  }).execute(instanceCommand({ id: 'handler-fails' }), async () => {
+    throw Error('private runtime details');
+  });
+  assert.equal(failedV2.code, 'failed');
+  assert.equal(failedV2.enabled, false);
+  assert.deepEqual(failedV2.appliedTabs, []);
+  assert.doesNotMatch(failedV2Store.snapshot(), /private runtime details|secret|token/i);
+
+  let preEffectCalls = 0;
+  const v2NoSave = createInstanceLedger({
+    instanceId: INSTANCE_ID,
+    load: async () => [],
+    save: async () => { throw Error('storage unavailable'); }
+  });
+  await assert.rejects(
+    v2NoSave.execute(instanceCommand({ id: 'persist-first' }), async () => {
+      preEffectCalls += 1;
+      return { ok: true, code: 'ok', enabled: false, appliedTabs: [] };
+    }),
+    /storage unavailable/
+  );
+  assert.equal(preEffectCalls, 0);
+
+  const pendingV2 = {
+    id: 'pending-v2',
+    instanceId: INSTANCE_ID,
+    commandKey: 'pause:instance:' + (V2_NOW - 1000) + ':' + (V2_NOW + 60_000),
+    state: 'pending',
+    code: 'not_ready',
+    enabled: false,
+    appliedTabs: []
+  };
+  const pendingAck = await createInstanceLedger({
+    instanceId: INSTANCE_ID,
+    load: async () => [pendingV2],
+    save: async () => {}
+  }).execute(instanceCommand({ id: 'pending-v2' }), async () => {
+    preEffectCalls += 1;
+    return { ok: true, code: 'ok', enabled: false, appliedTabs: [] };
+  });
+  assert.equal(pendingAck.code, 'not_ready');
+  assert.equal(preEffectCalls, 0);
+
+  const corruptedV2 = createInstanceLedger({
+    instanceId: INSTANCE_ID,
+    load: async () => [{ ...pendingV2, token: 'hidden' }],
+    save: async () => {}
+  });
+  await assert.rejects(
+    corruptedV2.execute(instanceCommand({ id: 'new-v2' }), async () => {
+      preEffectCalls += 1;
+    }),
+    /receipt/
+  );
+  assert.equal(preEffectCalls, 0);
+
   console.log('Chrome profile credential store: scoped, expiring, revocable and fail-closed');
   console.log('Chrome receipt store: durable, duplicate-safe, fail-closed and data-minimized');
   console.log('Factory Control ledger: concurrent duplicates, restart, failure isolation, pending, capacity and corruption pass');
+  console.log('Factory Control v2 authorization and ledger: instance-scoped, expiring and idempotent');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 require('./test-factory-control-authorization.cjs');
