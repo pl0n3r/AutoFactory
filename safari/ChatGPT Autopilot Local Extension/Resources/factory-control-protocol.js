@@ -22,7 +22,7 @@
     'already_handled', 'failed'
   ]);
   const INSTANCE_ERROR_CODES = new Set([
-    'ok', 'invalid', 'not_ready', 'timeout', 'unauthorized',
+    'ok', 'invalid', 'not_found', 'not_ready', 'timeout', 'unauthorized',
     'already_handled', 'failed'
   ]);
   const BUDGET_FIELDS = [

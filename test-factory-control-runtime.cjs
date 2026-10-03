@@ -263,6 +263,7 @@ function instanceHarness() {
   let grantExpiresAt = 2000;
   let grantRevoked = false;
   let failedTab = null;
+  let masterLoadFails = false;
   const sends = [];
   const saves = [];
 
@@ -303,7 +304,10 @@ function instanceHarness() {
         sends.push({ tabId, message, masterEnabled });
         return { ok: tabId !== failedTab };
       },
-      loadMasterEnabled: async () => masterEnabled,
+      loadMasterEnabled: async () => {
+        if (masterLoadFails) throw new Error('private master-state detail');
+        return masterEnabled;
+      },
       saveMasterEnabled: async enabled => {
         masterEnabled = enabled;
         saves.push(enabled);
@@ -318,6 +322,7 @@ function instanceHarness() {
     saves,
     get masterEnabled() { return masterEnabled; },
     setFailedTab(value) { failedTab = value; },
+    setMasterLoadFails(value) { masterLoadFails = value; },
     setRevoked(value) { grantRevoked = value; },
     setNow(value) { now = value; },
     setGrantExpiresAt(value) { grantExpiresAt = value; }
@@ -341,6 +346,8 @@ async function instanceHappyPath() {
   const duplicate = await runtime.execute(pause);
   assert.deepEqual(duplicate, ack);
   assert.equal(harness.sends.length, sendsBeforeDuplicate);
+  assert.deepEqual(runtime.status(), { reconciliationPending: false });
+  console.log('factory-control instance runtime: duplicate receipt does not reapply after status repair');
 
   harness.setFailedTab(9);
   const partial = await runtime.execute(instanceCommand('instance-command-2', 'resume'));
@@ -360,8 +367,11 @@ async function instanceFailClosed() {
   const wrong = await runtime.execute(
     instanceCommand('instance-command-wrong', 'pause', OTHER_INSTANCE_ID)
   );
-  assert.equal(wrong.code, 'unauthorized');
+  assert.equal(wrong.code, 'not_found');
   assert.equal(harness.sends.length, 0);
+  assert.equal(harness.saves.length, 0);
+  assert.deepEqual(runtime.status(), { reconciliationPending: false });
+  console.log('factory-control instance runtime: wrong instance returns not_found with zero effects');
 
   harness.setRevoked(true);
   const revoked = await runtime.execute(instanceCommand('instance-command-revoked', 'pause'));
@@ -387,13 +397,34 @@ async function instanceReconcile() {
   harness.setFailedTab(9);
   const failed = await runtime.execute(instanceCommand('instance-command-resume', 'resume'));
   assert.equal(failed.code, 'failed');
+  assert.deepEqual(runtime.status(), { reconciliationPending: true });
 
   harness.setFailedTab(null);
-  runtime = harness.buildRuntime();
   const reconciled = await runtime.reconcile();
   assert.deepEqual(reconciled, {
     ok: true, code: 'ok', enabled: true, appliedTabs: [7, 9]
   });
+  assert.deepEqual(runtime.status(), { reconciliationPending: false });
+
+  harness.setMasterLoadFails(true);
+  const failedAfterKnownState = await runtime.reconcile();
+  assert.deepEqual(failedAfterKnownState, {
+    ok: false, code: 'failed', enabled: true, appliedTabs: []
+  });
+  assert.deepEqual(runtime.status(), { reconciliationPending: true });
+
+  const unknownHarness = instanceHarness();
+  unknownHarness.setMasterLoadFails(true);
+  const unknownRuntime = unknownHarness.buildRuntime();
+  const failedWithoutKnownState = await unknownRuntime.reconcile();
+  assert.deepEqual(failedWithoutKnownState, {
+    ok: false, code: 'failed', enabled: null, appliedTabs: []
+  });
+  assert.deepEqual(unknownRuntime.status(), { reconciliationPending: true });
+
+  harness.setMasterLoadFails(false);
+  console.log('factory-control instance runtime: reconcile preserves known state and never guesses unknown state');
+  console.log('factory-control instance runtime: partial failure sets reconciliation pending until full reconcile');
   const presence = await runtime.presence();
   assert.equal(presence.instanceId, INSTANCE_ID);
   assert.equal(presence.enabled, true);
