@@ -283,5 +283,185 @@
     return Object.freeze({ start, runHeartbeat, runCommands, stop });
   }
 
-  return Object.freeze({ createFactoryControlRuntime });
+
+  function createInstanceRuntime({
+    protocol,
+    authorizer,
+    ledger,
+    instanceStore,
+    listChatTabs,
+    sendTab,
+    loadMasterEnabled,
+    saveMasterEnabled,
+    now = Date.now
+  } = {}) {
+    if (!protocol || typeof protocol.presenceV2 !== 'function' ||
+        typeof protocol.commandV2 !== 'function' ||
+        typeof protocol.acknowledgementV2 !== 'function' ||
+        !protocol.validationV2 ||
+        !authorizer || typeof authorizer.authorize !== 'function' ||
+        !ledger || typeof ledger.execute !== 'function' ||
+        !instanceStore || typeof instanceStore.safeSnapshot !== 'function' ||
+        typeof listChatTabs !== 'function' || typeof sendTab !== 'function' ||
+        typeof loadMasterEnabled !== 'function' ||
+        typeof saveMasterEnabled !== 'function' || typeof now !== 'function') {
+      throw new TypeError('Instance runtime dependencies are required');
+    }
+
+    async function snapshot() {
+      const value = await instanceStore.safeSnapshot();
+      protocol.validationV2.exactObject(value, [
+        'instanceId', 'browser', 'profileAlias', 'deviceAlias',
+        'extensionVersion', 'protocolVersion'
+      ], 'instance snapshot');
+      protocol.validationV2.instanceId(value.instanceId);
+      return value;
+    }
+
+    async function tabs() {
+      return protocol.validationV2.tabIds(await listChatTabs(), 'instance runtime tabs');
+    }
+
+    async function masterEnabled() {
+      const value = await loadMasterEnabled();
+      if (typeof value !== 'boolean') throw new TypeError('Invalid master state');
+      return value;
+    }
+
+    function sameCommand(left, right) {
+      const a = protocol.commandV2(left);
+      const b = protocol.commandV2(right);
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    function denied(command, currentSnapshot, enabled) {
+      return protocol.acknowledgementV2({
+        version: 2,
+        kind: 'ack',
+        id: command.id,
+        instanceId: currentSnapshot.instanceId,
+        ok: false,
+        code: 'unauthorized',
+        enabled,
+        appliedTabs: []
+      });
+    }
+
+    async function fanout(tabIds, action, enabled) {
+      const appliedTabs = [];
+      for (const tabId of tabIds) {
+        try {
+          const response = await sendTab(tabId, Object.freeze({
+            type: 'autopilot:factory-control-v2',
+            action,
+            enabled
+          }));
+          if (!response || typeof response !== 'object' || Array.isArray(response) ||
+              Reflect.ownKeys(response).length !== 1 ||
+              !Object.hasOwn(response, 'ok') || response.ok !== true) {
+            continue;
+          }
+          appliedTabs.push(tabId);
+        } catch (_error) {
+          // One tab failing must never become whole-instance success.
+        }
+      }
+      return appliedTabs;
+    }
+
+    async function execute(input) {
+      const currentSnapshot = await snapshot();
+      const command = protocol.commandV2(input);
+      const enabledBefore = await masterEnabled();
+      const currentTabs = await tabs();
+      if (command.instanceId !== currentSnapshot.instanceId ||
+          command.target !== 'instance') {
+        return denied(command, currentSnapshot, enabledBefore);
+      }
+
+      let approved;
+      try {
+        approved = await authorizer.authorize(command, {
+          instanceId: currentSnapshot.instanceId,
+          enabledTabIds: currentTabs
+        });
+      } catch (_error) {
+        return denied(command, currentSnapshot, enabledBefore);
+      }
+      if (!sameCommand(command, approved)) {
+        return denied(command, currentSnapshot, enabledBefore);
+      }
+
+      return ledger.execute(approved, async persistedCommand => {
+        const freshSnapshot = await snapshot();
+        const freshTabs = await tabs();
+        let freshApproved;
+        try {
+          freshApproved = await authorizer.authorize(persistedCommand, {
+            instanceId: freshSnapshot.instanceId,
+            enabledTabIds: freshTabs
+          });
+        } catch (_error) {
+          return {
+            ok: false, code: 'unauthorized',
+            enabled: await masterEnabled(), appliedTabs: []
+          };
+        }
+        if (freshSnapshot.instanceId !== currentSnapshot.instanceId ||
+            !sameCommand(persistedCommand, freshApproved) ||
+            freshApproved.target !== 'instance') {
+          return {
+            ok: false, code: 'unauthorized',
+            enabled: await masterEnabled(), appliedTabs: []
+          };
+        }
+
+        const enabled = freshApproved.action === 'resume';
+        await saveMasterEnabled(enabled);
+        const appliedTabs = await fanout(freshTabs, freshApproved.action, enabled);
+        return {
+          ok: appliedTabs.length === freshTabs.length,
+          code: appliedTabs.length === freshTabs.length ? 'ok' : 'failed',
+          enabled,
+          appliedTabs
+        };
+      });
+    }
+
+    async function presence() {
+      const currentSnapshot = await snapshot();
+      const enabled = await masterEnabled();
+      const currentTabs = await tabs();
+      const observedAt = now();
+      if (!Number.isSafeInteger(observedAt) || observedAt < 0) {
+        throw new TypeError('Instance clock unavailable');
+      }
+      return protocol.presenceV2({
+        version: 2,
+        kind: 'presence',
+        instanceId: currentSnapshot.instanceId,
+        enabled,
+        tabs: currentTabs.map(tabId => ({ tabId, enabled })),
+        observedAt
+      });
+    }
+
+    async function reconcile() {
+      await snapshot();
+      const enabled = await masterEnabled();
+      const currentTabs = await tabs();
+      const action = enabled ? 'resume' : 'pause';
+      const appliedTabs = await fanout(currentTabs, action, enabled);
+      return Object.freeze({
+        ok: appliedTabs.length === currentTabs.length,
+        code: appliedTabs.length === currentTabs.length ? 'ok' : 'failed',
+        enabled,
+        appliedTabs: Object.freeze(appliedTabs)
+      });
+    }
+
+    return Object.freeze({ presence, execute, reconcile });
+  }
+
+  return Object.freeze({ createFactoryControlRuntime, createInstanceRuntime });
 });
