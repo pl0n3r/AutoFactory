@@ -145,7 +145,7 @@
       let authenticated;
       try {
         authenticated = checkedMetadata(metadata);
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: malformed adapter metadata is deliberately collapsed to unauthorized.
         return safeFailure('unauthorized');
       }
       if (!authenticated) return safeFailure('unauthorized');
@@ -154,7 +154,7 @@
       try {
         if (frameBytes(frame) > MAX_FRAME_BYTES) return safeFailure('invalid');
         command = checkedFrame(frame);
-      } catch (_error) {
+      } catch (_error) { // NOSONAR: malformed peer frames never expose parser details.
         return safeFailure('invalid');
       }
 
@@ -231,7 +231,10 @@
           throw new TypeError('Local-agent adapter is invalid');
         }
         if (!running) {
-          try { await candidate.close(); } catch (_error) {}
+          try {
+            await candidate.close();
+          } catch (_error) { // NOSONAR: stop-race cleanup is best-effort and has no public error channel.
+          }
           return status();
         }
         connection = candidate;
