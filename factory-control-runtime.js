@@ -426,7 +426,7 @@
         try {
           await saveMasterEnabled(enabled);
           lastKnownEnabled = enabled;
-        } catch (_error) {
+        } catch {
           reconciliationPending = true;
           return { ok: false, code: 'failed', enabled, appliedTabs: [] };
         }
@@ -475,7 +475,7 @@
           enabled,
           appliedTabs: Object.freeze(appliedTabs)
         });
-      } catch (_error) {
+      } catch {
         // Reconciliation adapter failures stay opaque and keep the instance pending.
         reconciliationPending = true;
         return Object.freeze({
