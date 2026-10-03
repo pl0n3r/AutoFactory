@@ -165,6 +165,7 @@
         frames += 1;
         return checkedReceipt(await runtime.execute(command));
       } catch (_error) {
+        // Runtime/store details are intentionally collapsed to the fixed public failed code.
         return safeFailure('failed');
       }
     }
@@ -242,6 +243,7 @@
         attempt = 0;
         transition('connected');
       } catch (_error) {
+        // Connection adapter failures are handled as opaque reconnectable transport failures.
         failures += 1;
         connection = null;
         scheduleReconnect();
