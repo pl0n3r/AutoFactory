@@ -1022,7 +1022,7 @@
 
   extensionApi.runtime.onMessage.addListener((message, _sender, reply) => {
     if (message?.type === 'autopilot:set-enabled') setEnabled(message.enabled);
-    if (message?.type === 'autopilot:heartbeat') tick();
+    if (message?.type === 'autopilot:heartbeat') void tick();
     if (message?.type === 'autopilot:get-status') {
       reply({ enabled: state.enabled, status: state.status });
     } else reply({ ok: true, enabled: state.enabled, status: state.status });
@@ -1057,7 +1057,7 @@
     if (onlyBadgeChanged) return;
     mutationTimer = setTimeout(() => {
       mutationTimer = 0;
-      tick();
+      void tick();
     }, 750);
   });
   mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
