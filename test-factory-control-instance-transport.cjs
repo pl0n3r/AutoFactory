@@ -40,6 +40,7 @@ const deniedReceipt = Object.freeze({
 
 function harness({ execute = async () => okReceipt, connectPlan = [] } = {}) {
   let hooks = null;
+  const hookHistory = [];
   let effects = 0;
   let now = 5_000;
   const scheduled = [];
@@ -53,6 +54,7 @@ function harness({ execute = async () => okReceipt, connectPlan = [] } = {}) {
   const boundary = createLocalAgentTransportBoundary({
     async connect(callbacks) {
       hooks = callbacks;
+      hookHistory.push(callbacks);
       const plan = connectPlan[connectCalls++];
       if (plan instanceof Error) throw plan;
       return {
@@ -85,6 +87,7 @@ function harness({ execute = async () => okReceipt, connectPlan = [] } = {}) {
   return {
     boundary,
     get hooks() { return hooks; },
+    hookHistory,
     scheduled,
     effects: () => effects
   };
@@ -177,6 +180,20 @@ function harness({ execute = async () => okReceipt, connectPlan = [] } = {}) {
 
     await h.boundary.stop();
     assert.equal(h.boundary.status().state, 'stopped');
+  }
+
+
+  {
+    const h = harness({ connectPlan: [null, null] });
+    await h.boundary.start();
+    const stale = h.hooks;
+    await stale.onClose();
+    await h.scheduled.at(-1).callback();
+    assert.equal(h.boundary.status().state, 'connected');
+    const scheduledBefore = h.scheduled.length;
+    await stale.onClose();
+    assert.equal(h.boundary.status().state, 'connected');
+    assert.equal(h.scheduled.length, scheduledBefore);
   }
 
   console.log('factory-control local-agent transport boundary: ok');
