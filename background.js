@@ -5,6 +5,121 @@
   const MAX_LOG_AGE_MS = 7 * 24 * 60 * 60 * 1000;
   const HEARTBEAT_ALARM = 'autopilot-heartbeat';
 
+  const FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED = false;
+  const FACTORY_CONTROL_RECEIPTS_KEY = 'factoryControlInstanceReceiptsV2';
+
+  function storageRemove(key) {
+    return new Promise((resolve, reject) => {
+      try {
+        const result = extensionApi.storage.local.remove(key, resolve);
+        if (result?.then) result.then(resolve, reject);
+      } catch (error) { reject(error); }
+    });
+  }
+
+  function factoryControlStorageAdapter() {
+    return Object.freeze({
+      async get(key) {
+        const values = await storageGet({ [key]: null });
+        return values?.[key] ?? null;
+      },
+      async set(key, value) {
+        await storageSet({ [key]: value });
+      },
+      async remove(key) {
+        await storageRemove(key);
+      }
+    });
+  }
+
+  function factoryControlReceiptStore() {
+    return Object.freeze({
+      async load() {
+        const values = await storageGet({ [FACTORY_CONTROL_RECEIPTS_KEY]: [] });
+        return values?.[FACTORY_CONTROL_RECEIPTS_KEY] ?? [];
+      },
+      async save(receipts) {
+        await storageSet({ [FACTORY_CONTROL_RECEIPTS_KEY]: receipts });
+      }
+    });
+  }
+
+  async function createFactoryControlInstanceRuntime() {
+    if (!FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED) return null;
+
+    const protocol = globalThis.ChatGPTAutopilotFactoryProtocol;
+    const authorization = globalThis.ChatGPTAutopilotFactoryAuthorization;
+    const ledgerApi = globalThis.ChatGPTAutopilotFactoryLedger;
+    const instanceApi = globalThis.ChatGPTAutopilotFactoryInstance;
+    const runtimeApi = globalThis.ChatGPTAutopilotFactoryRuntime;
+    if (!protocol || !authorization || !ledgerApi || !instanceApi || !runtimeApi) {
+      throw new Error('Factory Control runtime modules unavailable');
+    }
+
+    const storage = factoryControlStorageAdapter();
+    const browser = globalThis.browser && !globalThis.chrome ? 'safari' : 'chrome';
+    const extensionVersion = extensionApi.runtime.getManifest().version;
+    const instanceStore = instanceApi.createInstanceStore({
+      storage,
+      uuid: () => globalThis.crypto.randomUUID(),
+      browser,
+      extensionVersion
+    });
+    const snapshot = await instanceStore.safeSnapshot();
+    if (snapshot === null) return null;
+
+    const listChatTabs = async () => {
+      const tabs = await extensionApi.tabs.query({ url: ['https://chatgpt.com/*'] });
+      return tabs
+        .map(tab => tab?.id)
+        .filter(tabId => Number.isSafeInteger(tabId) && tabId >= 0);
+    };
+    const receiptStore = factoryControlReceiptStore();
+    const ledger = ledgerApi.createInstanceLedger({
+      instanceId: snapshot.instanceId,
+      load: receiptStore.load,
+      save: receiptStore.save
+    });
+    const authorizer = authorization.createInstanceCommandAuthorizer({
+      async loadVerifiedGrant() {
+        const state = await instanceStore.load();
+        if (!state?.grant) return null;
+        return {
+          instanceId: state.instanceId,
+          expiresAt: state.grant.expiresAt,
+          revoked: state.grant.revoked,
+          actions: state.grant.actions,
+          tabIds: await listChatTabs()
+        };
+      },
+      now: Date.now
+    });
+
+    return runtimeApi.createInstanceRuntime({
+      protocol,
+      authorizer,
+      ledger,
+      instanceStore,
+      listChatTabs,
+      async sendTab(tabId, message) {
+        return extensionApi.tabs.sendMessage(tabId, message);
+      },
+      async loadMasterEnabled() {
+        const values = await storageGet({ masterEnabled: true });
+        return values.masterEnabled;
+      },
+      async saveMasterEnabled(enabled) {
+        await storageSet({ masterEnabled: enabled });
+      },
+      now: Date.now
+    });
+  }
+
+  globalThis.ChatGPTAutopilotFactoryControlBuildAhead = Object.freeze({
+    enabled: FACTORY_CONTROL_INSTANCE_RUNTIME_ENABLED,
+    create: createFactoryControlInstanceRuntime
+  });
+
   function ensureHeartbeat() {
     if (!extensionApi.alarms?.create) return;
     try { extensionApi.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: 0.5 }); } catch (_error) {}
