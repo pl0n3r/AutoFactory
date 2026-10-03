@@ -65,10 +65,10 @@ function memoryStorage() {
   );
 
   const snapshot = await chrome.safeSnapshot();
-  assert.deepEqual(Object.keys(snapshot).sort(), [
+  assert.deepEqual(Object.keys(snapshot).sort((a, b) => a.localeCompare(b)), [
     'browser', 'deviceAlias', 'extensionVersion',
     'instanceId', 'profileAlias', 'protocolVersion'
-  ].sort());
+  ].sort((a, b) => a.localeCompare(b)));
   assert.deepEqual(snapshot, {
     instanceId: CHROME_ID,
     browser: 'chrome',
@@ -165,9 +165,9 @@ function memoryStorage() {
   await assert.rejects(chrome.load(), /instance state/);
 
   const brokenStorage = {
-    async get() { throw Error('private filesystem path'); },
-    async set() { throw Error('secret token'); },
-    async remove() { throw Error('private runtime detail'); }
+    async get() { throw new Error('private filesystem path'); },
+    async set() { throw new Error('secret token'); },
+    async remove() { throw new Error('private runtime detail'); }
   };
   const broken = createInstanceStore({
     storage: brokenStorage,
