@@ -40,8 +40,9 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 | UNKNOWN | UNKNOWN | UNKNOWN |
 <!-- factory:progress-readiness:end -->
 
-## Versión 1.6.16
+## Versión 1.6.17
 
+- Solo abre otro chat cuando existe una alerta visible de duración máxima y nunca si ya está en el chat nuevo.
 - Limpia la protección cuando ChatGPT confirma tarde el envío mediante una generación o respuesta real.
 - Reconoce y retoma el borrador propio aunque ChatGPT normalice su formato interno.
 - Usa el botón de envío vivo después del último render y detiene reintentos ambiguos durante cinco minutos.

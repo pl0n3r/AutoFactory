@@ -658,7 +658,11 @@
     if (!state.enabled || state.busy) return;
     state.busy = true;
     try {
-      const signal = core.pageSignal(document);
+      let signal = core.pageSignal(document);
+      if (signal.code === 'conversation-limit'
+          && (location.pathname === '/' || location.pathname === '')) {
+        signal = { code: 'ready', action: 'none' };
+      }
       if (core.isSafeRecoverySignal(signal)
           && Date.now() - state.lastRecoveryAt > 10000) {
         const previous = core.recoverableState(

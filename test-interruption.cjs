@@ -134,7 +134,15 @@ const newChatButton = {
   disabled: false,
   innerText: 'Iniciar nuevo chat',
   textContent: 'Iniciar nuevo chat',
-  getAttribute() { return null; }
+  getAttribute() { return null; },
+  closest() {
+    return {
+      hidden: false,
+      innerText: 'Alcanzaste la duración máxima para esta conversación, pero puedes seguir hablando iniciando un nuevo chat. Iniciar nuevo chat',
+      textContent: this.innerText,
+      getAttribute() { return null; }
+    };
+  }
 };
 const limitedDocument = {
   querySelector() { return null; },
@@ -155,7 +163,15 @@ const englishNewChatButton = {
   disabled: false,
   innerText: 'Start new chat',
   textContent: 'Start new chat',
-  getAttribute() { return null; }
+  getAttribute() { return null; },
+  closest() {
+    return {
+      hidden: false,
+      innerText: 'You reached the maximum length for this conversation. Start a new chat to continue. Start new chat',
+      textContent: this.innerText,
+      getAttribute() { return null; }
+    };
+  }
 };
 const englishLimitedDocument = {
   querySelector() { return null; },
@@ -169,6 +185,25 @@ assert.deepEqual(core.pageSignal(englishLimitedDocument), {
   code: 'conversation-limit', action: 'new-chat', element: englishNewChatButton
 });
 console.log('Conversación: alerta en inglés también abre un chat nuevo');
+
+const ordinaryNewChatButton = {
+  disabled: false,
+  innerText: 'Start new chat',
+  textContent: 'Start new chat',
+  getAttribute() { return null; },
+  closest() { return null; }
+};
+const ordinaryChatDocument = {
+  querySelector() { return null; },
+  querySelectorAll(selector) {
+    if (selector === 'button, a') return [ordinaryNewChatButton];
+    if (selector === 'button' || selector === 'div, span, p') return [];
+    return [];
+  }
+};
+assert.equal(core.conversationLimitButton(ordinaryChatDocument), null);
+assert.notEqual(core.pageSignal(ordinaryChatDocument).code, 'conversation-limit');
+console.log('Conversación: el botón global New chat no dispara una transferencia');
 
 const modernComposer = { id: 'modern-composer' };
 const modernDocument = {

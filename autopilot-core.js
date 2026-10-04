@@ -128,10 +128,20 @@
     return null;
   }
   function conversationLimitButton(doc = document) {
-    return buttonWithText(doc, [
-      'Iniciar nuevo chat', 'Start new chat',
-      'Comenzar un nuevo chat', 'Start a new chat'
+    const allowed = new Set([
+      'iniciar nuevo chat', 'start new chat',
+      'comenzar un nuevo chat', 'start a new chat'
     ]);
+    const limitPattern = /(?:duraci[oó]n m[aá]xima|m[aá]xima duraci[oó]n|maximum (?:length|duration)|conversation.{0,80}(?:reached|alcanz).{0,80}(?:limit|m[aá]xim)|l[ií]mite.{0,80}conversaci[oó]n)/i;
+    for (const element of doc.querySelectorAll('button, a')) {
+      const label = normalize(element.innerText || element.textContent || element.getAttribute('aria-label'));
+      if (element.disabled || !allowed.has(label.toLowerCase())) continue;
+      const region = element.closest?.('[role="alert"], [role="status"], [aria-live]');
+      if (!region || !activeReviewRegion(region, doc)) continue;
+      const regionText = normalize(region.innerText || region.textContent);
+      if (regionText.length <= 700 && limitPattern.test(regionText)) return element;
+    }
+    return null;
   }
   function interruptedConnection(doc) {
     const pattern = /(?:conexi[oó]n interrumpida|connection interrupted|network interrupted)(?:\.|\s|$)/i;

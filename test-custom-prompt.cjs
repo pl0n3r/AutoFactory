@@ -21,6 +21,8 @@ assert.match(content, /function promptMatches\(value, prompt\)[\s\S]*reliability
   'debe reconocer su borrador aunque el editor normalice espacios o saltos');
 assert.match(content, /const resumableDraft = promptMatches\(core\.composerText\(field\), prompt\)/,
   'el ciclo debe retomar un borrador propio normalizado');
+assert.match(content, /signal\.code === 'conversation-limit'[\s\S]*location\.pathname === '\/'[\s\S]*signal = \{ code: 'ready', action: 'none' \}/,
+  'una pestaña que ya está en chat nuevo no debe abrir otro chat');
 
 console.log('Mensaje personalizado: cualquier texto no vacío se conserva y se envía');
 
