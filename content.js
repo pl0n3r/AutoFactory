@@ -750,14 +750,15 @@
       }
       const periodicReloadDue = currentConfig.periodicReload
         && Date.now() - state.lastPeriodicReloadAt >= currentConfig.periodicReloadMinutes * 60000;
-      const composerIsEmpty = !core.composerText(core.composer(document));
-      if (periodicReloadDue && signal.code === 'ready' && !generating
-          && !state.waiting && !state.pendingSignature && composerIsEmpty) {
+      if (periodicReloadDue) {
         state.lastPeriodicReloadAt = Date.now();
         sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));
+        persistRuntime();
         log('recovery', { code: 'periodic-refresh', action: 'reload',
-          intervalMinutes: currentConfig.periodicReloadMinutes });
-        setStatus('Recarga periódica en momento seguro');
+          intervalMinutes: currentConfig.periodicReloadMinutes,
+          waiting: state.waiting,
+          generating });
+        setStatus('Recarga periódica; conservando la espera');
         location.reload();
         return;
       }

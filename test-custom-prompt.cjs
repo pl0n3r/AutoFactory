@@ -23,6 +23,8 @@ assert.match(content, /const resumableDraft = promptMatches\(core\.composerText\
   'el ciclo debe retomar un borrador propio normalizado');
 assert.match(content, /signal\.code === 'conversation-limit'[\s\S]*location\.pathname === '\/'[\s\S]*signal = \{ code: 'ready', action: 'none' \}/,
   'una pestaña que ya está en chat nuevo no debe abrir otro chat');
+assert.match(content, /if \(periodicReloadDue\) \{[\s\S]{0,500}location\.reload\(\)/,
+  'el refresh periódico vencido debe recargar incluso mientras espera una respuesta');
 
 console.log('Mensaje personalizado: cualquier texto no vacío se conserva y se envía');
 

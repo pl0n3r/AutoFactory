@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.20 — 2026-10-05
+
+- Ejecuta el refresh periódico al vencer aunque ChatGPT continúe respondiendo.
+- Conserva el estado de espera y no pulsa Stop antes de recargar.
+- La recarga permite revelar antes errores o estados bloqueados de la conversación.
+
 ## 1.6.19 — 2026-10-05
 
 - Conserva el reloj de recarga periódica ante órdenes repetidas de activación.
