@@ -1028,7 +1028,9 @@
   }
 
   function setEnabled(enabled) {
-    state.enabled = Boolean(enabled);
+    const nextEnabled = Boolean(enabled);
+    if (!core.enabledStateChanged(state.enabled, nextEnabled)) return;
+    state.enabled = nextEnabled;
     log('enabled-change', { enabled: state.enabled });
     if (state.enabled) {
       state.contentLoadedAt = Date.now();

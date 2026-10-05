@@ -2,6 +2,11 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.19 — 2026-10-05
+
+- Conserva el reloj de recarga periódica ante órdenes repetidas de activación.
+- Evita que ControlBot o múltiples controles pospongan indefinidamente el refresh configurado.
+
 ## 1.6.18 — 2026-10-04
 
 - Ignora controles Stop ocultos y controles propios de AutoFactory al detectar generación activa.

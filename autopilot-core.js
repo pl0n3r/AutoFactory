@@ -333,6 +333,10 @@
     return Boolean(button && !button.disabled && button.getAttribute('aria-disabled') !== 'true');
   }
 
+  function enabledStateChanged(current, requested) {
+    return Boolean(current) !== Boolean(requested);
+  }
+
   return {
     COMPOSER_SELECTORS,
     SEND_SELECTORS,
@@ -365,6 +369,7 @@
     isOwnedDraft,
     replaceComposerText,
     budgetWaitLabel,
-    canSend
+    canSend,
+    enabledStateChanged
   };
 });

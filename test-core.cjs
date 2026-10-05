@@ -4,6 +4,10 @@ const core = require('./autopilot-core.js');
 const learning = require('./learning.js');
 const { classifyProviderPageSignal } = require('./factory-control-account-state.js');
 
+assert.equal(core.enabledStateChanged(true, true), false);
+assert.equal(core.enabledStateChanged(false, true), true);
+console.log('Activación: órdenes repetidas no reinician temporizadores');
+
 function page(html) {
   const dom = new JSDOM(html, { pretendToBeVisual: true });
   global.InputEvent = dom.window.InputEvent;
