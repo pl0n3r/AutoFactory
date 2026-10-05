@@ -659,6 +659,9 @@
     state.busy = true;
     try {
       let signal = core.pageSignal(document);
+      if (signal.code === 'conversation-limit' && core.stopButton(document)) {
+        signal = { code: 'ready', action: 'none' };
+      }
       if (signal.code === 'conversation-limit'
           && (location.pathname === '/' || location.pathname === '')) {
         signal = { code: 'ready', action: 'none' };

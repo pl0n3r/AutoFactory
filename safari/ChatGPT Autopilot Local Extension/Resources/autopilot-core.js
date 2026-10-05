@@ -95,7 +95,25 @@
       disabled: Boolean(button.disabled || button.getAttribute('aria-disabled') === 'true')
     }));
   }
-  function stopButton(doc = document) { return first(doc, STOP_SELECTORS); }
+  function stopButton(doc = document) {
+    for (const selector of STOP_SELECTORS) {
+      const candidates = doc.querySelectorAll
+        ? [...doc.querySelectorAll(selector)]
+        : [doc.querySelector?.(selector)].filter(Boolean);
+      for (const element of candidates) {
+        if (element.id === 'chatgpt-autopilot-stop'
+            || element.closest?.('#chatgpt-autopilot-badge')) continue;
+        if (element.hidden || element.disabled
+            || element.getAttribute?.('aria-hidden') === 'true') continue;
+        const style = element.ownerDocument?.defaultView?.getComputedStyle?.(element);
+        if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
+        if (typeof element.checkVisibility === 'function'
+            && !element.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })) continue;
+        return element;
+      }
+    }
+    return null;
+  }
   function isPageVisible(doc = document) { return doc.visibilityState === 'visible'; }
   function assistantMessageCount(doc = document) {
     return doc.querySelectorAll('[data-message-author-role="assistant"]').length;

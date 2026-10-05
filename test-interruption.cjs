@@ -130,6 +130,27 @@ const compactStopDocument = {
 assert.ok(core.stopButton(compactStopDocument));
 console.log('Interrupción: botón compacto Stop reconocido como generación activa');
 
+const staleStop = {
+  hidden: true,
+  disabled: false,
+  getAttribute() { return null; },
+  closest() { return null; }
+};
+const autopilotStop = {
+  id: 'chatgpt-autopilot-stop',
+  hidden: false,
+  disabled: false,
+  getAttribute() { return null; },
+  closest(selector) { return selector === '#chatgpt-autopilot-badge' ? {} : null; }
+};
+const falseStopDocument = {
+  querySelectorAll(selector) {
+    return selector === 'button[aria-label="Stop"]' ? [staleStop, autopilotStop] : [];
+  }
+};
+assert.equal(core.stopButton(falseStopDocument), null);
+console.log('Interrupción: controles Stop ocultos o propios no simulan una respuesta activa');
+
 const newChatButton = {
   disabled: false,
   innerText: 'Iniciar nuevo chat',
