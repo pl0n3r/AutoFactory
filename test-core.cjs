@@ -164,3 +164,8 @@ console.log('Razonamiento: detecta el selector compuesto y calcula el máximo de
   assert.equal(core.reasoningSliderControl(slider).getAttribute('role'), 'menuitem');
 }
 console.log('Razonamiento: dirige las teclas al control interactivo del slider');
+
+assert.equal(core.modelIdFromText('GPT-6'), 'gpt-6');
+assert.equal(core.modelIdFromText('GPT-5.6 Sol'), 'gpt-5.6-sol');
+assert.equal(core.modelIdFromText('High'), null);
+console.log('Modelo: reconoce GPT-6 sin confundirlo con el nivel de razonamiento');

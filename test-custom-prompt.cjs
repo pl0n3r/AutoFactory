@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 const popup = fs.readFileSync('popup.js', 'utf8');
+const popupHtml = fs.readFileSync('popup.html', 'utf8');
 const content = fs.readFileSync('content.js', 'utf8');
 
 assert.match(popup, /savedPrompt\.length>0/);
@@ -32,3 +33,8 @@ assert.match(content, /function reasoningSelectorButton\(\)/);
 assert.match(content, /selected-after-thinking/);
 assert.match(content, /reasoningSelectorButton\(\) \|\| modelSelectorButton\(\)/);
 console.log('Razonamiento: Alto se busca antes del selector general y admite Thinking como paso intermedio');
+
+assert.match(popupHtml, /id="model-target"[\s\S]*value="gpt-6"[\s\S]*value="gpt-5\.6-sol"[\s\S]*value="keep"/);
+assert.match(popup, /modelTarget:\s*'gpt-6'/);
+assert.match(content, /await ensureModel\(currentConfig\.modelTarget\)[\s\S]*await ensureReasoningLevel/);
+console.log('Modelo: GPT-6 es configurable y se verifica antes de aplicar High');

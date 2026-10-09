@@ -279,6 +279,13 @@
     if (/(^|\s)(baja|bajo|low)(\s|$)/.test(text)) return 'low';
     return '';
   }
+
+  function modelIdFromText(value) {
+    const text = normalize(value).toLowerCase().replace(/[‐‑‒–—]/g, '-');
+    if (/(^|\s)gpt\s*-?\s*5\.6\s+sol(\s|$)/.test(text)) return 'gpt-5.6-sol';
+    if (/(^|\s)gpt\s*-?\s*6(\s|$)/.test(text)) return 'gpt-6';
+    return null;
+  }
   function reasoningSliderTarget(level, minimum, maximum) {
     const min = Number(minimum);
     const max = Number(maximum);
@@ -363,6 +370,7 @@
     providerAccountSignal,
     normalize,
     reasoningLevelFromText,
+    modelIdFromText,
     reasoningSliderTarget,
     reasoningSliderControl,
     composerText,

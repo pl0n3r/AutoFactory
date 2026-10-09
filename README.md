@@ -4,7 +4,7 @@
 
 **Rol en la fábrica:** local/manual tool · **Fase:** construction · **Roadmap:** GitHub Issues + [AutoFactory #1](https://github.com/pl0n3r/AutoFactory/issues/1)
 
-AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa capturas, coordenadas, posición de ventanas ni `pyautogui`; no pulsa aprobaciones, permisos, compras, selectores de modelo ni acciones destructivas. Chrome y Safari comparten el mismo núcleo y el puente con ControlBot permanece sin tráfico real hasta satisfacer D-061 y sus puertas legales/seguridad.
+AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa capturas, coordenadas, posición de ventanas ni `pyautogui`; no pulsa aprobaciones, permisos, compras ni acciones destructivas; el modelo solo cambia según la preferencia explícita del usuario. Chrome y Safari comparten el mismo núcleo y el puente con ControlBot permanece sin tráfico real hasta satisfacer D-061 y sus puertas legales/seguridad.
 
 ## Operational Cockpit
 
@@ -40,7 +40,7 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 | UNKNOWN | UNKNOWN | UNKNOWN |
 <!-- factory:progress-readiness:end -->
 
-## Versión 1.6.20
+## Versión 1.6.21
 
 - Solo abre otro chat cuando existe una alerta visible de duración máxima y nunca si ya está en el chat nuevo.
 - Limpia la protección cuando ChatGPT confirma tarde el envío mediante una generación o respuesta real.
@@ -52,6 +52,7 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 - Muestra en tiempo real la cuenta regresiva del presupuesto compartido y continúa automáticamente al liberarse el turno.
 - Detiene inmediatamente una generación cuando ChatGPT informa una conexión interrumpida; recarga solo si no se estabiliza en 30 segundos.
 - Recupera conversaciones inaccesibles sin ciclos infinitos: dos reintentos, una recarga controlada y continuación en un chat nuevo.
+- Selecciona GPT-6 por defecto o GPT-5.6 Sol según configuración, y permite conservar el modelo actual.
 - Distingue el selector de razonamiento del selector general del modelo y, cuando es necesario, abre Thinking/Pensando antes de elegir Alto/High.
 
 > UNKNOWN/PENDING indica ausencia de evidencia canónica suficiente; nunca equivale a GREEN. En AutoFactory, CI verde no acredita por sí solo una extensión instalable ni un smoke Chrome/Safari.

@@ -20,6 +20,7 @@
     reloadCooldownMinutes: 1,
     periodicReload: true,
     periodicReloadMinutes: 15,
+    modelTarget: 'gpt-6',
     reasoningLevel: 'high',
     conversationMode: 'chat'
   });
@@ -66,6 +67,8 @@
     autoScrollRun: 0,
     lastReasoningCheckAt: 0,
     lastReasoningUnavailableLogAt: 0,
+    lastModelCheckAt: 0,
+    lastModelUnavailableLogAt: 0,
     lastConversationModeKey: '',
     settings: { ...SCROLL_DEFAULTS },
     pendingSignature: restored.pendingSignature,
@@ -284,6 +287,8 @@
         periodicReload: values.periodicReload === true,
         periodicReloadMinutes: Math.max(5, Math.min(1440,
           Number(values.periodicReloadMinutes) || SCROLL_DEFAULTS.periodicReloadMinutes)),
+        modelTarget: ['keep', 'gpt-6', 'gpt-5.6-sol'].includes(values.modelTarget)
+          ? values.modelTarget : SCROLL_DEFAULTS.modelTarget,
         reasoningLevel: ['keep', 'high'].includes(values.reasoningLevel)
           ? values.reasoningLevel : SCROLL_DEFAULTS.reasoningLevel,
         conversationMode: ['chat', 'work'].includes(values.conversationMode)
@@ -393,9 +398,56 @@
       ].filter(Boolean).join(' ')).toLowerCase();
       const testId = (element.getAttribute('data-testid') || '').toLowerCase();
       return /select chatgpt model|seleccionar modelo|cambiar modelo/.test(label)
-        || /^(alta|alto|high)$/.test(label)
+        || Boolean(core.modelIdFromText(label))
         || /model.*selector|selector.*model/.test(testId);
     }) || null;
+  }
+
+  function modelOption(target) {
+    return [...document.querySelectorAll('[role="menuitem"],[role="menuitemradio"],[role="option"],button')]
+      .find(element => core.modelIdFromText(
+        element.textContent || element.getAttribute('aria-label') || ''
+      ) === target) || null;
+  }
+
+  async function ensureModel(target) {
+    if (target === 'keep') return 'preserved';
+    if (Date.now() - state.lastModelCheckAt < 5000) return 'recently-checked';
+    state.lastModelCheckAt = Date.now();
+    let selector = null;
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      selector = modelSelectorButton();
+      if (selector) break;
+      await wait(100);
+    }
+    if (!selector) {
+      if (Date.now() - state.lastModelUnavailableLogAt >= 300000) {
+        state.lastModelUnavailableLogAt = Date.now();
+        log('model', { requested: target, result: 'selector-missing', fallback: 'preserve-current' });
+      }
+      return 'unavailable';
+    }
+    if (core.modelIdFromText(controlText(selector)) === target) return 'confirmed';
+    selector.click();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await wait(100);
+      const option = modelOption(target);
+      if (!option) continue;
+      const selected = option.getAttribute('aria-checked') === 'true'
+        || option.getAttribute('aria-selected') === 'true'
+        || option.dataset?.state === 'checked';
+      if (!selected) option.click();
+      else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(600);
+      log('model', { requested: target, result: selected ? 'already-selected' : 'selected' });
+      return 'confirmed';
+    }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    if (Date.now() - state.lastModelUnavailableLogAt >= 300000) {
+      state.lastModelUnavailableLogAt = Date.now();
+      log('model', { requested: target, result: 'option-missing', fallback: 'preserve-current' });
+    }
+    return 'unavailable';
   }
 
   function controlText(element) {
@@ -1002,6 +1054,7 @@
       }
       if (resumableDraft) setStatus('Retomando borrador propio pendiente');
       await ensureConversationMode(currentConfig.conversationMode);
+      await ensureModel(currentConfig.modelTarget);
       const reasoningResult = await ensureReasoningLevel(currentConfig.reasoningLevel);
       if (reasoningResult === 'unavailable') {
         setStatus('Nivel Alto no verificable; continuando con el nivel actual');
@@ -1089,7 +1142,11 @@
   window.addEventListener('wheel', noteManualScroll, { passive: true });
   window.addEventListener('touchmove', noteManualScroll, { passive: true });
   setStatus('Pausado');
-  log('content-loaded', { version: '1.6.7', backgroundTabs: true, persistentState: true });
+  log('content-loaded', {
+    version: extensionApi.runtime.getManifest().version,
+    backgroundTabs: true,
+    persistentState: true
+  });
   let mutationTimer = 0;
   const mutationObserver = new MutationObserver(mutations => {
     if (!state.enabled || mutationTimer) return;
