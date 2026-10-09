@@ -2,6 +2,11 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.22 — 2026-10-09
+
+- Limita a una sola acción cada transición automática hacia un chat nuevo.
+- Conserva por pestaña durante 10 minutos el bloqueo contra transferencias duplicadas, incluso tras navegar.
+
 ## 1.6.21 — 2026-10-09
 
 - Añade selección configurable de GPT-6, GPT-5.6 Sol o modelo actual.

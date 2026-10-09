@@ -26,6 +26,14 @@ assert.match(content, /signal\.code === 'conversation-limit'[\s\S]*location\.pat
   'una pestaña que ya está en chat nuevo no debe abrir otro chat');
 assert.match(content, /if \(periodicReloadDue\) \{[\s\S]{0,500}location\.reload\(\)/,
   'el refresh periódico vencido debe recargar incluso mientras espera una respuesta');
+assert.match(content, /CONVERSATION_TRANSFER_KEY[\s\S]*sessionStorage\.getItem\(CONVERSATION_TRANSFER_KEY\)/,
+  'el bloqueo de transferencia debe sobrevivir la navegación dentro de la pestaña');
+assert.match(content, /CONVERSATION_TRANSFER_COOLDOWN_MS\s*=\s*10 \* 60 \* 1000/,
+  'cada pestaña debe limitar la creación automática de chats nuevos');
+assert.match(content, /sessionStorage\.setItem\(CONVERSATION_TRANSFER_KEY, String\(state\.conversationTransferAt\)\)/,
+  'la transferencia debe persistirse antes de navegar');
+assert.match(content, /async function openFreshConversation\(button\) \{\s*if \(button\?\.click\) \{\s*button\.click\(\);\s*return true;/,
+  'una alerta debe ejecutar una sola apertura y terminar');
 
 console.log('Mensaje personalizado: cualquier texto no vacío se conserva y se envía');
 

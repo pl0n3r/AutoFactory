@@ -26,6 +26,8 @@
   });
   const restored = reliability.load(sessionStorage);
   const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state';
+  const CONVERSATION_TRANSFER_KEY = 'chatgpt-autopilot-conversation-transfer-at';
+  const CONVERSATION_TRANSFER_COOLDOWN_MS = 10 * 60 * 1000;
   const runtimeSchemaVersion = 3;
   const runtimeWasUpgraded = sessionStorage.getItem('chatgpt-autopilot-runtime-schema') !== String(runtimeSchemaVersion);
   if (runtimeWasUpgraded) {
@@ -53,7 +55,7 @@
     contentLoadedAt: Date.now(),
     connectionFirstSeenAt: 0,
     connectionCancelAt: 0,
-    conversationTransferAt: 0,
+    conversationTransferAt: Number(sessionStorage.getItem(CONVERSATION_TRANSFER_KEY)) || 0,
     platformReviewStartedAt: 0,
     platformReviewEscalated: false,
     platformReviewPlaceholderSeen: false,
@@ -371,11 +373,9 @@
   }
 
   async function openFreshConversation(button) {
-    const previousUrl = location.href;
-    button?.click?.();
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await wait(250);
-      if (location.href !== previousUrl || !core.conversationLimitButton(document)) return true;
+    if (button?.click) {
+      button.click();
+      return true;
     }
     const newChatLink = [...document.querySelectorAll('a[href]')].find(link => {
       const href = link.getAttribute('href');
@@ -863,8 +863,12 @@
         return;
       }
       if (signal.code === 'conversation-limit') {
-        if (Date.now() - state.conversationTransferAt < 15000) return;
+        if (Date.now() - state.conversationTransferAt < CONVERSATION_TRANSFER_COOLDOWN_MS) {
+          setStatus('Chat nuevo ya abierto; evitando duplicados', 'error');
+          return;
+        }
         state.conversationTransferAt = Date.now();
+        sessionStorage.setItem(CONVERSATION_TRANSFER_KEY, String(state.conversationTransferAt));
         state.waiting = false;
         state.sawGeneration = false;
         state.pendingSignature = '';
