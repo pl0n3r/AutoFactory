@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const {
   classifyAccountState,
   classifyProviderPageSignal,
-  createProviderAccountStateReader
+  createProviderAccountStateReader,
+  createProviderAccountStateObserver
 } = require('./factory-control-account-state.js');
 
 const NOW = 1_800_000_000_000;
@@ -267,6 +268,93 @@ for (const forbidden of ['email', 'token', 'cookie', 'chat', 'secret', 'message'
     now: () => Number.NaN
   });
   assert.deepEqual(await invalidClockReader.read(), UNKNOWN);
+
+
+  // AC-01: published timestamp comes from a fake observation; no chat content.
+  const limitReader = createProviderAccountStateObserver({
+    readProviderSignal: async () => ({
+      signalCode: 'rate-limit', alertText: null, observedAt: NOW - 45_000
+    }),
+    now: () => NOW
+  });
+  assert.deepEqual(await limitReader.read(), {
+    state: 'limit', resetAt: null,
+    observedAt: NOW - 45_000, freshness: 'fresh'
+  });
+  console.log('account-state AC-01: ok');
+
+  // AC-02: signed-out observations are always reduced to a safe fixed shape.
+  const signedOut = createProviderAccountStateObserver({
+    readProviderSignal: async () => ({
+      signalCode: 'authentication', alertText: null, observedAt: NOW - 1_000
+    }),
+    now: () => NOW
+  });
+  const loggedOut = await signedOut.read();
+  assert.deepEqual(loggedOut, {
+    state: 'requires_login', resetAt: null,
+    observedAt: NOW - 1_000, freshness: 'fresh'
+  });
+  assert.equal(Object.isFrozen(loggedOut), true);
+  assert.deepEqual(await createProviderAccountStateObserver({
+    readProviderSignal: async () => ({
+      signalCode: 'authentication', alertText: null, observedAt: NOW,
+      chatText: 'private chat', email: 'secret@example.com'
+    }),
+    now: () => NOW
+  }).read(), {
+    state: 'unknown', resetAt: null, observedAt: null, freshness: 'unknown'
+  });
+  const serializedObservation = JSON.stringify(loggedOut).toLowerCase();
+  for (const secret of ['chat', 'email', 'token', 'secret', 'alerttext']) {
+    assert.equal(serializedObservation.includes(secret), false);
+  }
+  console.log('account-state AC-02: ok');
+
+  // AC-03: recovering from limit requires a new fresh signal. Stale,
+  // invalid timestamps and a broken clock cannot elevate the state.
+  const observationQueue = [
+    { signalCode: 'rate-limit', alertText: null, observedAt: NOW - 100 },
+    { signalCode: 'authentication', alertText: null, observedAt: NOW - 50 },
+    { signalCode: 'ready', alertText: null, observedAt: NOW }
+  ];
+  const queueReader = createProviderAccountStateObserver({
+    readProviderSignal: async () => observationQueue.shift(),
+    now: () => NOW
+  });
+  for (const state of ['limit', 'requires_login', 'ready']) {
+    const result = await queueReader.read();
+    assert.equal(result.state, state);
+    assert.equal(result.freshness, 'fresh');
+  }
+  assert.deepEqual(await queueReader.read(), {
+    state: 'unknown', resetAt: null, observedAt: null, freshness: 'unknown'
+  });
+  for (const observedAt of [NOW - 180_001, NOW + 1, Number.NaN, -1]) {
+    const observer = createProviderAccountStateObserver({
+      readProviderSignal: async () => ({
+        signalCode: 'ready', alertText: null, observedAt
+      }),
+      now: () => NOW
+    });
+    const result = await observer.read();
+    assert.equal(result.state, 'unknown');
+    assert.equal(result.freshness,
+      observedAt === NOW - 180_001 ? 'stale' : 'unknown');
+    assert.equal(result.observedAt, null);
+  }
+  assert.deepEqual(await createProviderAccountStateObserver({
+    readProviderSignal: async () => ({
+      signalCode: 'ready', alertText: null, observedAt: NOW
+    }),
+    now: () => { throw new Error('private clock details'); }
+  }).read(), {
+    state: 'unknown', resetAt: null, observedAt: null, freshness: 'unknown'
+  });
+  assert.throws(() => createProviderAccountStateObserver({
+    readProviderSignal: async () => null, maxAgeMs: 0
+  }), /dependencies/);
+  console.log('account-state AC-03: ok');
 
   console.log('factory-control account state contract: ok');
 })().catch(error => {
