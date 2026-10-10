@@ -6,7 +6,7 @@ function createSharedLearningSync({storage,clock=Date.now,schedule=setTimeout,ca
  let timer=null,failures=0,epoch=0,writer=Promise.resolve(),operations=Promise.resolve();
  function exclusive(fn){const run=operations.then(fn);operations=run.then(()=>{},()=>{});return run;}
  const empty=()=>({enabled:false,mode:'observe',queue:[],policy:protocol.BUILT_IN_POLICY,lastSyncAt:0,lastError:null,localSamples:0,sharedSamples:0});
- async function read(){const raw=await storage.get(KEY);const value=raw&&raw[KEY]?raw[KEY]:raw;return value&&typeof value==='object'?{...empty(),...value,queue:Array.isArray(value.queue)?value.queue.slice(-MAX_QUEUE):[]}:empty();}
+ async function read(){const raw=await storage.get(KEY);const value=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw[KEY]:undefined;return value&&typeof value==='object'?{...empty(),...value,queue:Array.isArray(value.queue)?value.queue.slice(-MAX_QUEUE):[]}:empty();}
  async function write(value,ticket=epoch){const pending=writer.then(async()=>{if(ticket!==epoch)return null;await storage.set({[KEY]:value});return value;});writer=pending.then(()=>{},()=>{});return pending;}
  function record(input){const ticket=epoch;return exclusive(async()=>{const event=protocol.sanitizeOutcome(input,clock());if(ticket!==epoch)return event;const state=await read();if(ticket!==epoch)return event;if(state.enabled===true)state.queue=[...state.queue,event].slice(-MAX_QUEUE);else state.queue=[];state.localSamples+=1;await write(state,ticket);return event;});}
  function sync(){const ticket=epoch;return exclusive(()=>runSync(ticket));}
