@@ -135,7 +135,7 @@ async function flush() {
 });
 
 
-async function unavailableScenario(mode) {
+async function unavailableScenario(mode, invalidSnapshot = { budget: 'invalid' }) {
   const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
     url: 'https://chatgpt.com/', runScripts: 'outside-only'
   });
@@ -145,6 +145,7 @@ async function unavailableScenario(mode) {
   let clickCount = 0;
   let consumeCount = 0;
   let storageReply;
+  let storageChanged;
   window.Date.now = () => fakeNow;
   window.setInterval = () => 0;
   window.setTimeout = (callback, milliseconds = 0) => {
@@ -166,7 +167,7 @@ async function unavailableScenario(mode) {
       sendMessage(message, reply) {
         if (message.type === 'autopilot:budget-consume') consumeCount += 1;
         if (message.type === 'autopilot:budget-status' && providerMode === 'invalid') {
-          reply({ ok: true, snapshot: { budget: 'invalid' } });
+          reply({ ok: true, snapshot: invalidSnapshot });
         }
         if (message.type === 'autopilot:budget-status' && providerMode === 'valid') {
           reply({ ok: true, snapshot: readySnapshot() });
@@ -176,15 +177,26 @@ async function unavailableScenario(mode) {
     },
     storage: {
       local: { get(_defaults, callback) { storageReply = callback; } },
-      onChanged: { addListener() {} }
+      onChanged: { addListener(listener) { storageChanged = listener; } }
     }
   };
   window.eval(fs.readFileSync('./account-budget-guard.js', 'utf8'));
   storageReply({
     masterEnabled: true, accountBudgetEnabled: true,
-    reasoningLevel: 'high', accountBudgetSnapshotV1: null
+    reasoningLevel: 'high',
+    accountBudgetSnapshotV1: mode === 'invalid' ? readySnapshot() : null
   });
-  const decision = await window.ChatGPTAutopilotBudgetGuard.waitUntilReady();
+  const guard = window.ChatGPTAutopilotBudgetGuard;
+  if (mode === 'invalid') {
+    assert.equal(await guard.waitUntilReady(), true,
+      'a valid initial snapshot establishes readiness before corruption');
+    storageChanged({ accountBudgetSnapshotV1: { newValue: invalidSnapshot } }, 'local');
+    assert.equal(window.ChatGPTAutopilotCore.canSend(button), false,
+      'a contradictory update must revoke previously accepted capacity');
+    assert.equal(consumeCount, 0,
+      'snapshot corruption must not trigger a debit after invalidation');
+  }
+  const decision = await guard.waitUntilReady();
   assert.deepEqual(JSON.parse(JSON.stringify(decision)), {
     ok: false, reason: 'budget_unavailable'
   }, mode + ': unavailable background must fail closed with a typed result');
@@ -199,9 +211,18 @@ async function unavailableScenario(mode) {
   assert.equal(consumeCount, 0, mode + ': recovery alone cannot consume a slot');
 }
 (async () => {
-  await unavailableScenario('invalid');
+  const invalidSnapshots = [
+    { ...readySnapshot(), budget: 0, remaining: 4 },
+    { ...readySnapshot(), sent: 2, remaining: 40 },
+    { ...readySnapshot(), sent: 1, remaining: 39, highReasoningSends: 3 },
+    { ...readySnapshot(), windowMs: 0 },
+    { budget: 'invalid' }
+  ];
+  for (const invalidSnapshot of invalidSnapshots) {
+    await unavailableScenario('invalid', invalidSnapshot);
+  }
   await unavailableScenario('silent');
-  console.log('account-budget-guard: unavailable service worker fails closed');
+  console.log('account-budget-guard: invalid and internally contradictory snapshots fail closed');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

@@ -60,12 +60,22 @@
   }
 
   function applySnapshot(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const numeric = ['windowMs', 'budget', 'sent', 'remaining', 'limitEvents', 'highReasoningSends'];
-    if (!numeric.every(key => Number.isSafeInteger(value[key]) && value[key] >= 0)) return false;
-    if (value.nextAllowedAt !== null &&
-        (!Number.isSafeInteger(value.nextAllowedAt) || value.nextAllowedAt < 0)) return false;
-    if (!['default', 'factory'].includes(value.source)) return false;
+    const valid = value && typeof value === 'object' && !Array.isArray(value)
+      && numeric.every(key => Number.isSafeInteger(value[key]) && value[key] >= 0)
+      && value.windowMs > 0
+      && value.remaining === Math.max(0, value.budget - value.sent)
+      && value.highReasoningSends <= value.sent
+      && (value.nextAllowedAt === null ||
+        (Number.isSafeInteger(value.nextAllowedAt) && value.nextAllowedAt >= 0))
+      && ['default', 'factory'].includes(value.source);
+    if (!valid) {
+      // Invalid new evidence must revoke an earlier valid snapshot and button grant.
+      ready = false;
+      snapshot = null;
+      clearAuthorization();
+      return false;
+    }
     snapshot = Object.freeze({ ...value });
     ready = true;
     return true;
