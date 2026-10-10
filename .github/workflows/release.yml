@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 20
-          cache: npm
+          package-manager-cache: false
       - run: npm ci --ignore-scripts
       - run: npm test
       - name: Verify exact tag and Chrome/Safari/package/lock versions
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 20
-          cache: npm
+          package-manager-cache: false
       - run: npm ci --ignore-scripts
       - name: Real Chrome ephemeral extension-load smoke
         run: node scripts/chrome-ephemeral-smoke.cjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
@@ -62,6 +62,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 20
+          package-manager-cache: false
       - name: Real unsigned Safari/Xcode build smoke
         run: bash scripts/safari-unsigned-build-smoke.sh "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
