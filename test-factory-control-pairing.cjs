@@ -329,10 +329,15 @@ function fixture(overrides = {}) {
       pairing: contract, credentialStore, auditStore
     });
     assert.equal(typeof recreated.revoke, 'function');
-    assert.deepEqual(journal, [
-      { event: 'pairing_revocation', phase: 'attempt' },
-      { event: 'pairing_revocation', phase: 'result', outcome: 'revoked' }
-    ]);
+    assert.equal(journal.length, 3);
+    assert.equal(journal[0].event, 'pairing_compensation');
+    assert.equal(journal[0].phase, 'eligible');
+    assert.equal(journal[1].event, 'pairing_revocation');
+    assert.equal(journal[1].phase, 'attempt');
+    assert.equal(journal[2].phase, 'result');
+    assert.equal(journal[2].outcome, 'revoked');
+    assert.equal(journal[1].auditId, journal[2].auditId);
+    assert.notEqual(journal[0].auditId, journal[1].auditId);
     assert.equal(JSON.stringify(journal).includes('credential-001'), false);
     assert.equal(JSON.stringify(journal).includes('perfil-1'), false);
     assert.equal(JSON.stringify(journal).includes('123456'), false);
@@ -411,7 +416,10 @@ function fixture(overrides = {}) {
       });
       assert.deepEqual(await persisted.revoke(input), { ok: false, code: 'failed' });
       assert.equal(calls.filter(call => call.kind === 'revoke').length, 1);
-      assert.deepEqual(recorded, [{ event: 'pairing_revocation', phase: 'attempt' }]);
+      assert.equal(recorded.length, 1);
+      assert.equal(recorded[0].event, 'pairing_revocation');
+      assert.equal(recorded[0].phase, 'attempt');
+      assert.match(recorded[0].auditId, /^[0-9a-f-]{36}$/i);
     }
     const { contract, calls } = fixture();
     let records = 0;
@@ -431,6 +439,107 @@ function fixture(overrides = {}) {
     assert.deepEqual(await missingAudit.revoke(input), { ok: false, code: 'failed' });
     assert.equal(missingCalls.some(call => call.kind === 'revoke'), false);
     console.log('pairing-audit AC-04: ok');
+  }
+
+  // Compensation follows a safety-intent written before issuing a credential;
+  // even if the subsequent audit adapter fails, an issued handle is revoked.
+  {
+    const { contract, calls } = fixture();
+    const journal = [];
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async () => { throw new Error('sensitive-storage-error'); },
+        remove: async () => true
+      },
+      auditStore: {
+        append: async event => { journal.push(structuredClone(event)); return true; }
+      }
+    });
+    assert.deepEqual(
+      await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'failed' }
+    );
+    assert.equal(calls.filter(item => item.kind === 'revoke').length, 1);
+    assert.deepEqual(journal.map(item => item.phase), ['eligible', 'attempt', 'result']);
+    assert.deepEqual(journal.map(item => item.event),
+      ['pairing_compensation', 'pairing_compensation', 'pairing_compensation']);
+    assert.equal(new Set(journal.map(item => item.auditId)).size, 1);
+    assert.equal(journal[2].outcome, 'revoked');
+    const output = JSON.stringify(journal);
+    for (const secret of ['perfil-1', '123456', 'credential-001', 'sensitive-storage-error']) {
+      assert.equal(output.includes(secret), false);
+    }
+  }
+  {
+    const { contract, calls } = fixture();
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async () => { throw new Error('store failed'); },
+        remove: async () => true
+      },
+      auditStore: {
+        append: (() => {
+          let count = 0;
+          return async () => (++count !== 2);
+        })()
+      }
+    });
+    assert.deepEqual(
+      await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'failed' }
+    );
+    assert.equal(calls.filter(item => item.kind === 'revoke').length, 1);
+  }
+  {
+    const { contract, calls } = fixture();
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: { save: async () => {}, remove: async () => true },
+      auditStore: { append: async () => false }
+    });
+    assert.deepEqual(
+      await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'failed' }
+    );
+    assert.equal(calls.filter(item => ['consume', 'issue', 'revoke'].includes(item.kind)).length, 0);
+  }
+
+  // Concurrent revocations have independent non-sensitive correlation IDs.
+  {
+    const journal = [];
+    const persisted = createPersistedPairingContract({
+      pairing: {
+        pair: async () => ({ ok: false, code: 'invalid' }),
+        revoke: async () => ({ ok: true, code: 'revoked' })
+      },
+      credentialStore: {
+        save: async () => {},
+        remove: async () => true
+      },
+      auditStore: {
+        append: async record => { journal.push(structuredClone(record)); return true; }
+      }
+    });
+    const inputs = [
+      { profileAlias: 'perfil-1', credentialId: 'credential-001' },
+      { profileAlias: 'perfil-2', credentialId: 'credential-002' }
+    ];
+    const results = await Promise.all(inputs.map(input => persisted.revoke(input)));
+    assert.deepEqual(results, [
+      { ok: true, code: 'revoked' }, { ok: true, code: 'revoked' }
+    ]);
+    assert.equal(journal.length, 4);
+    const ids = [...new Set(journal.map(item => item.auditId))];
+    assert.equal(ids.length, 2);
+    for (const id of ids) {
+      const events = journal.filter(item => item.auditId === id);
+      assert.equal(events.length, 2);
+      assert.deepEqual(events.map(item => item.phase), ['attempt', 'result']);
+      assert.equal(events[1].outcome, 'revoked');
+    }
+    assert.equal(journal.some(item => 'credentialId' in item || 'profileAlias' in item), false);
   }
 
   console.log('pairing-audit AC-01: ok');
