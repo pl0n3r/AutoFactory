@@ -153,7 +153,7 @@ async function inspectWorkerTargets(port) {
   try {
     const targets = await fetchTargets(port);
     const kinds = [...new Set(targets.map(target => String(target?.type || 'unknown')))]
-      .sort().slice(0, 10);
+      .sort((a, b) => a.localeCompare(b)).slice(0, 10);
     const worker = targets.find(target =>
       target?.type === 'service_worker' &&
       /^chrome-extension:\/\/[a-p]{32}\/background-entry\.js(?:[?#].*)?$/.test(target.url)
@@ -191,6 +191,28 @@ async function probeChromeWorker(profileDir, timeoutMs, child) {
     ' (devtools=' + (devtoolsPortSeen ? 'yes' : 'no') +
     ', target-types=' + (lastTargets.join(',') || 'none') +
     ', probe=' + lastProbeError + ')');
+}
+
+async function stopChromeChild(child, hostedLinux) {
+  if (hostedLinux && Number.isSafeInteger(child.pid) && child.pid > 1) {
+    // Only the CI-owned detached Chromium process group can receive this signal.
+    try {
+      process.kill(-child.pid, 'SIGTERM');
+    } catch (error) {
+      if (error?.code !== 'ESRCH') child.kill();
+    }
+  } else {
+    child.kill();
+  }
+  if (typeof child.once !== 'function') return;
+  await new Promise(resolve => {
+    if (child.exitCode !== null && child.exitCode !== undefined) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, 1200);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+  });
 }
 
 async function launchChrome(chromeBinary, args, profileDir, timeoutMs, spawnProcess, probeWorker) {
@@ -238,27 +260,7 @@ async function launchChrome(chromeBinary, args, profileDir, timeoutMs, spawnProc
     }
     return proof;
   } finally {
-    if (hostedLinux && Number.isSafeInteger(child.pid) && child.pid > 1) {
-      // Kill the isolated Chromium process group, not just its parent.
-      // A negative PID is safe only for our own detached hosted-CI child.
-      try {
-        process.kill(-child.pid, 'SIGTERM');
-      } catch (error) {
-        if (error?.code !== 'ESRCH') child.kill();
-      }
-    } else {
-      child.kill();
-    }
-    if (typeof child.once === 'function') {
-      await new Promise(resolve => {
-        if (child.exitCode !== null && child.exitCode !== undefined) {
-          resolve();
-          return;
-        }
-        const timer = setTimeout(resolve, 1200);
-        child.once('exit', () => { clearTimeout(timer); resolve(); });
-      });
-    }
+    await stopChromeChild(child, hostedLinux);
   }
 }
 
@@ -285,6 +287,7 @@ async function runChromeSmoke({
   const extensionDir = fs.mkdtempSync(path.join(tempRoot, 'autofactory-chrome-extension-'));
   let proof;
   let smokeError = null;
+  let cleanupFailure = '';
   try {
     copyAttestedAssets(root, extensionDir, attestation);
     proof = await launchChrome(
@@ -297,11 +300,8 @@ async function runChromeSmoke({
     );
   } catch (error) {
     smokeError = error;
-    throw error;
   } finally {
-    // Never mask a missing MV3 worker with ENOTEMPTY from a Chromium helper.
-    // Attempt both removals even when the first one fails; no partial cleanup
-    // can produce successful smoke evidence.
+    // Always attempt both removals; never turn a missing worker into success.
     const cleanupErrors = [];
     for (const directory of [profileDir, extensionDir]) {
       try {
@@ -311,14 +311,16 @@ async function runChromeSmoke({
       }
     }
     if (cleanupErrors.length) {
-      const reason = 'Chrome ephemeral cleanup failed (' + cleanupErrors.join(',') + ')';
-      if (smokeError instanceof Error) {
-        smokeError.message += '; ' + reason;
-        throw smokeError;
-      }
-      fail(reason);
+      cleanupFailure = 'Chrome ephemeral cleanup failed (' + cleanupErrors.join(',') + ')';
     }
   }
+  // Never throw from a finally block: preserve the primary smoke error.
+  if (smokeError instanceof Error) {
+    if (cleanupFailure) smokeError.message += '; ' + cleanupFailure;
+    throw smokeError;
+  }
+  if (smokeError) fail('Chrome probe error' + (cleanupFailure ? '; ' + cleanupFailure : ''));
+  if (cleanupFailure) fail(cleanupFailure);
 
   return Object.freeze({
     verified: true,
