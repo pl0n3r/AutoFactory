@@ -32,15 +32,27 @@
 
   function runtimeMessage(payload) {
     return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeoutId;
+      const settle = (response, unavailable = false) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        if (unavailable || !response) reject(new Error('budget-runtime-unavailable'));
+        else resolve(response);
+      };
       try {
         const result = extensionApi.runtime.sendMessage(payload, response => {
-          const error = extensionApi.runtime.lastError;
-          if (error || !response) reject(new Error('budget-runtime-unavailable'));
-          else resolve(response);
+          settle(response, Boolean(extensionApi.runtime.lastError));
         });
-        if (typeof result?.then === 'function') void result.then(resolve, reject);
-      } catch (error) {
-        reject(error);
+        if (typeof result?.then === 'function') {
+          void result.then(response => settle(response), () => settle(null, true));
+        }
+        if (!settled) {
+          timeoutId = setTimeout(() => settle(null, true), SNAPSHOT_RESPONSE_TIMEOUT_MS);
+        }
+      } catch (_error) {
+        settle(null, true);
       }
     });
   }

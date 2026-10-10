@@ -156,13 +156,17 @@ async function unavailableScenario(mode) {
     pageSignal: () => ({ code: 'ready' }),
     sendButton: () => button
   };
+  let providerMode = mode;
   window.chrome = {
     runtime: {
       lastError: null,
       sendMessage(message, reply) {
         if (message.type === 'autopilot:budget-consume') consumeCount += 1;
-        if (message.type === 'autopilot:budget-status' && mode === 'invalid') {
+        if (message.type === 'autopilot:budget-status' && providerMode === 'invalid') {
           reply({ ok: true, snapshot: { budget: 'invalid' } });
+        }
+        if (message.type === 'autopilot:budget-status' && providerMode === 'valid') {
+          reply({ ok: true, snapshot: readySnapshot() });
         }
         // 'silent' simulates a service worker that never invokes the callback.
       }
@@ -186,6 +190,10 @@ async function unavailableScenario(mode) {
   assert.equal(window.ChatGPTAutopilotCore.canSend(button), false,
     mode + ': no send permission without a valid snapshot');
   assert.equal(clickCount, 0, mode + ': must not click a send control');
+  providerMode = 'valid';
+  assert.equal(await window.ChatGPTAutopilotBudgetGuard.waitUntilReady(), true,
+    mode + ': recovery requires a new valid snapshot, without stale in-flight requests');
+  assert.equal(consumeCount, 0, mode + ': recovery alone cannot consume a slot');
 }
 (async () => {
   await unavailableScenario('invalid');
