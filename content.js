@@ -755,12 +755,30 @@
         } else if (escalation === 'reload') {
           setStatus('Conversación no disponible; recarga controlada');
           location.reload();
+        } else if (escalation === 'new-chat') {
+          if (Date.now() - state.conversationTransferAt < CONVERSATION_TRANSFER_COOLDOWN_MS) {
+            setStatus('Chat de recuperación ya abierto; evitando duplicados', 'error');
+          } else {
+            state.conversationTransferAt = Date.now();
+            sessionStorage.setItem(CONVERSATION_TRANSFER_KEY, String(state.conversationTransferAt));
+            state.waiting = false;
+            state.sawGeneration = false;
+            state.pendingSignature = '';
+            state.nextSendAt = Date.now() + 5000;
+            persistRuntime();
+            setStatus('Conversación inaccesible; abriendo un único chat de recuperación');
+            await openFreshConversation(null);
+          }
         } else {
           state.waiting = false;
-          state.nextSendAt = plan.retryAt;
+          state.nextSendAt = plan.retryAt || Number.POSITIVE_INFINITY;
           persistRuntime();
-          const remainingMinutes = Math.max(1, Math.ceil((plan.retryAt - Date.now()) / 60000));
-          setStatus(`Conversación inaccesible; Retry automático en ${remainingMinutes} min`, 'error');
+          if (plan.retryAt > Date.now()) {
+            const remainingMinutes = Math.max(1, Math.ceil((plan.retryAt - Date.now()) / 60000));
+            setStatus(`Conversación inaccesible; recuperación en ${remainingMinutes} min`, 'error');
+          } else {
+            setStatus('Recuperación transferida; esperando en este chat', 'error');
+          }
         }
         log('recovery', { code: signal.code, action: escalation, attempts,
           retryAt: plan.retryAt, priority: 'circuit-bypass' });

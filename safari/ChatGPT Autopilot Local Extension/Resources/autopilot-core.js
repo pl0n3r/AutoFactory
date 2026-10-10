@@ -240,12 +240,22 @@
       ? Math.max(0, Number(value.attempts) || 0) : 0;
     const currentRetryAt = value.path === currentPath
       ? Math.max(0, Number(value.retryAt) || 0) : 0;
-    if (currentAttempts >= 4 && currentRetryAt > now) {
+    if (currentAttempts >= 5) {
       return Object.freeze({
-        path: currentPath, attempts: currentAttempts, action: 'wait', retryAt: currentRetryAt
+        path: currentPath, attempts: 5, action: 'wait', retryAt: 0
       });
     }
-    const attempts = currentAttempts >= 4 ? 1 : currentAttempts + 1;
+    if (currentAttempts === 4) {
+      if (currentRetryAt > now) {
+        return Object.freeze({
+          path: currentPath, attempts: 4, action: 'wait', retryAt: currentRetryAt
+        });
+      }
+      return Object.freeze({
+        path: currentPath, attempts: 5, action: 'new-chat', retryAt: 0
+      });
+    }
+    const attempts = currentAttempts + 1;
     const action = recoverableEscalation(attempts);
     return Object.freeze({
       path: currentPath,

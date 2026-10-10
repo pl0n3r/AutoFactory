@@ -60,7 +60,12 @@ function page(html) {
   assert.deepEqual(core.recoverablePlan({
     path: '/c/1', attempts: 4, retryAt: 301000
   }, '/c/1', 301000), {
-    path: '/c/1', attempts: 1, action: 'retry', retryAt: 0
+    path: '/c/1', attempts: 5, action: 'new-chat', retryAt: 0
+  });
+  assert.deepEqual(core.recoverablePlan({
+    path: '/c/1', attempts: 5, retryAt: 0
+  }, '/c/1', 302000), {
+    path: '/c/1', attempts: 5, action: 'wait', retryAt: 0
   });
   assert.deepEqual(core.recoverableState(null), {});
   assert.deepEqual(core.recoverableState('{"path":"/c/1","attempts":2}'), {

@@ -2,6 +2,11 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.26 — 2026-10-10
+
+- Permite abrir un único chat de recuperación cuando Retry, recarga y espera de un minuto no resuelven una conversación inaccesible.
+- Persiste el bloqueo antes de navegar para impedir aperturas repetidas o chats en cadena.
+
 ## 1.6.25 — 2026-10-10
 
 - Reduce de cinco minutos a un minuto la pausa de recuperación de conversaciones inaccesibles.
