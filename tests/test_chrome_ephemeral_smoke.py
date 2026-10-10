@@ -26,6 +26,12 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         expression = (
             "const m=require(process.argv[1]);"
             "const mode=process.argv[6];"
+            "if(mode==='cleanup-race'){"
+            "const fs=require('node:fs');const original=fs.rmSync;"
+            "fs.rmSync=(file,opts)=>{original(file,opts);"
+            "if(String(file).includes('autofactory-chrome-profile-')){"
+            "const err=new Error('synthetic cleanup race');"
+            "err.code='ENOTEMPTY';throw err;}};}"
             "let capture=null;"
             "const spawnProcess=(binary,args,options)=>{"
             "capture={binary,args,env:options.env};"
@@ -33,7 +39,8 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
             "stderr:{on:(event,cb)=>{if(mode==='runtime'&&event==='data')"
             "cb('Failed to load extension: synthetic failure')}}};"
             "};"
-            "const probeWorker=async()=>mode==='missing-worker'?null:"
+            "const probeWorker=async()=>"
+            "(mode==='missing-worker'||mode==='cleanup-race')?null:"
             "{type:'service_worker',url:'chrome-extension://'+"
             "'a'.repeat(32)+'/background-entry.js'};"
             "(async()=>{try{const evidence=await m.runChromeSmoke({"
@@ -164,6 +171,14 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         self.assertIn("--remote-debugging-port=0", capture["args"])
         self.assertNotIn("--dump-dom", capture["args"])
         self.assertEqual(evidence["worker_url"], "chrome-extension://" + "a" * 32 + "/background-entry.js")
+
+    def test_failed_smoke_preserves_root_error_when_cleanup_races(self):
+        # Chromium helper processes may keep writing to Default during rmSync.
+        # The original missing-worker error must survive a cleanup ENOTEMPTY.
+        result = self._smoke("cleanup-race")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("service worker evidence missing", result.stderr)
+        self.assertIn("cleanup failed (ENOTEMPTY)", result.stderr)
 
     def test_runtime_error_or_permission_drift_fails_closed(self):
         missing_worker = self._smoke("missing-worker")
