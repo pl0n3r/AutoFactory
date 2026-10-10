@@ -87,7 +87,9 @@ function chromeArgs(profileDir, extensionDir, platform = process.platform, envir
   // mandatory DevTools proof of a loaded MV3 service worker.
   if (platform === 'linux' && environment.GITHUB_ACTIONS === 'true' &&
       environment.CI === 'true') {
-    args.unshift('--no-sandbox');
+    // Shared-memory starvation on ephemeral hosted runners can leave
+    // DevToolsActivePort absent even after the sandbox startup abort is fixed.
+    args.unshift('--no-sandbox', '--disable-dev-shm-usage');
   }
   return args;
 }
@@ -300,10 +302,15 @@ async function runChromeSmoke({
 if (require.main === module) {
   (async () => {
     if (process.argv.length !== 4) fail('expected <tag> <commit-sha>');
+    const hostedLinux = process.platform === 'linux' &&
+      process.env.GITHUB_ACTIONS === 'true' && process.env.CI === 'true';
     const result = await runChromeSmoke({
       root: path.resolve(__dirname, '..'),
       tag: process.argv[2],
       commitSha: process.argv[3],
+      // Cold Chromium/MV3 startup can exceed 15 s on shared hosted runners.
+      // This only widens a bounded wait; worker proof remains mandatory.
+      timeoutMs: hostedLinux ? 45000 : 15000,
     });
     console.log(JSON.stringify(result));
   })().catch(error => {
