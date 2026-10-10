@@ -184,7 +184,7 @@ function fixture(overrides = {}) {
     const persisted = createPersistedPairingContract({
       pairing: contract,
       credentialStore: {
-        save: async row => { stored.push(structuredClone(row)); },
+        save: async row => { stored.push(structuredClone(row)); return true; },
         remove: async row => {
           const index = stored.findIndex(item =>
             item.profileAlias === row.profileAlias && item.id === row.id);
@@ -297,6 +297,32 @@ function fixture(overrides = {}) {
   }
 
 
+  // A resolved but unacknowledged save must never issue a 'paired' result.
+  // Compensation is attempted under the pre-issuance audit evidence.
+  {
+    for (const saveAck of [false, undefined, null, 'true']) {
+      const { contract, calls } = fixture();
+      const journal = [];
+      const persisted = createPersistedPairingContract({
+        pairing: contract,
+        credentialStore: {
+          save: async () => saveAck,
+          remove: async () => true
+        },
+        auditStore: {
+          append: async record => { journal.push(structuredClone(record)); return true; }
+        }
+      });
+      const outcome = await persisted.pair({ profileAlias: 'perfil-1', code: '123456' });
+      assert.deepEqual(outcome, { ok: false, code: 'failed' });
+      assert.equal(calls.filter(item => item.kind === 'issue').length, 1);
+      assert.equal(calls.filter(item => item.kind === 'revoke').length, 1);
+      assert.deepEqual(journal.map(item => item.phase), ['eligible', 'attempt', 'result']);
+      assert.equal(new Set(journal.map(item => item.auditId)).size, 1);
+      assert.equal(JSON.stringify(journal).includes('credential-001'), false);
+    }
+  }
+
   // AC-02: the injected fake journal outlives the persisted pairing instance,
   // while the opaque credential is removed from the separate local store.
   {
@@ -304,7 +330,7 @@ function fixture(overrides = {}) {
     const journal = [];
     const stored = new Map();
     const credentialStore = {
-      save: async row => { stored.set(row.profileAlias, structuredClone(row)); },
+      save: async row => { stored.set(row.profileAlias, structuredClone(row)); return true; },
       remove: async row => stored.delete(row.profileAlias)
     };
     const auditStore = {
@@ -554,7 +580,10 @@ function fixture(overrides = {}) {
       '-s', 'tests', '-p', 'test_factory_control_pairing_audit_contract.py'
     ], {
       cwd: __dirname,
-      env: { ...process.env, FACTORY_PAIRING_PYTHON_CHILD: '1' },
+      // Never forward caller-controlled PATH, secrets or executable overrides.
+      // Ubuntu runner's system Node/Python binaries are under fixed root-owned
+      // directories; the nested acceptance tests need only this loop guard.
+      env: { PATH: '/usr/local/bin:/usr/bin:/bin', FACTORY_PAIRING_PYTHON_CHILD: '1' },
       encoding: 'utf8',
       timeout: 30000
     });

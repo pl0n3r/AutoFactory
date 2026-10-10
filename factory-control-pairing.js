@@ -242,9 +242,15 @@
           id: result.credential.id,
           expiresAt: result.credential.expiresAt
         };
+        // Only an explicit, durable adapter acknowledgment validates pairing.
+        // A resolved false/undefined is as ambiguous as a thrown exception.
+        let saved = false;
         try {
-          await credentialStore.save(row);
+          saved = await credentialStore.save(row);
         } catch (_error) {
+          saved = false;
+        }
+        if (saved !== true) {
           await recordCompensation({
             profileAlias: input.profileAlias,
             credentialId: result.credential.id
