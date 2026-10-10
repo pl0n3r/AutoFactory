@@ -180,6 +180,32 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         self.assertIn("service worker evidence missing", result.stderr)
         self.assertIn("cleanup failed (ENOTEMPTY)", result.stderr)
 
+    def test_partial_devtools_port_retries_then_fails_closed(self):
+        # Chrome may create DevToolsActivePort before writing its port number.
+        # This must be a bounded retry, not an immediate false failure.
+        expression = (
+            "const m=require(process.argv[1]);"
+            "const fs=require('node:fs');"
+            "let attempts=0;"
+            "fs.existsSync=()=>true;"
+            "fs.readFileSync=()=>{attempts++;return '';};"
+            "m.probeChromeWorker('/tmp/fake-profile',320,"
+            "{exitCode:null,signalCode:null})"
+            ".then(()=>{console.error('unexpected positive worker');process.exitCode=1;})"
+            ".catch(e=>{"
+            "if(attempts<2||!e.message.includes('service worker evidence missing')"
+            "||!e.message.includes('probe=port-pending')){"
+            "console.error(e.message);process.exitCode=1;}"
+            "else console.log('bounded port-pending retry verified');"
+            "});"
+        )
+        result = subprocess.run(
+            ["node", "-e", expression, str(SCRIPT)],
+            check=False, capture_output=True, text=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bounded port-pending retry verified", result.stdout)
+
     def test_runtime_error_or_permission_drift_fails_closed(self):
         missing_worker = self._smoke("missing-worker")
         self.assertNotEqual(missing_worker.returncode, 0)
