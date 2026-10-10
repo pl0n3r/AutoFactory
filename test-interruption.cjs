@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const core = require('./autopilot-core.js');
+const { JSDOM } = require('jsdom');
 
 function element(text, children = []) {
   return { innerText: text, textContent: text, children };
@@ -244,16 +245,22 @@ assert.deepEqual(core.interfaceSnapshot(modernDocument), {
 });
 console.log('Interfaz: compositor contenteditable moderno reconocido en chat nuevo');
 
-const modernSendButton = {
-  disabled: false,
-  getAttribute(name) { return name === 'aria-label' ? 'Send prompt' : null; }
-};
-const modernSendDocument = {
-  querySelector(selector) {
-    if (selector === 'button[aria-label="Send prompt"]') return modernSendButton;
-    return null;
-  }
-};
+const modernSendDocument = new JSDOM(
+  '<form><textarea placeholder="ChatGPT"></textarea>' +
+  '<button type="submit" aria-label="Send prompt">Send</button></form>'
+).window.document;
+const modernSendButton = modernSendDocument.querySelector('button');
 assert.equal(core.sendButton(modernSendDocument), modernSendButton);
 assert.equal(core.canSend(modernSendButton), true);
-console.log('Envío: control moderno Send prompt reconocido');
+const missingComposerDoc = new JSDOM(
+  '<button aria-label="Send prompt">Send</button>'
+).window.document;
+assert.equal(core.sendButton(missingComposerDoc), null);
+const incompleteAdapter = {
+  querySelector(selector) {
+    return selector === 'button[aria-label="Send prompt"]'
+      ? modernSendButton : null;
+  }
+};
+assert.equal(core.sendButton(incompleteAdapter), null);
+console.log('Envío: control Send prompt con compositor real; sin compositor falla cerrado');
