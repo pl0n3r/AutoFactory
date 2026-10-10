@@ -91,6 +91,42 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         self.assertNotEqual(non_executable.returncode, 0)
         self.assertIn("not executable", non_executable.stderr)
 
+    def test_linux_runner_sandbox_exception_is_disposable_ci_only(self):
+        # El workaround de AppArmor no se propaga al navegador del usuario.
+        expression = (
+            "const m=require(process.argv[1]);"
+            "const platforms=['linux','darwin','win32'];"
+            "const envs=["
+            "{GITHUB_ACTIONS:'true',CI:'true'},"
+            "{GITHUB_ACTIONS:'false',CI:'true'},"
+            "{GITHUB_ACTIONS:'true',CI:'false'},"
+            "{}"
+            "];"
+            "console.log(JSON.stringify(platforms.flatMap(platform=>"
+            "envs.map(env=>({platform,env,"
+            "args:m.chromeArgs('/tmp/isolated-profile','/tmp/attested-extension',platform,env)"
+            "})))));"
+        )
+        result = subprocess.run(
+            ["node", "-e", expression, str(SCRIPT)],
+            check=False, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        cases = json.loads(result.stdout)
+        self.assertEqual(len(cases), 12)
+        for case in cases:
+            scoped = (
+                case["platform"] == "linux"
+                and case["env"].get("GITHUB_ACTIONS") == "true"
+                and case["env"].get("CI") == "true"
+            )
+            with self.subTest(platform=case["platform"], env=case["env"]):
+                self.assertEqual("--no-sandbox" in case["args"], scoped)
+                self.assertIn("--load-extension=/tmp/attested-extension", case["args"])
+                self.assertIn("--user-data-dir=/tmp/isolated-profile", case["args"])
+                self.assertIn("--remote-debugging-port=0", case["args"])
+                self.assertEqual(case["args"][-1], "about:blank")
+
     def test_ephemeral_profile_loads_packaged_extension_without_user_data(self):
         result = self._smoke()
         self.assertEqual(result.returncode, 0, result.stderr)
