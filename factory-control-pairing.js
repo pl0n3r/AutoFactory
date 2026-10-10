@@ -37,6 +37,19 @@
     return Object.freeze(result);
   }
 
+  // A random audit reference correlates concurrent operations without deriving
+  // an identifier from a profile, pairing code or opaque credential.
+  function newAuditId() {
+    try {
+      const id = globalThis.crypto?.randomUUID?.();
+      return typeof id === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+        ? id : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function checkedChallenge(value, profileAlias, nowMs) {
     const fields = ['challengeId', 'profileAlias', 'expiresAt', 'revoked', 'used'];
     if (!exactKeys(value, fields) ||
@@ -177,12 +190,51 @@
       throw new TypeError('Persisted pairing dependencies are required');
     }
 
+    async function recordCompensation(input, auditId) {
+      // Once credential issuance has happened, remote revocation is a security
+      // compensation even if the audit adapter is subsequently unavailable.
+      // The 'eligible' intent was durably written before issuance.
+      try {
+        await auditStore.append(Object.freeze({
+          event: 'pairing_compensation', phase: 'attempt', auditId
+        }));
+      } catch (_error) { // NOSONAR: compensation must not expose adapter errors.
+        // Best effort after the durable pre-issuance safety record.
+      }
+      let outcome = 'unknown';
+      try {
+        const result = checkedPairingResult(await pairing.revoke(input));
+        if (['revoked', 'not_found'].includes(result.code)) outcome = result.code;
+      } catch (_error) {
+        // Remote effect may be ambiguous; never claim success.
+      }
+      try {
+        await auditStore.append(Object.freeze({
+          event: 'pairing_compensation', phase: 'result', auditId, outcome
+        }));
+      } catch (_error) {
+        // Keep the pre-issuance record and return failure to the caller.
+      }
+    }
+
     async function pair(input) {
       if (!exactKeys(input, ['profileAlias', 'code']) ||
           !validAlias(input.profileAlias) || !validCode(input.code)) {
         return safeResult(false, 'invalid');
       }
+      // Reserve a sanitized compensating-action record BEFORE issuing a
+      // credential; otherwise a failed local save could require an unlogged
+      // remote revocation. Missing audit fails closed without issuing.
+      if (!auditStore || typeof auditStore.append !== 'function') {
+        return safeResult(false, 'failed');
+      }
+      const auditId = newAuditId();
+      if (!auditId) return safeResult(false, 'failed');
       try {
+        const recorded = await auditStore.append(Object.freeze({
+          event: 'pairing_compensation', phase: 'eligible', auditId
+        }));
+        if (recorded !== true) return safeResult(false, 'failed');
         const result = checkedPairingResult(await pairing.pair(input));
         if (result.code !== 'paired') return result;
         const row = {
@@ -193,14 +245,10 @@
         try {
           await credentialStore.save(row);
         } catch (_error) {
-          try {
-            await pairing.revoke({
-              profileAlias: input.profileAlias,
-              credentialId: result.credential.id
-            });
-          } catch (_revokeError) {
-            // Best-effort compensation only. The opaque handle still expires server-side.
-          }
+          await recordCompensation({
+            profileAlias: input.profileAlias,
+            credentialId: result.credential.id
+          }, auditId);
           return safeResult(false, 'failed');
         }
         return result;
@@ -221,8 +269,10 @@
         return safeResult(false, 'failed');
       }
       try {
+        const auditId = newAuditId();
+        if (!auditId) return safeResult(false, 'failed');
         const intentRecorded = await auditStore.append(Object.freeze({
-          event: 'pairing_revocation', phase: 'attempt'
+          event: 'pairing_revocation', phase: 'attempt', auditId
         }));
         if (intentRecorded !== true) return safeResult(false, 'failed');
 
@@ -236,7 +286,7 @@
         if (removed !== true) return safeResult(false, 'failed');
 
         const outcomeRecorded = await auditStore.append(Object.freeze({
-          event: 'pairing_revocation', phase: 'result', outcome: result.code
+          event: 'pairing_revocation', phase: 'result', auditId, outcome: result.code
         }));
         if (outcomeRecorded !== true) return safeResult(false, 'failed');
         return result;
