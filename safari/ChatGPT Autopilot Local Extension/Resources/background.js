@@ -155,6 +155,15 @@
 
   let writeQueue = Promise.resolve();
   let learningQueue = Promise.resolve();
+  const sharedLearningApi = globalThis.ChatGPTAutopilotSharedLearningSync;
+  const sharedLearning = sharedLearningApi?.createSharedLearningSync({
+    storage: {
+      async get(key) { return storageGet({ [key]: null }); },
+      async set(values) { return storageSet(values); }
+    },
+    async fetchPolicy() { return { notModified: true, policyVersion: 0 }; },
+    async uploadEvents() { throw new Error('shared learning gate closed'); }
+  }) || null;
 
   function normalizeLearning(memory = {}) {
     const finiteSamples = (values, maximum = 21600000) => (Array.isArray(values) ? values : [])
@@ -302,6 +311,26 @@
       append(message, sender);
       reply({ ok: true });
       return;
+    }
+    if (message?.type === 'autopilot:shared-learning-status') {
+      if (!sharedLearning) { reply({ enabled: false, mode: 'off' }); return; }
+      sharedLearning.snapshot().then(reply).catch(() => reply({ enabled: false, mode: 'observe', lastError: 'status_failed' }));
+      return true;
+    }
+    if (message?.type === 'autopilot:shared-learning-reset') {
+      if (!sharedLearning) { reply({ ok: false }); return; }
+      sharedLearning.reset().then(state => reply({ ok: true, state })).catch(() => reply({ ok: false }));
+      return true;
+    }
+    if (message?.type === 'autopilot:shared-learning-rollback') {
+      if (!sharedLearning) { reply({ ok: false }); return; }
+      sharedLearning.rollback().then(state => reply({ ok: true, state })).catch(() => reply({ ok: false }));
+      return true;
+    }
+    if (message?.type === 'autopilot:shared-learning-outcome') {
+      if (!sharedLearning) { reply({ ok: false }); return; }
+      sharedLearning.record(message.outcome).then(() => reply({ ok: true })).catch(() => reply({ ok: false }));
+      return true;
     }
     if (message?.type === 'autopilot:learning-event') {
       learningQueue = learningQueue.then(async () => {
