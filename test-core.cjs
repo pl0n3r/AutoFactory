@@ -49,6 +49,30 @@ const sendButtonScopeCases = {
       '<button aria-label="Stop generating">Stop</button></form>'
     );
     assert.equal(core.sendButton(unsafe), null);
+    const genericAction = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button type="button">Send feedback</button></form>'
+    );
+    assert.equal(core.sendButton(genericAction), null);
+    const report = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button type="submit" aria-label="Send report">Send report</button></form>'
+    );
+    assert.equal(core.sendButton(report), null);
+    const semanticDisabled = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<div aria-disabled="true"><button aria-label="Send message">Send</button></div>' +
+      '<button id="enabled" aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(semanticDisabled)?.id, 'enabled');
+    assert.equal(core.canSend(semanticDisabled.querySelector('[aria-disabled] button')), false);
+    semanticDisabled.querySelector('#enabled').remove();
+    assert.equal(core.sendButton(semanticDisabled), null);
+    const reset = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button type="reset" aria-label="Send message">Send</button></form>'
+    );
+    assert.equal(core.sendButton(reset), null);
     const ambiguous = page(
       '<form><textarea placeholder="ChatGPT"></textarea>' +
       '<button aria-label="Send message">Send</button>' +

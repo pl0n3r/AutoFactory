@@ -90,7 +90,8 @@
     function isVisible(element) {
       for (let node = element; node?.nodeType === 1; node = node.parentElement) {
         if (node.hidden || node.hasAttribute('inert')
-          || node.getAttribute('aria-hidden') === 'true') return false;
+          || node.getAttribute('aria-hidden') === 'true'
+          || node.getAttribute('aria-disabled') === 'true') return false;
         const style = doc.defaultView?.getComputedStyle?.(node);
         if (style && (style.display === 'none' || style.visibility === 'hidden'
           || style.visibility === 'collapse' || style.pointerEvents === 'none')) return false;
@@ -105,14 +106,22 @@
         || !isVisible(button)) return false;
       const buttonForm = button.closest('form');
       if (fieldForm ? buttonForm !== fieldForm : Boolean(buttonForm)) return false;
-      const identity = normalize([
-        button.id, button.getAttribute('data-testid'), button.getAttribute('aria-label'),
-        button.getAttribute('title'), button.getAttribute('name'),
-        button.getAttribute('value'), button.textContent
-      ].filter(Boolean).join(' ')).toLowerCase();
-      if (/stop|detener|voice|voz|dictat|microph|micr[oó]fono|compr|purchas|pay|pagar|autoriza|authoriz|permit|allow|subscri|suscrib|confirm|cancel|delete|eliminar|retry|reintentar/.test(identity)) return false;
-      return button.id === 'composer-submit-button'
-        || /(?:^|[\s-])(send|enviar)(?:[\s-]|$)/.test(identity);
+      if (button.type === 'reset') return false;
+      const exactSendLabels = new Set([
+        'send', 'send message', 'send prompt',
+        'enviar', 'enviar mensaje', 'enviar prompt'
+      ]);
+      const ariaLabel = normalize(button.getAttribute('aria-label')).toLowerCase();
+      const title = normalize(button.getAttribute('title')).toLowerCase();
+      const text = normalize(button.textContent).toLowerCase();
+      // Never turn "Send feedback", "Send report", or another generic action into submit.
+      if (ariaLabel && !exactSendLabels.has(ariaLabel)) return false;
+      if (title && !exactSendLabels.has(title)) return false;
+      if (button.id === 'composer-submit-button'
+        || button.getAttribute('data-testid') === 'send-button') return true;
+      return exactSendLabels.has(ariaLabel)
+        || exactSendLabels.has(title)
+        || (button.type === 'submit' && exactSendLabels.has(text));
     });
     // An ambiguous composer must never guess which control to activate.
     return candidates.length === 1 ? candidates[0] : null;
@@ -385,7 +394,9 @@
   }
 
   function canSend(button) {
-    return Boolean(button && !button.disabled && button.getAttribute('aria-disabled') !== 'true');
+    return Boolean(button && !button.disabled
+      && button.getAttribute('aria-disabled') !== 'true'
+      && !button.closest?.('[aria-disabled="true"], [inert], fieldset[disabled]'));
   }
 
   function enabledStateChanged(current, requested) {
