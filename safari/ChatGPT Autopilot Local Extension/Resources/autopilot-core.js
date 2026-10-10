@@ -73,10 +73,14 @@
     const field = composer(doc);
     if (!field) return null;
     const fieldForm = field.closest?.('form') || null;
-    const scope = fieldForm
-      || field.closest?.('[data-testid="composer"], [data-testid="composer-container"], #composer')
-      || field.parentElement?.parentElement;
+    const composerRegion = field.closest?.(
+      '[data-testid="composer"], [data-testid="composer-container"], #composer'
+    ) || null;
+    const scope = fieldForm || composerRegion || field.parentElement;
     if (!scope?.querySelectorAll) return null;
+    // Without a semantic container, only the provider's explicit submit
+    // control directly alongside the field is eligible.
+    const unscoped = !fieldForm && !composerRegion;
 
     function isVisible(element) {
       for (let node = element; node?.nodeType === 1; node = node.parentElement) {
@@ -98,6 +102,8 @@
         || !isVisible(button)) return false;
       const buttonForm = button.closest('form');
       if (fieldForm ? buttonForm !== fieldForm : Boolean(buttonForm)) return false;
+      if (unscoped && (button.id !== 'composer-submit-button'
+        || button.parentElement !== field.parentElement)) return false;
       if (button.type === 'reset') return false;
       const exactSendLabels = new Set([
         'send', 'send message', 'send prompt',

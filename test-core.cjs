@@ -51,6 +51,16 @@ const sendButtonScopeCases = {
       '<form><button type="submit" aria-label="Send message">Enviar</button></form>'
     );
     assert.equal(core.sendButton(unrelated), null);
+    const siblingRegion = page(
+      '<section id="page"><div id="editor"><textarea placeholder="ChatGPT"></textarea></div>' +
+      '<aside id="unrelated"><button aria-label="Send message">Send</button></aside></section>'
+    );
+    assert.equal(core.sendButton(siblingRegion), null);
+    const plainUnscoped = page(
+      '<div><textarea placeholder="ChatGPT"></textarea>' +
+      '<button aria-label="Send message">Send</button></div>'
+    );
+    assert.equal(core.sendButton(plainUnscoped), null);
     const unsafe = page(
       '<form><textarea placeholder="ChatGPT"></textarea>' +
       '<button data-testid="send-voice" aria-label="Voice">Voice</button>' +
@@ -108,6 +118,16 @@ const sendButtonScopeCases = {
       '<button id="composer-submit-button">Enviar</button>'
     );
     assert.equal(core.sendButton(legacy)?.id, 'composer-submit-button');
+    const unwrapped = page(
+      '<div><textarea placeholder="ChatGPT"></textarea>' +
+      '<button id="composer-submit-button" aria-label="Send message">Send</button></div>'
+    );
+    assert.equal(core.sendButton(unwrapped)?.id, 'composer-submit-button');
+    const namedRegion = page(
+      '<section id="composer"><textarea placeholder="ChatGPT"></textarea>' +
+      '<button aria-label="Send message">Send</button></section>'
+    );
+    assert.equal(core.sendButton(namedRegion)?.getAttribute('aria-label'), 'Send message');
     const form = page(
       '<form id="chat"><textarea placeholder="ChatGPT"></textarea>' +
       '<button type="submit" aria-label="Send message">Send</button></form>'
