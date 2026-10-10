@@ -30,6 +30,8 @@ assert.doesNotMatch(content, /Conversación inaccesible; continuando en un chat 
   'un fallo de carga no debe abrir automáticamente otro chat');
 assert.match(content, /if \(signal\.code === 'recoverable' && generationAtSignal\)[\s\S]{0,120}signal = \{ code: 'ready', action: 'none' \}/,
   'un control Retry visible no debe interrumpir una respuesta activa');
+assert.match(content, /signal\.code === 'recoverable'[\s\S]{0,180}isNewChatRoute[\s\S]{0,180}core\.composer\(document\)[\s\S]{0,120}signal = \{ code: 'ready', action: 'none' \}/,
+  'un Retry residual no debe bloquear un chat nuevo que ya tiene compositor');
 assert.match(content, /const plan = core\.recoverablePlan\(previous, location\.pathname, Date\.now\(\)\)/,
   'una conversación inaccesible debe usar el plan de recuperación limitado');
 assert.match(content, /state\.nextSendAt = plan\.retryAt/,

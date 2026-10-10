@@ -712,6 +712,12 @@
     try {
       let signal = core.pageSignal(document);
       const generationAtSignal = Boolean(core.stopButton(document));
+      const isNewChatRoute = location.pathname === '/' || location.pathname === '';
+      if (signal.code === 'recoverable'
+          && isNewChatRoute
+          && core.composer(document)) {
+        signal = { code: 'ready', action: 'none' };
+      }
       if (signal.code === 'recoverable' && generationAtSignal) {
         signal = { code: 'ready', action: 'none' };
       }
@@ -952,7 +958,6 @@
         setStatus('Esperando que ChatGPT termine de cargar la interfaz');
         return;
       }
-      const isNewChatRoute = location.pathname === '/' || location.pathname === '';
       if (interfaceMissingLongEnough && isNewChatRoute) {
         recordErrorOnce({
           code: 'interface-loading-new-chat',
