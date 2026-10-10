@@ -124,6 +124,9 @@ async function flush() {
   button.click();
   assert.equal(clickEvents, 1, 'a second click without authorization must be blocked');
   assert.equal(consumeCalls, 1, 'blocked second click must not bypass the shared budget');
+  assert.equal(guard.confirmSent(), true, 'confirmed send releases only this reservation');
+  assert.equal(window.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'), null,
+    'a confirmed provider send clears the pending debit latch');
 
   console.log('account-budget-guard: long pacing waits without failure or premature click');
 })().catch(error => {
@@ -278,12 +281,20 @@ async function ambiguousDebitScenario() {
   assert.equal(first.debitCount(), 1, 'late callback cannot cause another consume');
   assert.equal(first.clickCount(), 0);
   assert.equal(first.w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'), '1');
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    await first.w.ChatGPTAutopilotBudgetGuard.waitUntilReady()
+  )), { ok: false, reason: 'budget_unavailable' },
+  'an ambiguous prior debit blocks pacing before a composer can be modified');
   const reloaded = create(first.persistedState());
   assert.equal(reloaded.canSend(), false);
   await flush();
   assert.equal(reloaded.debitCount(), 0,
     'reload may not replay a previously ambiguous debit');
   assert.equal(reloaded.clickCount(), 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    await reloaded.w.ChatGPTAutopilotBudgetGuard.waitUntilReady()
+  )), { ok: false, reason: 'budget_unavailable' },
+  'a reopened tab never replays unknown capacity');
   first.w.close();
   reloaded.w.close();
 }

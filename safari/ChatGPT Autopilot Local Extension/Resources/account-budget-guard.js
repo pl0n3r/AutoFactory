@@ -124,6 +124,13 @@
     for (;;) {
       if (budgetEnabled === false) return true;
       if (masterEnabled === false) return false;
+      // A prior debit might have succeeded even if its response never arrived.
+      // A valid snapshot alone cannot prove whether that operation was applied.
+      try {
+        if (sessionStorage.getItem(PENDING_CONSUME_KEY) === '1') return BUDGET_UNAVAILABLE;
+      } catch (_error) {
+        return BUDGET_UNAVAILABLE;
+      }
       let timeoutId;
       let refreshed;
       try {
