@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {createIncidentCoordinator}=require('./recovery-incident.js');
+(async()=>{let now=1000,state={};const io={load:async()=>state,save:async v=>{state=v}};const c=createIncidentCoordinator({...io,clock:()=>now,ttlMs:100});
+ const a=await c.acquire({problemCode:'conversation-limit',route:'/c/:id',ownerId:'tab-1',replacement:true});
+ const b=await c.acquire({problemCode:'conversation-limit',route:'/c/:id',ownerId:'tab-2',replacement:true});
+ assert.equal(a.granted,true);assert.equal(a.replacementOpened,true);assert.equal(b.granted,false);
+ now=1200;const d=await c.acquire({problemCode:'conversation-limit',route:'/c/:id',ownerId:'tab-2',replacement:true});assert.equal(d.granted,true);
+ assert.equal(await c.complete({incidentId:a.incidentId,ownerId:'tab-1'}),false);
+ assert.equal(await c.complete({incidentId:d.incidentId,ownerId:'tab-2'}),true);
+ console.log('recovery incident: lease, expiry, owner and replacement dedup pass');
+})().catch(e=>{console.error(e);process.exit(1)});

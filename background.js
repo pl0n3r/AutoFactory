@@ -155,6 +155,12 @@
 
   let writeQueue = Promise.resolve();
   let learningQueue = Promise.resolve();
+  const incidentApi = globalThis.ChatGPTAutopilotRecoveryIncident;
+  const INCIDENTS_KEY = 'autopilotRecoveryIncidentsV1';
+  const incidentCoordinator = incidentApi?.createIncidentCoordinator({
+    async load() { const values = await storageGet({ [INCIDENTS_KEY]: {} }); return values[INCIDENTS_KEY]; },
+    async save(value) { await storageSet({ [INCIDENTS_KEY]: value }); }
+  }) || null;
   const sharedLearningApi = globalThis.ChatGPTAutopilotSharedLearningSync;
   const sharedLearning = sharedLearningApi?.createSharedLearningSync({
     storage: {
@@ -311,6 +317,20 @@
       append(message, sender);
       reply({ ok: true });
       return;
+    }
+    if (message?.type === 'autopilot:incident-acquire') {
+      if (!incidentCoordinator || !Number.isSafeInteger(sender?.tab?.id)) { reply({ granted: false }); return; }
+      incidentCoordinator.acquire({ problemCode: message.problemCode, route: message.route,
+        ownerId: 'tab-' + sender.tab.id, replacement: Boolean(message.replacement) })
+        .then(reply).catch(() => reply({ granted: false }));
+      return true;
+    }
+    if (message?.type === 'autopilot:incident-complete' || message?.type === 'autopilot:incident-release') {
+      if (!incidentCoordinator || !Number.isSafeInteger(sender?.tab?.id)) { reply({ ok: false }); return; }
+      const method = message.type.endsWith('complete') ? 'complete' : 'release';
+      incidentCoordinator[method]({ incidentId: message.incidentId, ownerId: 'tab-' + sender.tab.id })
+        .then(ok => reply({ ok })).catch(() => reply({ ok: false }));
+      return true;
     }
     if (message?.type === 'autopilot:shared-learning-status') {
       if (!sharedLearning) { reply({ enabled: false, mode: 'off' }); return; }

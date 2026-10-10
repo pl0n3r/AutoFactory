@@ -9,6 +9,7 @@ importScripts(
   'factory-control-instance-transport.js',
   'shared-learning-protocol.js',
   'shared-learning-sync.js',
+  'recovery-incident.js',
   'background.js',
   'account-budget-background.js'
 );

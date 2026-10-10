@@ -302,6 +302,16 @@
     return cachedConfigPromise;
   }
 
+  async function acquireRecoveryIncident(problemCode, replacement = false) {
+    try {
+      const route = location.pathname.startsWith('/c/') ? '/c/:id' : '/';
+      const result = await extensionApi.runtime.sendMessage({
+        type: 'autopilot:incident-acquire', problemCode, route, replacement
+      });
+      return result?.granted ? result : null;
+    } catch (_error) { return null; }
+  }
+
   function saveLearning(event, durationMs = 0, detail = {}) {
     state.learned = learning.update(state.learned, event, durationMs, detail);
     try {
@@ -773,6 +783,11 @@
             state.pendingSignature = '';
             state.nextSendAt = Date.now() + 5000;
             persistRuntime();
+            const incident = await acquireRecoveryIncident(signal.code, true);
+            if (!incident || !incident.replacementOpened) {
+              setStatus('Recuperación ya coordinada en otra pestaña', 'error');
+              return;
+            }
             setStatus('Conversación inaccesible; abriendo un único chat de recuperación');
             await openFreshConversation(null);
           }
@@ -918,6 +933,11 @@
         persistRuntime();
         saveLearning('recovery');
         log('recovery', { code: 'conversation-limit', action: 'new-chat' });
+        const incident = await acquireRecoveryIncident('conversation-limit', true);
+        if (!incident || !incident.replacementOpened) {
+          setStatus('Chat nuevo ya coordinado en otra pestaña', 'error');
+          return;
+        }
         setStatus('Límite de conversación; abriendo un chat nuevo');
         await openFreshConversation(signal.element);
         return;
