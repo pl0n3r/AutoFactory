@@ -608,9 +608,14 @@
       clearInterval(statusTimer);
     }
     if (budgetReady?.reason === 'budget_unavailable') {
-      sessionStorage.setItem(BUDGET_BLOCK_KEY, '1');
+      // Pausa primero: sessionStorage puede lanzar SecurityError/QuotaExceededError.
       state.enabled = false;
       state.nextSendAt = 0;
+      try {
+        sessionStorage.setItem(BUDGET_BLOCK_KEY, '1');
+      } catch (_error) {
+        // Si no se puede persistir el latch, la pestaña permanece pausada.
+      }
       log('budget-blocked', { code: 'budget_unavailable' });
       setStatus('Pausado: presupuesto compartido no verificable', 'error');
       return false;

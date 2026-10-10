@@ -73,13 +73,23 @@ async function microtasks() {
   await new Promise(resolve => setImmediate(resolve));
 }
 
-function bootFakeTab(session, decision) {
+function bootFakeTab(session, decision, { failBudgetBlockWrite = false } = {}) {
   const dom = new JSDOM(
     '<!doctype html><div id="prompt-textarea" contenteditable="true">Draft fixture</div>',
     { url: 'https://chatgpt.com/', runScripts: 'outside-only', pretendToBeVisual: true }
   );
   const { window } = dom;
   for (const [key, value] of session) window.sessionStorage.setItem(key, value);
+  if (failBudgetBlockWrite) {
+    const prototype = Object.getPrototypeOf(window.sessionStorage);
+    const originalSetItem = prototype.setItem;
+    prototype.setItem = function (key, value) {
+      if (key === 'chatgpt-autopilot-budget-blocked-v1') {
+        throw new window.DOMException('Storage unavailable', 'SecurityError');
+      }
+      return originalSetItem.call(this, key, value);
+    };
+  }
   const runtimeListeners = [];
   let now = 100000;
   let budgetCalls = 0;
@@ -170,6 +180,26 @@ function bootFakeTab(session, decision) {
   assert.equal(persisted.get('chatgpt-autopilot-budget-blocked-v1'), '1',
     'a tab-local block must survive navigation');
   first.close();
+
+  const storageFault = bootFakeTab(new Map(), () => ({
+    ok: false, reason: 'budget_unavailable'
+  }), { failBudgetBlockWrite: true });
+  storageFault.advance();
+  storageFault.emit('autopilot:heartbeat');
+  await microtasks();
+  assert.equal(storageFault.budgetCalls(), 1,
+    'budget failure still reaches the real guard with sessionStorage disabled');
+  assert.equal(storageFault.isEnabled(), false,
+    'storage exception cannot prevent tab from pausing');
+  assert.equal(storageFault.draft(), 'Draft fixture',
+    'storage exception cannot delete an unsent draft');
+  storageFault.emit('autopilot:heartbeat');
+  await microtasks();
+  assert.equal(storageFault.budgetCalls(), 1,
+    'a paused tab never silently retries after storage failure');
+  assert.equal(storageFault.clicks(), 0,
+    'storage exception cannot authorize a provider click');
+  storageFault.close();
 
   const reloaded = bootFakeTab(persisted, () => true);
   reloaded.advance();
