@@ -197,8 +197,14 @@
     ready = false;
     void runtimeMessage({ type: 'autopilot:budget-consume', reasoningLevel })
       .then(response => {
-        if (!response?.ok || !applySnapshot(response.snapshot) ||
-            !response.allowed || masterEnabled !== true || budgetEnabled !== true) return;
+        if (response?.ok !== true || !applySnapshot(response.snapshot)) return;
+        if (response.allowed === false) {
+          // A canonical rejection proves the backend did not consume a slot.
+          // It is safe to resume normal pacing, but not to click or retry here.
+          try { sessionStorage.removeItem(PENDING_CONSUME_KEY); } catch (_error) {}
+          return;
+        }
+        if (response.allowed !== true || masterEnabled !== true || budgetEnabled !== true) return;
         if (core.sendButton(document) !== button || !originalCanSend(button)) return;
         authorizedButton = button;
         authorizedAt = Date.now();

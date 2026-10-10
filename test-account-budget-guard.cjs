@@ -295,6 +295,20 @@ async function ambiguousDebitScenario() {
     await reloaded.w.ChatGPTAutopilotBudgetGuard.waitUntilReady()
   )), { ok: false, reason: 'budget_unavailable' },
   'a reopened tab never replays unknown capacity');
+
+  const denied = create();
+  assert.equal(denied.canSend(), false);
+  denied.reply({
+    ok: true, allowed: false, snapshot: readySnapshot(100500)
+  });
+  await flush();
+  assert.equal(denied.w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'), null,
+    'an authoritative denied response must release the no-debit latch');
+  assert.equal(denied.clickCount(), 0, 'denial never authorizes a click');
+  assert.equal(await denied.w.ChatGPTAutopilotBudgetGuard.waitUntilReady(), true,
+    'normal pacing recovers after the denied budget window expires');
+  assert.equal(denied.debitCount(), 1, 'denial does not automatically resubmit a consume');
+  denied.w.close();
   first.w.close();
   reloaded.w.close();
 }
