@@ -33,7 +33,7 @@ function verify(source) {
   assert.equal((source.match(/^  contents:/gm) || []).length, 1);
   assert.match(source, /^          node-version: 20$/m);
   assert.match(source, /^          cache: npm$/m);
-  const install = source.indexOf('      - run: npm ci\n');
+  const install = source.indexOf('      - run: npm ci --ignore-scripts\n');
   const test = source.indexOf('      - run: npm test\n');
   const chromeSmoke = source.indexOf(CHROME_SMOKE_STEP + '\n');
   assert.match(source, /^      - name: Real Chrome MV3 extension-load smoke \(non-release checkout\)$/m);
@@ -45,6 +45,7 @@ function verify(source) {
 
 const workflow = fs.readFileSync('.github/workflows/validate.yml', 'utf8');
 verify(workflow);
+assert.throws(() => verify(workflow.replace('npm ci --ignore-scripts', 'npm ci')));
 assert.throws(() => verify(workflow.replace(
   CHROME_SMOKE_STEP, '        run: echo skip-chrome-worker-smoke'
 )));
@@ -54,11 +55,11 @@ assert.throws(() => verify(workflow.replace('persist-credentials: false',
   'persist-credentials: true')));
 assert.throws(() => verify(workflow.replace('contents: read', 'contents: write')));
 assert.throws(() => verify(workflow.replace(
-  '      - run: npm ci',
+  '      - run: npm ci --ignore-scripts',
   '      - uses: actions/checkout@v4\n      - run: npm ci'
 )));
 assert.throws(() => verify(workflow.replace(
-  '      - run: npm ci',
+  '      - run: npm ci --ignore-scripts',
   '      - uses: ' + CHECKOUT + '\n      - run: npm ci'
 )));
 assert.throws(() => verify(workflow.replace(
