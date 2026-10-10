@@ -12,6 +12,10 @@
 
   const AUTHORIZATION_TTL_MS = 5000;
   const WAIT_POLL_MS = 250;
+  const UNAVAILABLE_WAIT_MS = 8000;
+  const SNAPSHOT_RESPONSE_TIMEOUT_MS = 2000;
+  const BUDGET_UNAVAILABLE = Object.freeze({ ok: false, reason: 'budget_unavailable' });
+  const PENDING_CONSUME_KEY = 'chatgpt-autopilot-budget-consume-pending-v1';
   let masterEnabled = null;
   let budgetEnabled = null;
   let ready = false;
@@ -20,6 +24,7 @@
   let authorizationInFlight = false;
   let authorizedButton = null;
   let authorizedAt = 0;
+  let sentButtonAwaitingConfirmation = null;
   let refreshInFlight = null;
   let limitActive = false;
 
@@ -29,15 +34,27 @@
 
   function runtimeMessage(payload) {
     return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeoutId;
+      const settle = (response, unavailable = false) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        if (unavailable || !response) reject(new Error('budget-runtime-unavailable'));
+        else resolve(response);
+      };
       try {
         const result = extensionApi.runtime.sendMessage(payload, response => {
-          const error = extensionApi.runtime.lastError;
-          if (error || !response) reject(new Error('budget-runtime-unavailable'));
-          else resolve(response);
+          settle(response, Boolean(extensionApi.runtime.lastError));
         });
-        if (typeof result?.then === 'function') void result.then(resolve, reject);
-      } catch (error) {
-        reject(error);
+        if (typeof result?.then === 'function') {
+          void result.then(response => settle(response), () => settle(null, true));
+        }
+        if (!settled) {
+          timeoutId = setTimeout(() => settle(null, true), SNAPSHOT_RESPONSE_TIMEOUT_MS);
+        }
+      } catch (_error) {
+        settle(null, true);
       }
     });
   }
@@ -103,19 +120,46 @@
   }
 
   async function waitBudgetReadyStep() {
-    if (budgetEnabled === false) return true;
-    if (masterEnabled === false) return false;
-    const refreshed = await ensureSnapshot();
-    if (!refreshed || masterEnabled !== true || budgetEnabled !== true) {
-      await delay(WAIT_POLL_MS);
-      return waitBudgetReadyStep();
+    let unavailableSince = Date.now();
+    for (;;) {
+      if (budgetEnabled === false) return true;
+      if (masterEnabled === false) return false;
+      // A prior debit might have succeeded even if its response never arrived.
+      // A valid snapshot alone cannot prove whether that operation was applied.
+      try {
+        if (sessionStorage.getItem(PENDING_CONSUME_KEY) === '1') return BUDGET_UNAVAILABLE;
+      } catch (_error) {
+        return BUDGET_UNAVAILABLE;
+      }
+      let timeoutId;
+      let refreshed;
+      try {
+        refreshed = await Promise.race([
+          ensureSnapshot(),
+          new Promise(resolve => {
+            timeoutId = setTimeout(() => resolve(false), SNAPSHOT_RESPONSE_TIMEOUT_MS);
+          })
+        ]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (budgetEnabled === false) return true;
+      if (masterEnabled === false) return false;
+      if (!refreshed || masterEnabled !== true || budgetEnabled !== true) {
+        const elapsed = Date.now() - unavailableSince;
+        if (!Number.isFinite(elapsed) || elapsed >= UNAVAILABLE_WAIT_MS) {
+          return BUDGET_UNAVAILABLE;
+        }
+        await delay(Math.min(WAIT_POLL_MS, UNAVAILABLE_WAIT_MS - elapsed));
+        continue;
+      }
+      unavailableSince = Date.now();
+      if (snapshot.nextAllowedAt === null && snapshot.remaining > 0) return true;
+      await delay(waitDelayMs());
+      if (snapshot?.nextAllowedAt !== null && Date.now() >= snapshot.nextAllowedAt) {
+        ready = false;
+      }
     }
-    if (snapshot.nextAllowedAt === null && snapshot.remaining > 0) return true;
-    await delay(waitDelayMs());
-    if (snapshot?.nextAllowedAt !== null && Date.now() >= snapshot.nextAllowedAt) {
-      ready = false;
-    }
-    return waitBudgetReadyStep();
   }
 
   function waitUntilReady() {
@@ -141,12 +185,26 @@
 
   function requestAuthorization(button) {
     if (authorizationInFlight || !budgetReadyNow()) return;
+    // A budget-consume mutates shared capacity. Without a durable operation receipt,
+    // an unanswered request is ambiguous: never issue a second consume automatically.
+    try {
+      if (sessionStorage.getItem(PENDING_CONSUME_KEY) === '1') return;
+      sessionStorage.setItem(PENDING_CONSUME_KEY, '1');
+    } catch (_error) {
+      return; // storage unavailable: fail closed before any mutation
+    }
     authorizationInFlight = true;
     ready = false;
     void runtimeMessage({ type: 'autopilot:budget-consume', reasoningLevel })
       .then(response => {
-        if (!response?.ok || !applySnapshot(response.snapshot) ||
-            !response.allowed || masterEnabled !== true || budgetEnabled !== true) return;
+        if (response?.ok !== true || !applySnapshot(response.snapshot)) return;
+        if (response.allowed === false) {
+          // A canonical rejection proves the backend did not consume a slot.
+          // It is safe to resume normal pacing, but not to click or retry here.
+          try { sessionStorage.removeItem(PENDING_CONSUME_KEY); } catch (_error) {}
+          return;
+        }
+        if (response.allowed !== true || masterEnabled !== true || budgetEnabled !== true) return;
         if (core.sendButton(document) !== button || !originalCanSend(button)) return;
         authorizedButton = button;
         authorizedAt = Date.now();
@@ -190,8 +248,21 @@
     }
     if (masterEnabled !== true || budgetEnabled !== true || !authorizationValid(this)) return undefined;
     clearAuthorization();
-    return originalClick.apply(this, args);
+    const clicked = originalClick.apply(this, args);
+    sentButtonAwaitingConfirmation = this;
+    return clicked;
   };
+
+  function confirmSent() {
+    if (!sentButtonAwaitingConfirmation) return false;
+    sentButtonAwaitingConfirmation = null;
+    try {
+      sessionStorage.removeItem(PENDING_CONSUME_KEY);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
 
   extensionApi.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
@@ -233,7 +304,8 @@
 
   globalThis.ChatGPTAutopilotBudgetGuard = Object.freeze({
     waitUntilReady,
-    nextAllowedAt
+    nextAllowedAt,
+    confirmSent
   });
 
   setInterval(() => {

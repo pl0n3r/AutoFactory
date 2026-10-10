@@ -27,6 +27,7 @@
   });
   const restored = reliability.load(sessionStorage);
   const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state';
+  const BUDGET_BLOCK_KEY = 'chatgpt-autopilot-budget-blocked-v1';
   const CONVERSATION_TRANSFER_KEY = 'chatgpt-autopilot-conversation-transfer-at';
   const CONVERSATION_TRANSFER_COOLDOWN_MS = 10 * 60 * 1000;
   const runtimeSchemaVersion = 4;
@@ -256,7 +257,8 @@
     if (cachedConfigPromise) return cachedConfigPromise;
     const defaults = {
       prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION,
-      delaySeconds: 15, learning: learning.EMPTY, sharedLearning: null, ...SCROLL_DEFAULTS
+      delaySeconds: 15, learning: learning.EMPTY, sharedLearning: null,
+      accountBudgetEnabled: false, ...SCROLL_DEFAULTS
     };
     cachedConfigPromise = new Promise((resolve, reject) => {
       try {
@@ -593,8 +595,31 @@
     return 'unavailable';
   }
 
+  function pauseForBudgetUnavailable() {
+    state.enabled = false;
+    state.nextSendAt = 0;
+    try {
+      sessionStorage.setItem(BUDGET_BLOCK_KEY, '1');
+    } catch (_error) {
+      // Si el almacenamiento falla, la sesión actual permanece pausada.
+    }
+    log('budget-blocked', { code: 'budget_unavailable' });
+    setStatus('Pausado: presupuesto compartido no verificable', 'error');
+    return false;
+  }
+
   async function waitForBudgetBeforeSend(prompt) {
-    if (!budgetGuard?.waitUntilReady) return true;
+    if (!budgetGuard?.waitUntilReady) {
+      // El guard puede faltar si su script no cargó. Solo el presupuesto
+      // explícitamente desactivado autoriza continuar sin esa protección.
+      try {
+        const settings = await config();
+        if (settings.accountBudgetEnabled === false) return true;
+      } catch (_error) {
+        // Estado no verificable: no permitir envío.
+      }
+      return pauseForBudgetUnavailable();
+    }
     const updateBudgetStatus = () => {
       setStatus(core.budgetWaitLabel(budgetGuard.nextAllowedAt?.()));
     };
@@ -606,7 +631,10 @@
     } finally {
       clearInterval(statusTimer);
     }
-    if (!budgetReady || !state.enabled) return false;
+    if (budgetReady?.reason === 'budget_unavailable') {
+      return pauseForBudgetUnavailable();
+    }
+    if (budgetReady !== true || !state.enabled) return false;
     const field = core.composer(document);
     const currentText = core.composerText(field);
     if (currentText && !promptMatches(currentText, prompt)) {
@@ -706,6 +734,7 @@
     })) {
       throw new Error('ChatGPT no confirmó el mensaje dentro de la conversación');
     }
+    budgetGuard?.confirmSent?.();
     state.lastSentAt = Date.now();
     state.generationStartedAt = 0;
     state.waiting = true;
@@ -1152,8 +1181,16 @@
     }
   }
 
-  function setEnabled(enabled) {
+  function setEnabled(enabled, explicit = false) {
     const nextEnabled = Boolean(enabled);
+    if (nextEnabled && sessionStorage.getItem(BUDGET_BLOCK_KEY) === '1') {
+      if (!explicit) {
+        state.enabled = false;
+        setStatus('Pausado: presupuesto compartido no verificable', 'error');
+        return;
+      }
+      sessionStorage.removeItem(BUDGET_BLOCK_KEY);
+    }
     if (!core.enabledStateChanged(state.enabled, nextEnabled)) return;
     state.enabled = nextEnabled;
     log('enabled-change', { enabled: state.enabled });
@@ -1187,7 +1224,9 @@
   }
 
   extensionApi.runtime.onMessage.addListener((message, _sender, reply) => {
-    if (message?.type === 'autopilot:set-enabled') setEnabled(message.enabled);
+    if (message?.type === 'autopilot:set-enabled') {
+      setEnabled(message.enabled, message.enabled === true);
+    }
     if (message?.type === 'autopilot:heartbeat') void tick();
     if (message?.type === 'autopilot:get-status') {
       reply({ enabled: state.enabled, status: state.status });
@@ -1202,7 +1241,11 @@
     if (changes.learning?.newValue) {
       state.learned = learning.normalize(changes.learning.newValue);
     }
-    if (changes.masterEnabled) setEnabled(Boolean(changes.masterEnabled.newValue));
+    if (changes.masterEnabled) {
+      const change = changes.masterEnabled;
+      setEnabled(Boolean(change.newValue),
+        change.oldValue === false && change.newValue === true);
+    }
   });
 
   extensionApi.storage.local.get({ masterEnabled: false, learning: learning.EMPTY }, values => {
