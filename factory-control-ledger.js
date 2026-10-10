@@ -16,13 +16,20 @@
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
   const COMMAND_KEY_RE = /^(?:pause|resume):(?:instance|[0-9]+):[0-9]+:[0-9]+$/;
 
+  // Only coordinates ledgers sharing the same save function in this JS realm.
+  // A cross-context/production sender still requires a durable atomic claim.
+  const V1_SHARED_QUEUES = new WeakMap();
+
   function createLedger({ load, save, maxEntries = 256 } = {}) {
     if (!protocol || typeof protocol.command !== 'function' ||
         typeof load !== 'function' || typeof save !== 'function' ||
         !Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 4096) {
       throw new TypeError('A protocol, storage adapter and bounded capacity are required');
     }
-    let queue = Promise.resolve();
+    // v1 serialization is shared across instances using this storage adapter.
+    // Per-instance capability for an ambiguous post-effect audit result.
+    const ambiguousResult = Object.freeze({});
+    function deferOutcome() { return ambiguousResult; }
 
     function checked(receipts) {
       if (!Array.isArray(receipts) || receipts.length > maxEntries) {
@@ -52,10 +59,29 @@
       });
     }
 
+    async function persistAndVerify(expectedReceipts) {
+      // A silent or false-ACK storage adapter must never authorize an effect.
+      // Verify the exact receipt set after writes, even for legacy adapters
+      // that return undefined after successfully persisting.
+      const acknowledgement = await save(expectedReceipts);
+      if (acknowledgement === false) {
+        throw new Error('Command receipt persistence not confirmed');
+      }
+      const observed = checked(await load());
+      if (observed.length !== expectedReceipts.length ||
+          observed.some((row, index) =>
+            row.id !== expectedReceipts[index].id ||
+            row.state !== expectedReceipts[index].state ||
+            row.code !== expectedReceipts[index].code)) {
+        throw new Error('Command receipt persistence not confirmed');
+      }
+    }
+
     async function execute(input, handler) {
       const command = protocol.command(input);
       if (typeof handler !== 'function') throw new TypeError('Command handler required');
-      const task = queue.then(async () => {
+      const priorTask = V1_SHARED_QUEUES.get(save) || Promise.resolve();
+      const task = priorTask.then(async () => {
         const receipts = checked(await load());
         const prior = receipts.find(receipt => receipt.id === command.id);
         if (prior) {
@@ -67,21 +93,29 @@
         // Never evict receipts silently: an evicted ID could execute a message twice.
         if (receipts.length >= maxEntries) throw new Error('Command ledger is full');
         const pending = [...receipts, { id: command.id, state: 'pending', code: null }];
-        await save(pending); // fail closed before the external side effect
+        await persistAndVerify(pending); // confirmed before the effect
         let ack;
         try {
           const outcome = await handler(command);
+          if (outcome === ambiguousResult) {
+            // Retain the persisted pending receipt and block future replays.
+            return protocol.acknowledgement({
+              id: command.id, ok: false, code: 'not_ready'
+            });
+          }
           ack = protocol.acknowledgement({ id: command.id, ok: outcome?.ok, code: outcome?.code });
         } catch (_error) {
           ack = protocol.acknowledgement({ id: command.id, ok: false, code: 'failed' });
         }
-        await save([...receipts, { id: command.id, state: 'done', code: ack.code }]);
+        await persistAndVerify([...receipts, {
+          id: command.id, state: 'done', code: ack.code
+        }]);
         return ack;
       });
-      queue = task.then(() => undefined, () => undefined);
+      V1_SHARED_QUEUES.set(save, task.then(() => undefined, () => undefined));
       return task;
     }
-    return Object.freeze({ execute });
+    return Object.freeze({ execute, deferOutcome });
   }
 
   function commandKey(command) {

@@ -483,6 +483,102 @@ const memory = () => {
 
   console.log('Chrome profile credential store: scoped, expiring, revocable and fail-closed');
   console.log('Chrome receipt store: durable, duplicate-safe, fail-closed and data-minimized');
+  // AC-01/AC-03: false acknowledgment or a no-op save never licenses an
+  // effect. A failed done write leaves the pending receipt for safe replay.
+  {
+    let effects = 0;
+    const falseSave = createLedger({
+      load: async () => [],
+      save: async () => false
+    });
+    await assert.rejects(
+      falseSave.execute(command('false-prewrite'), async () => {
+        effects += 1;
+        return { ok: true, code: 'ok' };
+      }), /persistence not confirmed/
+    );
+    const silentSave = createLedger({
+      load: async () => [],
+      save: async () => undefined
+    });
+    await assert.rejects(
+      silentSave.execute(command('silent-prewrite'), async () => {
+        effects += 1;
+        return { ok: true, code: 'ok' };
+      }), /persistence not confirmed/
+    );
+    assert.equal(effects, 0);
+
+    const backing = memory();
+    const failingDone = {
+      load: backing.load,
+      save: async rows => {
+        if (rows.at(-1)?.state === 'done') return false;
+        await backing.save(rows);
+      }
+    };
+    await assert.rejects(
+      createLedger(failingDone).execute(command('false-donewrite'), async () => {
+        effects += 1;
+        return { ok: true, code: 'ok' };
+      }), /persistence not confirmed/
+    );
+    assert.equal(effects, 1);
+    assert.deepEqual(JSON.parse(backing.snapshot()), [
+      { id: 'false-donewrite', state: 'pending', code: null }
+    ]);
+    assert.equal((await createLedger(failingDone).execute(
+      command('false-donewrite'), async () => {
+        effects += 1;
+        return { ok: true, code: 'ok' };
+      }
+    )).code, 'not_ready');
+    assert.equal(effects, 1);
+  }
+  console.log('Factory Control ledger AC-01: false and silent saves deny effects and success');
+
+  // AC-01: the same storage function enforces one queue across ledger
+  // instances in one realm, even if both submissions start together.
+  {
+    const sharedStore = memory();
+    const a = createLedger(sharedStore);
+    const b = createLedger(sharedStore);
+    const input = command('cross-ledger-one-effect');
+    let effects = 0;
+    const result = await Promise.all([
+      a.execute(input, async () => { effects += 1; return { ok: true, code: 'ok' }; }),
+      b.execute(input, async () => { effects += 1; return { ok: true, code: 'ok' }; })
+    ]);
+    assert.deepEqual(result.map(x => x.code).sort(), ['already_handled', 'ok']);
+    assert.equal(effects, 1);
+  }
+  console.log('Factory Control ledger AC-01: shared-adapter parallel claims serialize');
+
+  // AC-03: a ledger-issued ambiguous-outcome capability must keep pending
+  // even after the original process/ledger instance disappears.
+  {
+    const store = memory();
+    const ledger = createLedger(store);
+    let effects = 0;
+    const input = command('audit-uncertain-ledger');
+    const outcome = await ledger.execute(input, async () => {
+      effects += 1;
+      return ledger.deferOutcome();
+    });
+    assert.equal(outcome.code, 'not_ready');
+    assert.equal(outcome.ok, false);
+    assert.deepEqual(JSON.parse(store.snapshot()), [
+      { id: 'audit-uncertain-ledger', state: 'pending', code: null }
+    ]);
+    const replay = await createLedger(store).execute(input, async () => {
+      effects += 1;
+      return { ok: true, code: 'ok' };
+    });
+    assert.equal(replay.code, 'not_ready');
+    assert.equal(effects, 1);
+  }
+  console.log('Factory Control ledger AC-03: ambiguous result stays pending across restart');
+
   console.log('Factory Control ledger: concurrent duplicates, restart, failure isolation, pending, capacity and corruption pass');
   console.log('Factory Control v2 authorization and ledger: instance-scoped, expiring and idempotent');
 })().catch(error => { console.error(error); process.exitCode = 1; });
