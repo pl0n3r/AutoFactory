@@ -30,3 +30,11 @@ Runner availability recovered by 2026-09-27. On exact main SHA `2c9d6889e95ddd4b
 Those results prove runner recovery and CI execution. They do **not** retroactively make v1.6.3/v1.6.4 CI-verified, and they do not by themselves satisfy Chrome/Safari smoke plus rollback for GREEN status.
 
 ControlBot#20 remains the legal gate for real pairing/traffic. This document does not authorize go-live, expanded permissions, payments, release deletion, or asset replacement.
+
+## 1.7.0 shared adaptive learning observation gate
+
+- Shared outcome schema rejects private and unknown fields and caps batches at 16 KiB.
+- Cross-tab incident leases allow one replacement chat per incident.
+- Cross-instance test proves policy transfer in observation mode without changing the local default action.
+- Chrome/Safari sources are mirrored and smoke-tested.
+- Remote ControlBot transport and enforcement remain disabled until consent, security validation, and legal gate #20 are complete.
