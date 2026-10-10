@@ -241,11 +241,65 @@
     return Object.freeze({ read });
   }
 
+
+  // Independent freshness envelope: never infer recovery from a reset time.
+  // A fresh provider observation is required for every state transition.
+  const DEFAULT_MAX_SIGNAL_AGE_MS = 180_000;
+  const MAX_SIGNAL_AGE_MS = 300_000;
+
+  function unknownObservation(freshness = 'unknown') {
+    return Object.freeze({
+      state: 'unknown', resetAt: null, observedAt: null, freshness
+    });
+  }
+
+  function createProviderAccountStateObserver({
+    readProviderSignal, now = Date.now, maxAgeMs = DEFAULT_MAX_SIGNAL_AGE_MS
+  } = {}) {
+    if (typeof readProviderSignal !== 'function' || typeof now !== 'function' ||
+        !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 1 ||
+        maxAgeMs > MAX_SIGNAL_AGE_MS) {
+      throw new TypeError('Invalid account observation dependencies');
+    }
+    const getSignal = readProviderSignal;
+    const clock = now;
+
+    async function read() {
+      try {
+        const raw = await getSignal();
+        const fields = ['signalCode', 'alertText', 'observedAt'];
+        if (!exactObject(raw, fields)) return unknownObservation();
+        const snapshot = Object.freeze({
+          signalCode: raw.signalCode, alertText: raw.alertText
+        });
+        const observedAt = raw.observedAt;
+        // An accessor or proxy must not add extra fields while being read.
+        if (!exactObject(raw, fields)) return unknownObservation();
+        const nowMs = checkedNow(clock);
+        if (nowMs === null || !Number.isSafeInteger(observedAt) ||
+            observedAt < 0 || observedAt > nowMs) {
+          return unknownObservation();
+        }
+        if (nowMs - observedAt > maxAgeMs) return unknownObservation('stale');
+        const state = classifyProviderPageSignal(snapshot, () => nowMs);
+        if (state.state === 'unknown') return unknownObservation();
+        return Object.freeze({
+          state: state.state, resetAt: state.resetAt,
+          observedAt, freshness: 'fresh'
+        });
+      } catch (_error) { // NOSONAR: never leak provider, alert or clock detail.
+        return unknownObservation();
+      }
+    }
+
+    return Object.freeze({ read });
+  }
   return Object.freeze({
     STATES,
     PAGE_SIGNAL_CODES,
     classifyAccountState,
     classifyProviderPageSignal,
-    createProviderAccountStateReader
+    createProviderAccountStateReader,
+    createProviderAccountStateObserver
   });
 });
