@@ -24,8 +24,10 @@ assert.match(content, /const resumableDraft = promptMatches\(core\.composerText\
   'el ciclo debe retomar un borrador propio normalizado');
 assert.match(content, /signal\.code === 'conversation-limit'[\s\S]*location\.pathname === '\/'[\s\S]*signal = \{ code: 'ready', action: 'none' \}/,
   'una pestaña que ya está en chat nuevo no debe abrir otro chat');
-assert.match(content, /if \(periodicReloadDue\) \{[\s\S]{0,500}location\.reload\(\)/,
-  'el refresh periódico vencido debe recargar incluso mientras espera una respuesta');
+assert.match(content, /if \(periodicReloadDue && generating\) \{[\s\S]{0,250}return;[\s\S]{0,120}if \(periodicReloadDue\) \{[\s\S]{0,500}location\.reload\(\)/,
+  'el refresh vencido debe esperar una generación real y recargar al terminar');
+assert.doesNotMatch(content, /Conversación inaccesible; continuando en un chat nuevo/,
+  'un fallo de carga no debe abrir automáticamente otro chat');
 assert.match(content, /CONVERSATION_TRANSFER_KEY[\s\S]*sessionStorage\.getItem\(CONVERSATION_TRANSFER_KEY\)/,
   'el bloqueo de transferencia debe sobrevivir la navegación dentro de la pestaña');
 assert.match(content, /CONVERSATION_TRANSFER_COOLDOWN_MS\s*=\s*10 \* 60 \* 1000/,

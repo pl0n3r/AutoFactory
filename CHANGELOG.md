@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.23 — 2026-10-10
+
+- Aplaza el refresh periódico mientras ChatGPT mantiene una generación real activa.
+- Recarga inmediatamente al terminar la respuesta, aunque quede estado interno pendiente.
+- Los fallos de carga agotados permanecen en el chat actual y nunca escalan automáticamente a un chat nuevo.
+
 ## 1.6.22 — 2026-10-09
 
 - Limita a una sola acción cada transición automática hacia un chat nuevo.

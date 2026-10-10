@@ -45,7 +45,7 @@ function page(html) {
   assert.equal(core.recoverableEscalation(1), 'retry');
   assert.equal(core.recoverableEscalation(2), 'retry');
   assert.equal(core.recoverableEscalation(3), 'reload');
-  assert.equal(core.recoverableEscalation(4), 'new-chat');
+  assert.equal(core.recoverableEscalation(4), 'wait');
   assert.deepEqual(core.recoverableState(null), {});
   assert.deepEqual(core.recoverableState('{"path":"/c/1","attempts":2}'), {
     path: '/c/1', attempts: 2

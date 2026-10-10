@@ -723,6 +723,11 @@
         const previous = core.recoverableState(
           sessionStorage.getItem(RECOVERABLE_STATE_KEY)
         );
+        if (previous.path === location.pathname
+            && Math.max(0, Number(previous.attempts) || 0) >= 4) {
+          setStatus('Conversación inaccesible; esperando aquí sin abrir otro chat', 'error');
+          return;
+        }
         const attempts = previous.path === location.pathname
           ? Math.max(0, Number(previous.attempts) || 0) + 1 : 1;
         sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify({
@@ -746,13 +751,10 @@
           setStatus('Conversación no disponible; recarga controlada');
           location.reload();
         } else {
-          sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
-          state.pendingSignature = '';
-          state.lastSentAt = 0;
-          state.nextSendAt = Date.now() + 5000;
+          state.waiting = false;
+          state.nextSendAt = Date.now() + 60000;
           persistRuntime();
-          setStatus('Conversación inaccesible; continuando en un chat nuevo');
-          location.assign('https://chatgpt.com/');
+          setStatus('Conversación inaccesible; esperando aquí sin abrir otro chat', 'error');
         }
         log('recovery', { code: signal.code, action: escalation, attempts,
           priority: 'circuit-bypass' });
@@ -802,6 +804,10 @@
       }
       const periodicReloadDue = currentConfig.periodicReload
         && Date.now() - state.lastPeriodicReloadAt >= currentConfig.periodicReloadMinutes * 60000;
+      if (periodicReloadDue && generating) {
+        setStatus('Refresh pendiente; esperando que ChatGPT termine');
+        return;
+      }
       if (periodicReloadDue) {
         state.lastPeriodicReloadAt = Date.now();
         sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));

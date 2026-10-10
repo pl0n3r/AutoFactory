@@ -232,7 +232,7 @@
     const count = Math.max(0, Number(attempts) || 0);
     if (count <= 2) return 'retry';
     if (count === 3) return 'reload';
-    return 'new-chat';
+    return 'wait';
   }
   function pageSignal(doc = document) {
     if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };
