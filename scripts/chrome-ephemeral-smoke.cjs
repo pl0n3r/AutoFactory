@@ -63,8 +63,8 @@ function copyAttestedAssets(root, extensionDir, attestation) {
   }
 }
 
-function chromeArgs(profileDir, extensionDir) {
-  return [
+function chromeArgs(profileDir, extensionDir, platform = process.platform, environment = process.env) {
+  const args = [
     '--headless=new',
     '--no-first-run',
     '--no-default-browser-check',
@@ -80,6 +80,16 @@ function chromeArgs(profileDir, extensionDir) {
     '--remote-debugging-port=0',
     'about:blank',
   ];
+  // Chromium from the pinned GitHub Linux runner image cannot initialize
+  // its user-namespace sandbox there (SIGABRT). Only the disposable CI
+  // smoke process may disable it; never disable the sandbox on users' Macs,
+  // Windows machines or local Linux browsers. This does not bypass the
+  // mandatory DevTools proof of a loaded MV3 service worker.
+  if (platform === 'linux' && environment.GITHUB_ACTIONS === 'true' &&
+      environment.CI === 'true') {
+    args.unshift('--no-sandbox');
+  }
+  return args;
 }
 
 function sanitizedEnvironment(profileDir) {
