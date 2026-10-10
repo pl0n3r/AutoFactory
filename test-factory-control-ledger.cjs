@@ -483,6 +483,31 @@ const memory = () => {
 
   console.log('Chrome profile credential store: scoped, expiring, revocable and fail-closed');
   console.log('Chrome receipt store: durable, duplicate-safe, fail-closed and data-minimized');
+  // AC-03: a ledger-issued ambiguous-outcome capability must keep pending
+  // even after the original process/ledger instance disappears.
+  {
+    const store = memory();
+    const ledger = createLedger(store);
+    let effects = 0;
+    const input = command('audit-uncertain-ledger');
+    const outcome = await ledger.execute(input, async () => {
+      effects += 1;
+      return ledger.deferOutcome();
+    });
+    assert.equal(outcome.code, 'not_ready');
+    assert.equal(outcome.ok, false);
+    assert.deepEqual(JSON.parse(store.snapshot()), [
+      { id: 'audit-uncertain-ledger', state: 'pending', code: null }
+    ]);
+    const replay = await createLedger(store).execute(input, async () => {
+      effects += 1;
+      return { ok: true, code: 'ok' };
+    });
+    assert.equal(replay.code, 'not_ready');
+    assert.equal(effects, 1);
+  }
+  console.log('Factory Control ledger AC-03: ambiguous result stays pending across restart');
+
   console.log('Factory Control ledger: concurrent duplicates, restart, failure isolation, pending, capacity and corruption pass');
   console.log('Factory Control v2 authorization and ledger: instance-scoped, expiring and idempotent');
 })().catch(error => { console.error(error); process.exitCode = 1; });
