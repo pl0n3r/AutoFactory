@@ -9,6 +9,10 @@ const sendButtonStart = source.indexOf('function waitForSendButton', budgetHelpe
 assert.ok(budgetHelperStart >= 0 && sendButtonStart > budgetHelperStart,
   'budget wait helper must exist before send-control polling');
 const budgetHelper = source.slice(budgetHelperStart, sendButtonStart);
+const pauseHelperStart = source.indexOf('function pauseForBudgetUnavailable()');
+assert.ok(pauseHelperStart >= 0 && pauseHelperStart < budgetHelperStart,
+  'shared fail-closed pause must precede the wait helper');
+const pauseHelper = source.slice(pauseHelperStart, budgetHelperStart);
 assert.ok(budgetHelper.includes('await budgetGuard.waitUntilReady()'),
   'budget helper must await shared account capacity explicitly');
 assert.ok(budgetHelper.includes("if (currentText && !promptMatches(currentText, prompt))"),
@@ -51,16 +55,16 @@ console.log('account-budget-content: live pacing status is deterministic');
 
 assert.ok(budgetHelper.includes("budgetReady?.reason === 'budget_unavailable'"),
   'typed budget expiry must have a dedicated blocked branch');
-assert.ok(budgetHelper.includes('state.enabled = false'),
+assert.ok(pauseHelper.includes('state.enabled = false'),
   'an unknown budget must pause the local tab rather than requeue a send');
-assert.ok(budgetHelper.includes("log('budget-blocked', { code: 'budget_unavailable' })"),
+assert.ok(pauseHelper.includes("log('budget-blocked', { code: 'budget_unavailable' })"),
   'blocked diagnostic must be typed and contain no composer contents');
 assert.ok(budgetHelper.includes('budgetReady !== true'),
   'truthy typed budget results must never grant send permission');
 assert.ok(tick.includes('state.busy = false;'),
   'tick must release busy even on budget expiry');
 // Behavior is exercised using the real content script in the JSDOM scenario below.
-assert.ok(budgetHelper.includes("sessionStorage.setItem(BUDGET_BLOCK_KEY, '1')"),
+assert.ok(pauseHelper.includes("sessionStorage.setItem(BUDGET_BLOCK_KEY, '1')"),
   'a blocked tab must persist its non-sensitive latch');
 assert.ok(send.includes('budgetGuard?.confirmSent?.()'),
   'only confirmed provider delivery acknowledges the capacity reservation');
