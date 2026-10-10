@@ -194,10 +194,15 @@ async function probeChromeWorker(profileDir, timeoutMs, child) {
 }
 
 async function launchChrome(chromeBinary, args, profileDir, timeoutMs, spawnProcess, probeWorker) {
+  const hostedLinux = process.platform === 'linux' &&
+    process.env.GITHUB_ACTIONS === 'true' && process.env.CI === 'true';
   const child = spawnProcess(chromeBinary, args, {
     env: sanitizedEnvironment(profileDir),
     windowsHide: true,
     stdio: ['ignore', 'ignore', 'pipe'],
+    // Chrome launches helper processes. Give disposable CI Chromium its own
+    // process group so cleanup terminates helpers before removing the profile.
+    detached: hostedLinux,
   });
   if (!child || typeof child.kill !== 'function' || typeof child.on !== 'function') {
     fail('invalid Chrome process');
@@ -233,7 +238,17 @@ async function launchChrome(chromeBinary, args, profileDir, timeoutMs, spawnProc
     }
     return proof;
   } finally {
-    child.kill();
+    if (hostedLinux && Number.isSafeInteger(child.pid) && child.pid > 1) {
+      // Kill the isolated Chromium process group, not just its parent.
+      // A negative PID is safe only for our own detached hosted-CI child.
+      try {
+        process.kill(-child.pid, 'SIGTERM');
+      } catch (error) {
+        if (error?.code !== 'ESRCH') child.kill();
+      }
+    } else {
+      child.kill();
+    }
     if (typeof child.once === 'function') {
       await new Promise(resolve => {
         if (child.exitCode !== null && child.exitCode !== undefined) {
@@ -269,6 +284,7 @@ async function runChromeSmoke({
   const profileDir = fs.mkdtempSync(path.join(tempRoot, 'autofactory-chrome-profile-'));
   const extensionDir = fs.mkdtempSync(path.join(tempRoot, 'autofactory-chrome-extension-'));
   let proof;
+  let smokeError = null;
   try {
     copyAttestedAssets(root, extensionDir, attestation);
     proof = await launchChrome(
@@ -279,11 +295,29 @@ async function runChromeSmoke({
       spawnProcess,
       probeWorker
     );
+  } catch (error) {
+    smokeError = error;
+    throw error;
   } finally {
-    // Chrome helpers may still flush files just after the parent exits.
-    // Retry only documented transient filesystem races; never skip cleanup.
-    fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
-    fs.rmSync(extensionDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+    // Never mask a missing MV3 worker with ENOTEMPTY from a Chromium helper.
+    // Attempt both removals even when the first one fails; no partial cleanup
+    // can produce successful smoke evidence.
+    const cleanupErrors = [];
+    for (const directory of [profileDir, extensionDir]) {
+      try {
+        fs.rmSync(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+      } catch (error) {
+        cleanupErrors.push(error?.code === 'ENOTEMPTY' ? 'ENOTEMPTY' : 'filesystem-error');
+      }
+    }
+    if (cleanupErrors.length) {
+      const reason = 'Chrome ephemeral cleanup failed (' + cleanupErrors.join(',') + ')';
+      if (smokeError instanceof Error) {
+        smokeError.message += '; ' + reason;
+        throw smokeError;
+      }
+      fail(reason);
+    }
   }
 
   return Object.freeze({
