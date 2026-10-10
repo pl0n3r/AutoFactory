@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm test
       - name: Verify exact tag and Chrome/Safari/package/lock versions
         run: node scripts/verify-release-metadata.cjs "$GITHUB_REF_NAME"
@@ -47,7 +47,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: Real Chrome ephemeral extension-load smoke
         run: node scripts/chrome-ephemeral-smoke.cjs "$GITHUB_REF_NAME" "$GITHUB_SHA"
 
