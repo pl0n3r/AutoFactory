@@ -387,6 +387,32 @@ function fixture(overrides = {}) {
       assert.equal(calls.some(call => call.kind === 'revoke'), false);
       assert.equal(removed, false);
     }
+    // A throwing write-ahead adapter is also a strict no-effect failure.
+    {
+      const { contract, calls } = fixture();
+      const persisted = createPersistedPairingContract({
+        pairing: contract,
+        credentialStore: { save: async () => {}, remove: async () => true },
+        auditStore: { append: async () => { throw new Error('private audit error'); } }
+      });
+      assert.deepEqual(await persisted.revoke(input), { ok: false, code: 'failed' });
+      assert.equal(calls.some(call => call.kind === 'revoke'), false);
+    }
+    // Remote revocation may have occurred: no success without local removal.
+    {
+      const { contract, calls } = fixture();
+      const recorded = [];
+      const persisted = createPersistedPairingContract({
+        pairing: contract,
+        credentialStore: { save: async () => {}, remove: async () => false },
+        auditStore: {
+          append: async entry => { recorded.push(structuredClone(entry)); return true; }
+        }
+      });
+      assert.deepEqual(await persisted.revoke(input), { ok: false, code: 'failed' });
+      assert.equal(calls.filter(call => call.kind === 'revoke').length, 1);
+      assert.deepEqual(recorded, [{ event: 'pairing_revocation', phase: 'attempt' }]);
+    }
     const { contract, calls } = fixture();
     let records = 0;
     const persisted = createPersistedPairingContract({
