@@ -204,6 +204,25 @@ function effects(spy) {
   }), /six command effect handlers/);
 
 
+  // AC-01: two independent executor/ledger objects sharing the same
+  // fake storage adapter must not both perform the same send effect.
+  {
+    const store = memoryStore();
+    const effectsCalled = [];
+    const input = command('shared-adapter-race', 'send_message', 7, { text: privateText });
+    const make = () => createCommandExecutor({
+      ledger: createLedger(store), authorizer,
+      effects: effects(effectsCalled), auditStore: fakeAuditStore()
+    });
+    const [one, two] = await Promise.all([
+      make().execute(input, context), make().execute(input, context)
+    ]);
+    assert.deepEqual([one.code, two.code].sort(), ['already_handled', 'ok']);
+    assert.equal(effectsCalled.length, 1);
+    assert.equal(JSON.parse(store.snapshot()).length, 1);
+  }
+  console.log('Factory Control audit AC-01: shared-adapter concurrent ledgers serialize');
+
   // AC-03: the journal is distinct from idempotency receipts, persists when
   // adapters are recreated, and never contains chat text or identifiers.
   {
