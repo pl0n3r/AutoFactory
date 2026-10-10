@@ -23,8 +23,9 @@ def run_pairing_fake() -> str:
 
 class FactoryControlPairingAuditContractTests(unittest.TestCase):
     def test_pairing_invalid_expired_and_replayed_fail_closed(self):
-        self.assertIn("factory-control pairing contract: ok", run_pairing_fake())
-        self.assertIn("pairing-audit AC-01: ok", run_pairing_fake())
+        output = run_pairing_fake()
+        self.assertIn("factory-control pairing contract: ok", output)
+        self.assertIn("pairing-audit AC-01: ok", output)
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn("if (challenge.revoked)", source)
         self.assertIn("if (challenge.used)", source)
