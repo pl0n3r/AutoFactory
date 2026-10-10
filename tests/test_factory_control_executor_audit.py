@@ -1,7 +1,7 @@
 """Acceptance checks for the offline AutoFactory command executor.
 
-AC-01 and AC-02 reuse the actual Node execution suite. AC-03 is deliberately
-not claimed here until the ledger path is part of the canonical reservation.
+All three criteria execute the real JavaScript suite with memory-only adapters.
+No real messaging, accounts, browser extensions or services are involved.
 """
 from __future__ import annotations
 
@@ -39,6 +39,23 @@ class FactoryControlExecutorAuditTests(unittest.TestCase):
         self.assertIn(
             "Factory Control executor: authorization",
             run_executor_contract(),
+        )
+
+
+    def test_sanitized_audit_survives_recreation_and_failures(self):
+        self.assertIn(
+            "Factory Control audit AC-03: sanitized durable decisions,"
+            " fail-closed pending and replay rejection pass",
+            run_executor_contract(),
+        )
+        result = subprocess.run(
+            ["node", "test-factory-control-ledger.cjs"],
+            cwd=ROOT, capture_output=True, text=True, check=False, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, "Offline ledger regression failed")
+        self.assertIn(
+            "Factory Control ledger AC-03: ambiguous result stays pending",
+            result.stdout,
         )
 
 
