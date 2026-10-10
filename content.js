@@ -715,6 +715,7 @@
     })) {
       throw new Error('ChatGPT no confirmó el mensaje dentro de la conversación');
     }
+    budgetGuard?.confirmSent?.();
     state.lastSentAt = Date.now();
     state.generationStartedAt = 0;
     state.waiting = true;

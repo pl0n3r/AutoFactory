@@ -59,43 +59,11 @@ assert.ok(budgetHelper.includes('budgetReady !== true'),
   'truthy typed budget results must never grant send permission');
 assert.ok(tick.includes('state.busy = false;'),
   'tick must release busy even on budget expiry');
-{
-  const status = [], events = [];
-  const state = { enabled: true, busy: true, nextSendAt: 1000 };
-  const field = { draft: 'unsent draft' };
-  const guard = {
-    nextAllowedAt: () => null,
-    waitUntilReady: async () => ({ ok: false, reason: 'budget_unavailable' })
-  };
-  const coreFake = {
-    budgetWaitLabel: () => 'Verificando presupuesto compartido',
-    composer: () => field,
-    composerText: current => current?.draft || ''
-  };
-  const makeHelper = new Function(
-    'budgetGuard', 'core', 'setStatus', 'setInterval', 'clearInterval',
-    'state', 'log', 'promptMatches', 'document',
-    'return (' + budgetHelper.trim() + ');'
-  );
-  const helper = makeHelper(
-    guard, coreFake, (value, kind) => { status.push({ value, kind }); },
-    () => 1, () => {}, state,
-    (code, detail) => { events.push({ code, detail }); },
-    (value, prompt) => value === prompt, {}
-  );
-  helper('unsent draft').then(result => {
-    assert.equal(result, false, 'unavailable budget must prevent provider send');
-    assert.equal(state.enabled, false, 'tab must pause until deliberate re-enable');
-    assert.equal(field.draft, 'unsent draft', 'draft must be preserved');
-    assert.ok(status.some(entry => entry.kind === 'error' && entry.value.includes('presupuesto')));
-    assert.deepEqual(events, [{
-      code: 'budget-blocked', detail: { code: 'budget_unavailable' }
-    }], 'diagnostic must contain no chat text or secrets');
-    console.log('account-budget-content: typed blocked result pauses safely');
-  }).catch(error => { console.error(error); process.exitCode = 1; });
-}
-
-
+// Behavior is exercised using the real content script in the JSDOM scenario below.
+assert.ok(budgetHelper.includes("sessionStorage.setItem(BUDGET_BLOCK_KEY, '1')"),
+  'a blocked tab must persist its non-sensitive latch');
+assert.ok(send.includes('budgetGuard?.confirmSent?.()'),
+  'only confirmed provider delivery acknowledges the capacity reservation');
 
 const { JSDOM } = require('jsdom');
 const reliability = require('./reliability.js');
@@ -215,6 +183,7 @@ function bootFakeTab(session, decision) {
   assert.equal(reloaded.draft(), 'Draft fixture', 'reload preserves user-visible draft');
 
   reloaded.emit('autopilot:set-enabled', { enabled: true });
+  reloaded.advance();
   assert.equal(reloaded.isEnabled(), true, 'explicit local enable clears the block');
   assert.equal(reloaded.stored().has('chatgpt-autopilot-budget-blocked-v1'), false,
     'explicit enable removes only tab-local latch');

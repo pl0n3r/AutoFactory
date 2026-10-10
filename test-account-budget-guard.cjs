@@ -203,3 +203,91 @@ async function unavailableScenario(mode) {
   console.error(error);
   process.exitCode = 1;
 });
+
+
+// Regression: an acknowledged debit with a delayed/ambiguous callback must not
+// cause another debit until provider delivery is confirmed, even across reload.
+async function ambiguousDebitScenario() {
+  const create = (persisted = {}) => {
+    const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
+      url: 'https://chatgpt.com/', runScripts: 'outside-only'
+    });
+    const w = dom.window, button = w.document.getElementById('send');
+    for (const [key, value] of Object.entries(persisted)) w.sessionStorage.setItem(key, value);
+    let now = 100000, debits = 0, clicks = 0, delayedReply;
+    w.Date.now = () => now;
+    w.setInterval = () => 0;
+    w.setTimeout = (fn, ms = 0) => {
+      now += Math.max(0, Number(ms)||0);
+      void Promise.resolve().then(fn);
+      return 1;
+    };
+    w.clearTimeout = () => {};
+    w.ChatGPTAutopilotCore = {
+      canSend: item => item === button && !item.disabled,
+      pageSignal: () => ({ code: 'ready' }),
+      sendButton: () => button
+    };
+    button.addEventListener('click', () => { clicks++; });
+    let replyStorage;
+    w.chrome = {
+      runtime: {
+        lastError: null,
+        sendMessage(payload, reply) {
+          if (payload.type === 'autopilot:budget-consume') {
+            debits++;
+            delayedReply = reply;
+          } else if (payload.type === 'autopilot:budget-status') {
+            reply({ ok: true, snapshot: readySnapshot() });
+          }
+        }
+      },
+      storage: {
+        local: { get(_defaults, callback) { replyStorage = callback; } },
+        onChanged: { addListener() {} }
+      }
+    };
+    w.eval(fs.readFileSync('./account-budget-guard.js', 'utf8'));
+    replyStorage({
+      masterEnabled: true, accountBudgetEnabled: true,
+      reasoningLevel: 'high', accountBudgetSnapshotV1: readySnapshot()
+    });
+    const persistedState = () => Object.fromEntries(
+      Array.from({ length: w.sessionStorage.length }, (_, i) => {
+        const key = w.sessionStorage.key(i);
+        return [key, w.sessionStorage.getItem(key)];
+      })
+    );
+    return {
+      w, button, persistedState,
+      canSend: () => w.ChatGPTAutopilotCore.canSend(button),
+      debitCount: () => debits, clickCount: () => clicks,
+      reply: value => delayedReply?.(value)
+    };
+  };
+  const first = create();
+  assert.equal(first.canSend(), false);
+  assert.equal(first.debitCount(), 1);
+  await flush();
+  assert.equal(first.canSend(), false);
+  assert.equal(first.debitCount(), 1,
+    'timeout of a mutating debit must not retry the ambiguous consume');
+  const late = first.reply;
+  late({ ok: true, allowed: true, snapshot: readySnapshot() });
+  await flush();
+  assert.equal(first.debitCount(), 1, 'late callback cannot cause another consume');
+  assert.equal(first.clickCount(), 0);
+  assert.equal(first.w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'), '1');
+  const reloaded = create(first.persistedState());
+  assert.equal(reloaded.canSend(), false);
+  await flush();
+  assert.equal(reloaded.debitCount(), 0,
+    'reload may not replay a previously ambiguous debit');
+  assert.equal(reloaded.clickCount(), 0);
+  first.w.close();
+  reloaded.w.close();
+}
+
+ambiguousDebitScenario().then(() => {
+  console.log('account-budget-guard: delayed consume is not charged twice');
+}).catch(error => { console.error(error); process.exitCode = 1; });

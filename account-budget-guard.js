@@ -15,6 +15,7 @@
   const UNAVAILABLE_WAIT_MS = 8000;
   const SNAPSHOT_RESPONSE_TIMEOUT_MS = 2000;
   const BUDGET_UNAVAILABLE = Object.freeze({ ok: false, reason: 'budget_unavailable' });
+  const PENDING_CONSUME_KEY = 'chatgpt-autopilot-budget-consume-pending-v1';
   let masterEnabled = null;
   let budgetEnabled = null;
   let ready = false;
@@ -23,6 +24,7 @@
   let authorizationInFlight = false;
   let authorizedButton = null;
   let authorizedAt = 0;
+  let sentButtonAwaitingConfirmation = null;
   let refreshInFlight = null;
   let limitActive = false;
 
@@ -176,6 +178,14 @@
 
   function requestAuthorization(button) {
     if (authorizationInFlight || !budgetReadyNow()) return;
+    // A budget-consume mutates shared capacity. Without a durable operation receipt,
+    // an unanswered request is ambiguous: never issue a second consume automatically.
+    try {
+      if (sessionStorage.getItem(PENDING_CONSUME_KEY) === '1') return;
+      sessionStorage.setItem(PENDING_CONSUME_KEY, '1');
+    } catch (_error) {
+      return; // storage unavailable: fail closed before any mutation
+    }
     authorizationInFlight = true;
     ready = false;
     void runtimeMessage({ type: 'autopilot:budget-consume', reasoningLevel })
@@ -225,8 +235,21 @@
     }
     if (masterEnabled !== true || budgetEnabled !== true || !authorizationValid(this)) return undefined;
     clearAuthorization();
-    return originalClick.apply(this, args);
+    const clicked = originalClick.apply(this, args);
+    sentButtonAwaitingConfirmation = this;
+    return clicked;
   };
+
+  function confirmSent() {
+    if (!sentButtonAwaitingConfirmation) return false;
+    sentButtonAwaitingConfirmation = null;
+    try {
+      sessionStorage.removeItem(PENDING_CONSUME_KEY);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
 
   extensionApi.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
@@ -268,7 +291,8 @@
 
   globalThis.ChatGPTAutopilotBudgetGuard = Object.freeze({
     waitUntilReady,
-    nextAllowedAt
+    nextAllowedAt,
+    confirmSent
   });
 
   setInterval(() => {
