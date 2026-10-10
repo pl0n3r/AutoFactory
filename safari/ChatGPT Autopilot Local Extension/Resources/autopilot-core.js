@@ -59,7 +59,34 @@
     return null;
   }
 
-  function composer(doc = document) { return first(doc, COMPOSER_SELECTORS); }
+  function isVisible(element, doc) {
+    for (let node = element; node?.nodeType === 1; node = node.parentElement) {
+      if (node.hidden || node.hasAttribute('inert')
+        || node.getAttribute('aria-hidden') === 'true'
+        || node.getAttribute('aria-disabled') === 'true') return false;
+      const style = doc.defaultView?.getComputedStyle?.(node);
+      if (style && (style.display === 'none' || style.visibility === 'hidden'
+        || style.visibility === 'collapse' || style.pointerEvents === 'none'
+        || Number.parseFloat(style.opacity) === 0)) return false;
+    }
+    return typeof element.checkVisibility !== 'function'
+      || element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  }
+
+
+  function composer(doc = document) {
+    if (doc.nodeType !== 9) return first(doc, COMPOSER_SELECTORS);
+    const usableFields = new Set();
+    for (const selector of COMPOSER_SELECTORS) {
+      for (const field of doc.querySelectorAll(selector)) {
+        if (field.disabled || field.readOnly || field.getAttribute('aria-readonly') === 'true'
+          || field.closest('fieldset[disabled]') || !isVisible(field, doc)) continue;
+        usableFields.add(field);
+        if (usableFields.size > 1) return null;
+      }
+    }
+    return usableFields.values().next().value || null;
+  }
   function interfaceSnapshot(doc = document) {
     return {
       path: doc.location?.pathname || '',
@@ -70,19 +97,50 @@
     };
   }
   function sendButton(doc = document) {
-    const direct = first(doc, SEND_SELECTORS);
-    if (direct) return direct;
     const field = composer(doc);
-    const scope = field?.closest?.('form') || field?.parentElement?.parentElement;
+    if (!field) return null;
+    const fieldForm = field.closest?.('form') || null;
+    const composerRegion = field.closest?.(
+      '[data-testid="composer"], [data-testid="composer-container"], #composer'
+    ) || null;
+    const scope = fieldForm || composerRegion || field.parentElement;
     if (!scope?.querySelectorAll) return null;
-    return [...scope.querySelectorAll('button')].find(button => {
-      const label = normalize([
-        button.getAttribute('aria-label'), button.getAttribute('data-testid'),
-        button.getAttribute('title')
-      ].filter(Boolean).join(' ')).toLowerCase();
-      return /(^|\s)(send|enviar)(\s|$|-)/.test(label)
-        && !/stop|detener|voice|voz|dictate|dictado/.test(label);
-    }) || null;
+    // Without a semantic container, only the provider's explicit submit
+    // control directly alongside the field is eligible.
+    const unscoped = !fieldForm && !composerRegion;
+
+
+    const candidates = [...scope.querySelectorAll('button')].filter(button => {
+      if (button.disabled || button.getAttribute('aria-disabled') === 'true'
+        || button.closest('fieldset[disabled], #chatgpt-autopilot-badge')
+        || !isVisible(button, doc)) return false;
+      const buttonForm = button.closest('form');
+      // HTML's form="" attribute can redirect submission outside its ancestor form.
+      // The effective owner must agree with the composer, not only the DOM parent.
+      if (fieldForm
+        ? (buttonForm !== fieldForm || button.form !== fieldForm)
+        : Boolean(buttonForm || button.form)) return false;
+      if (unscoped && (button.id !== 'composer-submit-button'
+        || button.parentElement !== field.parentElement)) return false;
+      if (button.type === 'reset') return false;
+      const exactSendLabels = new Set([
+        'send', 'send message', 'send prompt',
+        'enviar', 'enviar mensaje', 'enviar prompt'
+      ]);
+      const ariaLabel = normalize(button.getAttribute('aria-label')).toLowerCase();
+      const title = normalize(button.getAttribute('title')).toLowerCase();
+      const text = normalize(button.textContent).toLowerCase();
+      // Never turn "Send feedback", "Send report", or another generic action into submit.
+      if (ariaLabel && !exactSendLabels.has(ariaLabel)) return false;
+      if (title && !exactSendLabels.has(title)) return false;
+      if (button.id === 'composer-submit-button'
+        || button.dataset?.testid === 'send-button') return true;
+      return exactSendLabels.has(ariaLabel)
+        || exactSendLabels.has(title)
+        || (button.type === 'submit' && exactSendLabels.has(text));
+    });
+    // An ambiguous composer must never guess which control to activate.
+    return candidates.length === 1 ? candidates[0] : null;
   }
   function sendControlSnapshot(doc = document) {
     const field = composer(doc);
@@ -352,7 +410,9 @@
   }
 
   function canSend(button) {
-    return Boolean(button && !button.disabled && button.getAttribute('aria-disabled') !== 'true');
+    return Boolean(button && !button.disabled
+      && button.getAttribute('aria-disabled') !== 'true'
+      && !button.closest?.('[aria-disabled="true"], [inert], fieldset[disabled]'));
   }
 
   function enabledStateChanged(current, requested) {
