@@ -32,6 +32,8 @@ const sendButtonScopeCases = {
     assert.equal(core.sendButton(hidden)?.id, 'visible');
   },
   unrelated_or_unsafe_controls_fail_closed() {
+    const withoutComposer = page('<button aria-label="Send message">Send</button>');
+    assert.equal(core.sendButton(withoutComposer), null);
     const unrelated = page(
       '<form><textarea placeholder="ChatGPT"></textarea></form>' +
       '<form><button type="submit" aria-label="Send message">Enviar</button></form>'

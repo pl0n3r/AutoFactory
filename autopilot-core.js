@@ -71,7 +71,16 @@
   }
   function sendButton(doc = document) {
     const field = composer(doc);
-    if (!field) return null;
+    if (!field) {
+      // Support legacy querySelector-only document adapters, never a real page
+      // without a composer. Only an explicitly named send control is accepted.
+      if (typeof doc.querySelectorAll === 'function') return null;
+      const legacy = first(doc, SEND_SELECTORS);
+      const label = normalize(legacy?.getAttribute?.('aria-label') || '').toLowerCase();
+      return legacy && !legacy.disabled && legacy.getAttribute?.('aria-disabled') !== 'true'
+        && /^(send prompt|send message|enviar mensaje|enviar prompt|enviar)$/.test(label)
+        ? legacy : null;
+    }
     const fieldForm = field.closest?.('form') || null;
     const scope = fieldForm
       || field.closest?.('[data-testid="composer"], [data-testid="composer-container"], #composer')
