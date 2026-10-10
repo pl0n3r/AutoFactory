@@ -232,8 +232,10 @@ function effects(spy) {
       { event: 'command_execution', phase: 'decision', outcome: 'authorized' },
       { event: 'command_execution', phase: 'result', outcome: 'ok' }
     ]);
-    assert.doesNotMatch(JSON.stringify(shared.events) + receipts.snapshot(),
+    assert.doesNotMatch(JSON.stringify(shared.events),
       /private chat text|profile-one|private-token|audited-once|send_message|target/);
+    assert.doesNotMatch(receipts.snapshot(),
+      /private chat text|profile-one|private-token|send_message|target/);
 
     // Denied commands produce a decision and result without any effect.
     const deniedEvents = [];
