@@ -168,6 +168,29 @@
       "retention": "identity_local_until_extension_data_removed; grant_maximum_24_hours_and_revocable",
       "consent": "required_before_activation",
       "providers": []
+    },
+    {
+      "id": "planned_shared_adaptive_learning",
+      "category": "usage",
+      "fields": [
+        "eventId",
+        "installationId",
+        "browserFamily",
+        "extensionVersion",
+        "problemCode",
+        "interfaceState",
+        "action",
+        "durationMs",
+        "attempt",
+        "outcome",
+        "policyVersion",
+        "observedAt"
+      ],
+      "purpose": "cross_browser_recovery_learning",
+      "basis": "review_required",
+      "retention": "local_queue_maximum_200_events; remote_retention_not_active",
+      "consent": "required_before_activation",
+      "providers": []
     }
   ]
 }

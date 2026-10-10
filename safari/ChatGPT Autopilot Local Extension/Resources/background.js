@@ -155,6 +155,21 @@
 
   let writeQueue = Promise.resolve();
   let learningQueue = Promise.resolve();
+  const incidentApi = globalThis.ChatGPTAutopilotRecoveryIncident;
+  const INCIDENTS_KEY = 'autopilotRecoveryIncidentsV1';
+  const incidentCoordinator = incidentApi?.createIncidentCoordinator({
+    async load() { const values = await storageGet({ [INCIDENTS_KEY]: {} }); return values[INCIDENTS_KEY]; },
+    async save(value) { await storageSet({ [INCIDENTS_KEY]: value }); }
+  }) || null;
+  const sharedLearningApi = globalThis.ChatGPTAutopilotSharedLearningSync;
+  const sharedLearning = sharedLearningApi?.createSharedLearningSync({
+    storage: {
+      async get(key) { return storageGet({ [key]: null }); },
+      async set(values) { return storageSet(values); }
+    },
+    async fetchPolicy() { return { notModified: true, policyVersion: 0 }; },
+    async uploadEvents() { throw new Error('shared learning gate closed'); }
+  }) || null;
 
   function normalizeLearning(memory = {}) {
     const finiteSamples = (values, maximum = 21600000) => (Array.isArray(values) ? values : [])
@@ -281,6 +296,50 @@
     }).catch(() => {});
   }
 
+  function handleIncidentMessage(message, sender, reply) {
+    if (message?.type !== 'autopilot:incident-acquire' &&
+        message?.type !== 'autopilot:incident-complete' &&
+        message?.type !== 'autopilot:incident-release') return undefined;
+    if (!incidentCoordinator || !Number.isSafeInteger(sender?.tab?.id)) {
+      reply(message.type === 'autopilot:incident-acquire' ? { granted: false } : { ok: false });
+      return false;
+    }
+    const ownerId = 'tab-' + sender.tab.id;
+    if (message.type === 'autopilot:incident-acquire') {
+      incidentCoordinator.acquire({ problemCode: message.problemCode, route: message.route,
+        ownerId, replacement: Boolean(message.replacement) })
+        .then(reply).catch(() => reply({ granted: false }));
+      return true;
+    }
+    const method = message.type.endsWith('complete') ? 'complete' : 'release';
+    incidentCoordinator[method]({ incidentId: message.incidentId, ownerId })
+      .then(ok => reply({ ok })).catch(() => reply({ ok: false }));
+    return true;
+  }
+
+  function handleSharedLearningMessage(message, reply) {
+    const type = message?.type;
+    if (!type?.startsWith('autopilot:shared-learning-')) return undefined;
+    if (!sharedLearning) {
+      reply(type === 'autopilot:shared-learning-status'
+        ? { enabled: false, mode: 'off' }
+        : { ok: false });
+      return false;
+    }
+    const operations = {
+      'autopilot:shared-learning-status': () => sharedLearning.snapshot(),
+      'autopilot:shared-learning-reset': () => sharedLearning.reset().then(state => ({ ok: true, state })),
+      'autopilot:shared-learning-rollback': () => sharedLearning.rollback().then(state => ({ ok: true, state })),
+      'autopilot:shared-learning-outcome': () => sharedLearning.record(message.outcome).then(() => ({ ok: true }))
+    };
+    const operation = operations[type];
+    if (!operation) return undefined;
+    operation().then(reply).catch(() => reply(type === 'autopilot:shared-learning-status'
+      ? { enabled: false, mode: 'observe', lastError: 'status_failed' }
+      : { ok: false }));
+    return true;
+  }
+
   ensureHeartbeat();
   extensionApi.runtime.onInstalled?.addListener(ensureHeartbeat);
   extensionApi.runtime.onStartup?.addListener(ensureHeartbeat);
@@ -289,6 +348,10 @@
   });
 
   extensionApi.runtime.onMessage.addListener((message, sender, reply) => {
+    const incidentResult = handleIncidentMessage(message, sender, reply);
+    if (incidentResult !== undefined) return incidentResult;
+    const sharedLearningResult = handleSharedLearningMessage(message, reply);
+    if (sharedLearningResult !== undefined) return sharedLearningResult;
     if (message?.type === 'autopilot:factory-control-status') {
       reply(factoryControlLocalAgentStatus());
       return;

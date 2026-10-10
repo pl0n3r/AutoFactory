@@ -3,6 +3,7 @@
   const core = globalThis.ChatGPTAutopilotCore;
   const learning = globalThis.ChatGPTAutopilotLearning;
   const reliability = globalThis.ChatGPTAutopilotReliability;
+  const adaptiveRecovery = globalThis.ChatGPTAutopilotAdaptiveRecovery;
   const extensionApi = globalThis.chrome || globalThis.browser;
   const budgetGuard = globalThis.ChatGPTAutopilotBudgetGuard;
   const DEFAULT_PROMPT = 'Continúa autónomamente el desarrollo del proyecto desde el estado real más reciente. Antes de modificar nada: inspecciona el estado actual del repo, rama, issues, PRs, CI y revisiones. No te detengas después de cada paso; avanza mientras sea seguro, sin duplicar trabajo, y reporta solo hitos grandes.';
@@ -255,7 +256,7 @@
     if (cachedConfigPromise) return cachedConfigPromise;
     const defaults = {
       prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION,
-      delaySeconds: 15, learning: learning.EMPTY, ...SCROLL_DEFAULTS
+      delaySeconds: 15, learning: learning.EMPTY, sharedLearning: null, ...SCROLL_DEFAULTS
     };
     cachedConfigPromise = new Promise((resolve, reject) => {
       try {
@@ -300,6 +301,16 @@
     });
     cachedConfigPromise.catch(() => { cachedConfigPromise = null; });
     return cachedConfigPromise;
+  }
+
+  async function acquireRecoveryIncident(problemCode, replacement = false) {
+    try {
+      const route = location.pathname.startsWith('/c/') ? '/c/:id' : '/';
+      const result = await extensionApi.runtime.sendMessage({
+        type: 'autopilot:incident-acquire', problemCode, route, replacement
+      });
+      return result?.granted ? result : null;
+    } catch (_error) { return null; }
   }
 
   function saveLearning(event, durationMs = 0, detail = {}) {
@@ -743,7 +754,17 @@
           || Number(previous.attempts) !== plan.attempts
           || Number(previous.retryAt) !== plan.retryAt;
         const attempts = plan.attempts;
-        const escalation = plan.action;
+        const defaultAction = plan.action === 'new-chat' ? 'open_replacement_chat' : plan.action;
+        const recoveryConfig = await config();
+        const decision = adaptiveRecovery?.chooseRecovery({
+          problemCode: signal.code, interfaceState: 'error', isResponding: generationAtSignal,
+          defaults: { action: defaultAction }, policy: recoveryConfig.sharedLearning?.policy,
+          mode: 'observe', now: Date.now(),
+          replacementOpened: Date.now() - state.conversationTransferAt < CONVERSATION_TRANSFER_COOLDOWN_MS
+        }) || { action: defaultAction, source: 'default', confidence: 0, policyVersion: 0 };
+        const escalation = decision.action === 'open_replacement_chat' ? 'new-chat' : decision.action;
+        log('recovery', { code: signal.code, action: decision.recommendedAction || decision.action,
+          source: decision.source, version: String(decision.policyVersion || 0) });
         state.lastRecoveryAt = Date.now();
         state.circuitOpenUntil = 0;
         state.consecutiveFailures = 0;
@@ -773,6 +794,11 @@
             state.pendingSignature = '';
             state.nextSendAt = Date.now() + 5000;
             persistRuntime();
+            const incident = await acquireRecoveryIncident(signal.code, true);
+            if (!incident || !incident.replacementOpened) {
+              setStatus('Recuperación ya coordinada en otra pestaña', 'error');
+              return;
+            }
             setStatus('Conversación inaccesible; abriendo un único chat de recuperación');
             await openFreshConversation(null);
           }
@@ -918,6 +944,11 @@
         persistRuntime();
         saveLearning('recovery');
         log('recovery', { code: 'conversation-limit', action: 'new-chat' });
+        const incident = await acquireRecoveryIncident('conversation-limit', true);
+        if (!incident || !incident.replacementOpened) {
+          setStatus('Chat nuevo ya coordinado en otra pestaña', 'error');
+          return;
+        }
         setStatus('Límite de conversación; abriendo un chat nuevo');
         await openFreshConversation(signal.element);
         return;

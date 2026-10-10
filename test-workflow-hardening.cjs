@@ -5,6 +5,7 @@ const fs = require('node:fs');
 
 const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 const SETUP_NODE = 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
+const CHROME_SMOKE_STEP = `        run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"`;
 
 function verify(source) {
   assert.match(source, /^permissions:\n  contents: read$/m);
@@ -32,26 +33,33 @@ function verify(source) {
   assert.equal((source.match(/^  contents:/gm) || []).length, 1);
   assert.match(source, /^          node-version: 20$/m);
   assert.match(source, /^          cache: npm$/m);
-  const install = source.indexOf('      - run: npm ci\n');
+  const install = source.indexOf('      - run: npm ci --ignore-scripts\n');
   const test = source.indexOf('      - run: npm test\n');
+  const chromeSmoke = source.indexOf(CHROME_SMOKE_STEP + '\n');
+  assert.match(source, /^      - name: Real Chrome MV3 extension-load smoke \(non-release checkout\)$/m);
+  assert.ok(chromeSmoke !== -1, 'CI must execute real Chrome worker smoke on the checked-out SHA');
   const contract = source.indexOf('      - run: node test-workflow-hardening.cjs\n');
-  assert.ok(install !== -1 && install < test && test < contract,
+  assert.ok(install !== -1 && install < test && test < chromeSmoke && chromeSmoke < contract,
     'npm dependencies, tests and workflow contract must run in order');
 }
 
 const workflow = fs.readFileSync('.github/workflows/validate.yml', 'utf8');
 verify(workflow);
+assert.throws(() => verify(workflow.replace('npm ci --ignore-scripts', 'npm ci')));
+assert.throws(() => verify(workflow.replace(
+  CHROME_SMOKE_STEP, '        run: echo skip-chrome-worker-smoke'
+)));
 assert.throws(() => verify(workflow.replace(CHECKOUT, 'actions/checkout@v4')));
 assert.throws(() => verify(workflow.replace(SETUP_NODE, 'actions/setup-node@v4')));
 assert.throws(() => verify(workflow.replace('persist-credentials: false',
   'persist-credentials: true')));
 assert.throws(() => verify(workflow.replace('contents: read', 'contents: write')));
 assert.throws(() => verify(workflow.replace(
-  '      - run: npm ci',
+  '      - run: npm ci --ignore-scripts',
   '      - uses: actions/checkout@v4\n      - run: npm ci'
 )));
 assert.throws(() => verify(workflow.replace(
-  '      - run: npm ci',
+  '      - run: npm ci --ignore-scripts',
   '      - uses: ' + CHECKOUT + '\n      - run: npm ci'
 )));
 assert.throws(() => verify(workflow.replace(

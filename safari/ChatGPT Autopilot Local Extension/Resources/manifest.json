@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Autopilot Local",
-  "version": "1.6.29",
-  "description": "Continúa chats usando el campo y botón reales del HTML, sin coordenadas de pantalla.",
+  "version": "1.7.0",
+  "description": "Contin\u00faa chats usando el campo y bot\u00f3n reales del HTML, sin coordenadas de pantalla.",
   "permissions": [
     "activeTab",
     "storage",
@@ -32,6 +32,7 @@
         "autopilot-core.js",
         "account-budget-guard.js",
         "learning.js",
+        "adaptive-recovery.js",
         "reliability.js",
         "content.js"
       ],

@@ -40,7 +40,9 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 | UNKNOWN | UNKNOWN | UNKNOWN |
 <!-- factory:progress-readiness:end -->
 
-## Versión 1.6.29
+## Versión 1.7.0
+
+La memoria compartida con ControlBot está incluida en modo observación. AutoFactory conserva una cola local sanitizada, coordina recuperaciones entre pestañas y muestra política, muestras y rollback. El transporte remoto continúa bloqueado hasta aprobar consentimiento, seguridad y puerta legal.
 
 - Solo abre otro chat cuando existe una alerta visible de duración máxima y nunca si ya está en el chat nuevo.
 - Limpia la protección cuando ChatGPT confirma tarde el envío mediante una generación o respuesta real.

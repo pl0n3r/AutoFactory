@@ -122,6 +122,27 @@ function renderLearning(data={}) {
   appendMetricLine(details, 'Recuperaciones exitosas:',
     metricTopEntries(state.actionSuccess, 'aún sin datos', 4));
 }
+function renderSharedLearning(data={}) {
+  const state = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  const status = $('shared-learning-status');
+  const enabled = state.enabled === true;
+  status.textContent = enabled ? `ACTIVA · ${state.mode || 'observe'}` : 'OBSERVACIÓN · sincronización bloqueada';
+  status.className = `status ${enabled ? 'active' : 'paused'}`;
+  const details = $('shared-learning-details');
+  details.replaceChildren();
+  const policyVersion = Number(state.policyVersion) || 0;
+  const localSamples = Number(state.localSamples) || 0;
+  const sharedSamples = Number(state.sharedSamples) || 0;
+  const confidence = Number.isFinite(state.confidence) ? `${Math.round(state.confidence * 100)}% confianza` : 'sin confianza global';
+  details.append(document.createTextNode(`Política ${policyVersion} · ${localSamples} locales · ${sharedSamples} compartidas · ${confidence}`));
+  if (state.source) details.append(document.createElement('br'), document.createTextNode(`Fuente: ${state.source}`));
+  if (state.lastError) details.append(document.createElement('br'), document.createTextNode(`Estado: ${state.lastError}`));
+}
+async function refreshSharedLearning(){
+  if (typeof extensionApi.runtime.sendMessage !== 'function') return renderSharedLearning({});
+  try { renderSharedLearning(await runtimeMessage({type:'autopilot:shared-learning-status'})); }
+  catch (_error) { renderSharedLearning({lastError:'status_unavailable'}); }
+}
 function refreshLearning(){extensionApi.storage.local.get({learning:{}},values=>renderLearning(values.learning));}
 $('start').addEventListener('click',async()=>{try{await save();await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{masterEnabled:true});await broadcast(true);await refresh();}catch(error){$('status').textContent=error.message;}});
 $('stop').addEventListener('click',async()=>{try{await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),{masterEnabled:false});await broadcast(false);await refresh();}catch(error){$('status').textContent=error.message;}});
@@ -154,11 +175,14 @@ async function copyText(text) {
 }
 $('copy-log').addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:get-log'});await copyText(JSON.stringify({exportedAt:new Date().toISOString(),extensionVersion,learning:(await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),{learning:{}})).learning,entries:result.entries||[]},null,2));$('status').textContent=`DIAGNÓSTICO COPIADO · ${(result.entries||[]).length} eventos`;}catch(error){$('status').textContent=`No pude copiar: ${error.message}`;}});
 $('clear-log').addEventListener('click',async()=>{try{await runtimeMessage({type:'autopilot:clear-log'});$('status').textContent='LOG BORRADO';}catch(error){$('status').textContent=`No pude borrar: ${error.message}`;}});
+$('shared-learning-reset').addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:shared-learning-reset'});if(result?.ok!==true)throw new Error('reset_failed');await refreshSharedLearning();}catch(_error){renderSharedLearning({lastError:'reset_failed'});}});
+$('shared-learning-rollback').addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:shared-learning-rollback'});if(result?.ok!==true)throw new Error('rollback_failed');await refreshSharedLearning();}catch(_error){renderSharedLearning({lastError:'rollback_failed'});}});
 factoryControlPair.addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:factory-control-pair'});if(result?.code==='disabled')renderFactoryControlBridge({state:'disabled',capabilities:{}});}catch(_error){ // NOSONAR: UI falls back to the fixed disabled state without exposing runtime details.
 renderFactoryControlBridge({state:'disabled',capabilities:{}});}});
 factoryControlRevoke.addEventListener('click',async()=>{try{const result=await runtimeMessage({type:'autopilot:factory-control-revoke'});if(result?.code==='disabled')renderFactoryControlBridge({state:'disabled',capabilities:{}});}catch(_error){ // NOSONAR: UI falls back to the fixed disabled state without exposing runtime details.
 renderFactoryControlBridge({state:'disabled',capabilities:{}});}});
 void refreshFactoryControlBridge();
+void refreshSharedLearning();
 extensionApi.storage.local.get(DEFAULTS,values=>{if(values.settingsDefaultVersion!==SETTINGS_DEFAULT_VERSION){values={...values,settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,reloadCooldownMinutes:1,periodicReload:true,periodicReloadMinutes:15,modelTarget:'gpt-6'};extensionApi.storage.local.set({settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,reloadCooldownMinutes:1,periodicReload:true,periodicReloadMinutes:15,modelTarget:'gpt-6'});}const savedPrompt=String(values.prompt||'').trim();const valid=values.promptSchemaVersion===PROMPT_SCHEMA_VERSION&&savedPrompt.length>0;fields.prompt.value=valid?savedPrompt:DEFAULT_PROMPT;fields.delaySeconds.value=values.delaySeconds;fields.modelTarget.value=values.modelTarget||'gpt-6';fields.reasoningLevel.value=values.reasoningLevel||'high';renderConversationMode(values.conversationMode);fields.followScroll.checked=values.followScroll!==false;fields.scrollStepMin.value=values.scrollStepMin;fields.scrollStepMax.value=values.scrollStepMax;fields.scrollPollMs.value=values.scrollPollMs;fields.scrollStableChecks.value=values.scrollStableChecks;fields.scrollMaxSeconds.value=values.scrollMaxSeconds;fields.manualScrollPauseSeconds.value=values.manualScrollPauseSeconds;fields.autoReload.checked=values.autoReload!==false;fields.reloadCooldownMinutes.value=values.reloadCooldownMinutes;fields.periodicReload.checked=values.periodicReload===true;fields.periodicReloadMinutes.value=values.periodicReloadMinutes;showStatus(values.masterEnabled?'ACTIVO · todas las pestañas':'PAUSADO · todas las pestañas',values.masterEnabled);refreshLearning();refresh();});
 extensionApi.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.learning) {
@@ -172,3 +196,4 @@ extensionApi.storage.onChanged.addListener((changes, area) => {
   }
 });
 setInterval(refreshLearning, 5000);
+setInterval(refreshSharedLearning, 15000);

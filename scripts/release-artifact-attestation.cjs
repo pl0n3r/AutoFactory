@@ -17,10 +17,17 @@ const EXPECTED_RUNTIME_ASSETS = Object.freeze([
   'account-budget-background.js',
   'account-budget-guard.js',
   'account-budget.js',
+  'adaptive-recovery.js',
   'autopilot-core.js',
   'background-entry.js',
   'background.js',
   'content.js',
+  'factory-control-authorization.js',
+  'factory-control-instance-transport.js',
+  'factory-control-instance.js',
+  'factory-control-ledger.js',
+  'factory-control-protocol.js',
+  'factory-control-runtime.js',
   'icons/icon-128.png',
   'icons/icon-16.png',
   'icons/icon-32.png',
@@ -29,7 +36,10 @@ const EXPECTED_RUNTIME_ASSETS = Object.freeze([
   'popup-budget.js',
   'popup.html',
   'popup.js',
+  'recovery-incident.js',
   'reliability.js',
+  'shared-learning-protocol.js',
+  'shared-learning-sync.js',
 ].sort((left, right) => left.localeCompare(right)));
 
 function fail(reason) {

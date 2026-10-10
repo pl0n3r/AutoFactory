@@ -37,7 +37,7 @@ const sourceRoot = process.argv[2];
 const tag = process.argv[3];
 const sha = process.argv[4];
 const { buildReleaseAttestation } = require(modulePath);
-process.stdout.write(JSON.stringify(buildReleaseAttestation(sourceRoot, tag, sha)) + "\\n");
+process.stdout.write(JSON.stringify(buildReleaseAttestation(sourceRoot, tag, sha)) + "\n");
 ' "$attestor" "$source_root" "$tag" "$commit_sha" >"$attestation"; then
   fail 'release attestation failed'
 fi

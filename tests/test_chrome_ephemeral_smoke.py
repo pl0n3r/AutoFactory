@@ -26,19 +26,29 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         expression = (
             "const m=require(process.argv[1]);"
             "const mode=process.argv[6];"
+            "if(mode==='cleanup-race'){"
+            "const fs=require('node:fs');const original=fs.rmSync;"
+            "fs.rmSync=(file,opts)=>{original(file,opts);"
+            "if(String(file).includes('autofactory-chrome-profile-')){"
+            "const err=new Error('synthetic cleanup race');"
+            "err.code='ENOTEMPTY';throw err;}};}"
             "let capture=null;"
-            "const spawn=(binary,args,options)=>{"
+            "const spawnProcess=(binary,args,options)=>{"
             "capture={binary,args,env:options.env};"
-            "if(mode==='runtime')return {status:0,stdout:'',"
-            "stderr:'Failed to load extension: synthetic failure'};"
-            "return {status:0,stdout:'<html>ok</html>',stderr:''};"
+            "return {exitCode:null,kill:()=>true,on:()=>{},once:(_event,cb)=>cb(),"
+            "stderr:{on:(event,cb)=>{if(mode==='runtime'&&event==='data')"
+            "cb('Failed to load extension: synthetic failure')}}};"
             "};"
-            "try{const evidence=m.runChromeSmoke({"
+            "const probeWorker=async()=>"
+            "(mode==='missing-worker'||mode==='cleanup-race')?null:"
+            "{type:'service_worker',url:'chrome-extension://'+"
+            "'a'.repeat(32)+'/background-entry.js'};"
+            "(async()=>{try{const evidence=await m.runChromeSmoke({"
             "root:process.argv[2],tag:process.argv[3],commitSha:process.argv[4],"
-            "tempRoot:process.argv[5],spawn,"
+            "tempRoot:process.argv[5],spawnProcess,probeWorker,"
             "binaryResolver:()=>'/trusted/google-chrome'});"
             "console.log(JSON.stringify({evidence,capture}));}"
-            "catch(e){console.error(e.message);process.exit(1)}"
+            "catch(e){console.error(e.message);process.exitCode=1}})();"
         )
         return subprocess.run(
             [
@@ -74,7 +84,7 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
     def test_trusted_chrome_binary_is_regular_nonsymlink_and_executable(self):
         valid = self._binary_boundary("success")
         self.assertEqual(valid.returncode, 0, valid.stderr)
-        self.assertEqual(valid.stdout.strip(), "/usr/bin/google-chrome")
+        self.assertEqual(valid.stdout.strip(), "/usr/local/share/chromium/chrome-linux/chrome")
 
         symlink_binary = self._binary_boundary("symlink")
         self.assertNotEqual(symlink_binary.returncode, 0)
@@ -87,6 +97,47 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         non_executable = self._binary_boundary("not-executable")
         self.assertNotEqual(non_executable.returncode, 0)
         self.assertIn("not executable", non_executable.stderr)
+
+    def test_linux_runner_sandbox_exception_is_disposable_ci_only(self):
+        # El workaround de AppArmor no se propaga al navegador del usuario.
+        expression = (
+            "const m=require(process.argv[1]);"
+            "const platforms=['linux','darwin','win32'];"
+            "const envs=["
+            "{GITHUB_ACTIONS:'true',CI:'true'},"
+            "{GITHUB_ACTIONS:'false',CI:'true'},"
+            "{GITHUB_ACTIONS:'true',CI:'false'},"
+            "{}"
+            "];"
+            "console.log(JSON.stringify(platforms.flatMap(platform=>"
+            "envs.map(env=>({platform,env,"
+            "args:m.chromeArgs('/tmp/isolated-profile','/tmp/attested-extension',platform,env)"
+            "})))));"
+        )
+        result = subprocess.run(
+            ["node", "-e", expression, str(SCRIPT)],
+            check=False, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        cases = json.loads(result.stdout)
+        self.assertEqual(len(cases), 12)
+        self.assertIn(
+            "timeoutMs: hostedLinux ? 45000 : 15000",
+            SCRIPT.read_text(encoding="utf-8"),
+        )
+        for case in cases:
+            scoped = (
+                case["platform"] == "linux"
+                and case["env"].get("GITHUB_ACTIONS") == "true"
+                and case["env"].get("CI") == "true"
+            )
+            with self.subTest(platform=case["platform"], env=case["env"]):
+                self.assertEqual("--no-sandbox" in case["args"], scoped)
+                self.assertEqual("--disable-dev-shm-usage" in case["args"], scoped)
+                self.assertIn("--load-extension=/tmp/attested-extension", case["args"])
+                self.assertIn("--user-data-dir=/tmp/isolated-profile", case["args"])
+                self.assertIn("--remote-debugging-port=0", case["args"])
+                self.assertEqual(case["args"][-1], "about:blank")
 
     def test_ephemeral_profile_loads_packaged_extension_without_user_data(self):
         result = self._smoke()
@@ -117,8 +168,49 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         self.assertFalse(Path(profile).exists())
         self.assertFalse(Path(extension).exists())
         self.assertIn("--disable-background-networking", capture["args"])
+        self.assertIn("--remote-debugging-port=0", capture["args"])
+        self.assertNotIn("--dump-dom", capture["args"])
+        self.assertEqual(evidence["worker_url"], "chrome-extension://" + "a" * 32 + "/background-entry.js")
+
+    def test_failed_smoke_preserves_root_error_when_cleanup_races(self):
+        # Chromium helper processes may keep writing to Default during rmSync.
+        # The original missing-worker error must survive a cleanup ENOTEMPTY.
+        result = self._smoke("cleanup-race")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("service worker evidence missing", result.stderr)
+        self.assertIn("cleanup failed (ENOTEMPTY)", result.stderr)
+
+    def test_partial_devtools_port_retries_then_fails_closed(self):
+        # Chrome may create DevToolsActivePort before writing its port number.
+        # This must be a bounded retry, not an immediate false failure.
+        expression = (
+            "const m=require(process.argv[1]);"
+            "const fs=require('node:fs');"
+            "let attempts=0;"
+            "fs.existsSync=()=>true;"
+            "fs.readFileSync=()=>{attempts++;return '';};"
+            "m.probeChromeWorker('/tmp/fake-profile',320,"
+            "{exitCode:null,signalCode:null})"
+            ".then(()=>{console.error('unexpected positive worker');process.exitCode=1;})"
+            ".catch(e=>{"
+            "if(attempts<2||!e.message.includes('service worker evidence missing')"
+            "||!e.message.includes('probe=port-pending')){"
+            "console.error(e.message);process.exitCode=1;}"
+            "else console.log('bounded port-pending retry verified');"
+            "});"
+        )
+        result = subprocess.run(
+            ["node", "-e", expression, str(SCRIPT)],
+            check=False, capture_output=True, text=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bounded port-pending retry verified", result.stdout)
 
     def test_runtime_error_or_permission_drift_fails_closed(self):
+        missing_worker = self._smoke("missing-worker")
+        self.assertNotEqual(missing_worker.returncode, 0)
+        self.assertIn("service worker evidence missing", missing_worker.stderr)
+
         runtime = self._smoke("runtime")
         self.assertNotEqual(runtime.returncode, 0)
         self.assertIn("runtime/load error", runtime.stderr)
