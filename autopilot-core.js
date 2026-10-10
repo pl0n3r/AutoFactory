@@ -234,7 +234,7 @@
     if (count === 3) return 'reload';
     return 'wait';
   }
-  function recoverablePlan(value = {}, path = '', now = Date.now(), cooldownMs = 300000) {
+  function recoverablePlan(value = {}, path = '', now = Date.now(), cooldownMs = 60000) {
     const currentPath = String(path || '');
     const currentAttempts = value.path === currentPath
       ? Math.max(0, Number(value.attempts) || 0) : 0;
@@ -251,7 +251,7 @@
       path: currentPath,
       attempts,
       action,
-      retryAt: action === 'wait' ? now + Math.max(1000, Number(cooldownMs) || 300000) : 0
+      retryAt: action === 'wait' ? now + Math.max(1000, Number(cooldownMs) || 60000) : 0
     });
   }
   function pageSignal(doc = document) {

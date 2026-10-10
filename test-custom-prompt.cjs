@@ -34,6 +34,8 @@ assert.match(content, /const plan = core\.recoverablePlan\(previous, location\.p
   'una conversación inaccesible debe usar el plan de recuperación limitado');
 assert.match(content, /state\.nextSendAt = plan\.retryAt/,
   'la pausa de recuperación debe conservar su vencimiento');
+assert.match(content, /Conversación no disponible; verificando recuperación'\s*,\s*'error'/,
+  'la verificación de una conversación inaccesible debe mostrarse como error');
 assert.match(content, /CONVERSATION_TRANSFER_KEY[\s\S]*sessionStorage\.getItem\(CONVERSATION_TRANSFER_KEY\)/,
   'el bloqueo de transferencia debe sobrevivir la navegación dentro de la pestaña');
 assert.match(content, /CONVERSATION_TRANSFER_COOLDOWN_MS\s*=\s*10 \* 60 \* 1000/,

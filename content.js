@@ -724,7 +724,7 @@
       }
       if (core.isSafeRecoverySignal(signal)) {
         if (Date.now() - state.lastRecoveryAt <= 10000) {
-          setStatus('Conversación no disponible; verificando recuperación');
+          setStatus('Conversación no disponible; verificando recuperación', 'error');
           return;
         }
         const previous = core.recoverableState(

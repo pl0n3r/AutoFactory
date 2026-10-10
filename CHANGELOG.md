@@ -2,6 +2,11 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.25 — 2026-10-10
+
+- Reduce de cinco minutos a un minuto la pausa de recuperación de conversaciones inaccesibles.
+- Muestra en rojo la verificación de recuperación para evitar estados verdes engañosos.
+
 ## 1.6.24 — 2026-10-10
 
 - Nunca pulsa Retry ni transfiere la conversación mientras existe una respuesta real activa.
