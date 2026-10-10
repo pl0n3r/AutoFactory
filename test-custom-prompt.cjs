@@ -38,6 +38,8 @@ assert.match(content, /escalation === 'new-chat'[\s\S]{0,900}sessionStorage\.set
   'una recuperación agotada debe abrir como máximo un chat nuevo con bloqueo persistente');
 assert.match(content, /Conversación no disponible; verificando recuperación'\s*,\s*'error'/,
   'la verificación de una conversación inaccesible debe mostrarse como error');
+assert.match(content, /Conversación no disponible; recarga controlada'\s*,\s*'error'/,
+  'la recarga de una conversación inaccesible debe mostrarse como error');
 assert.match(content, /CONVERSATION_TRANSFER_KEY[\s\S]*sessionStorage\.getItem\(CONVERSATION_TRANSFER_KEY\)/,
   'el bloqueo de transferencia debe sobrevivir la navegación dentro de la pestaña');
 assert.match(content, /CONVERSATION_TRANSFER_COOLDOWN_MS\s*=\s*10 \* 60 \* 1000/,

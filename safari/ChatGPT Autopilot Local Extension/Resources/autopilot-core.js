@@ -240,6 +240,7 @@
       ? Math.max(0, Number(value.attempts) || 0) : 0;
     const currentRetryAt = value.path === currentPath
       ? Math.max(0, Number(value.retryAt) || 0) : 0;
+    const cooldown = Math.max(1000, Number(cooldownMs) || 60000);
     if (currentAttempts >= 5) {
       return Object.freeze({
         path: currentPath, attempts: 5, action: 'wait', retryAt: 0
@@ -248,7 +249,8 @@
     if (currentAttempts === 4) {
       if (currentRetryAt > now) {
         return Object.freeze({
-          path: currentPath, attempts: 4, action: 'wait', retryAt: currentRetryAt
+          path: currentPath, attempts: 4, action: 'wait',
+          retryAt: Math.min(currentRetryAt, now + cooldown)
         });
       }
       return Object.freeze({
@@ -261,7 +263,7 @@
       path: currentPath,
       attempts,
       action,
-      retryAt: action === 'wait' ? now + Math.max(1000, Number(cooldownMs) || 60000) : 0
+      retryAt: action === 'wait' ? now + cooldown : 0
     });
   }
   function pageSignal(doc = document) {

@@ -753,7 +753,7 @@
           signal.element.click();
           setStatus(`Conversación no disponible; reintento ${attempts}/2`);
         } else if (escalation === 'reload') {
-          setStatus('Conversación no disponible; recarga controlada');
+          setStatus('Conversación no disponible; recarga controlada', 'error');
           location.reload();
         } else if (escalation === 'new-chat') {
           if (Date.now() - state.conversationTransferAt < CONVERSATION_TRANSFER_COOLDOWN_MS) {
