@@ -101,7 +101,11 @@
         || button.closest('fieldset[disabled], #chatgpt-autopilot-badge')
         || !isVisible(button)) return false;
       const buttonForm = button.closest('form');
-      if (fieldForm ? buttonForm !== fieldForm : Boolean(buttonForm)) return false;
+      // HTML's form="" attribute can redirect submission outside its ancestor form.
+      // The effective owner must agree with the composer, not only the DOM parent.
+      if (fieldForm
+        ? (buttonForm !== fieldForm || button.form !== fieldForm)
+        : Boolean(buttonForm || button.form)) return false;
       if (unscoped && (button.id !== 'composer-submit-button'
         || button.parentElement !== field.parentElement)) return false;
       if (button.type === 'reset') return false;

@@ -56,6 +56,26 @@ const sendButtonScopeCases = {
       '<aside id="unrelated"><button aria-label="Send message">Send</button></aside></section>'
     );
     assert.equal(core.sendButton(siblingRegion), null);
+    const externalOwner = page(
+      '<form id="payment"></form>' +
+      '<form id="chat"><textarea placeholder="ChatGPT"></textarea>' +
+      '<button id="wrong" form="payment" type="submit" aria-label="Send message">Send</button></form>'
+    );
+    assert.equal(externalOwner.querySelector('#wrong').form?.id, 'payment');
+    assert.equal(core.sendButton(externalOwner), null);
+    const anotherOwnerWithValidButton = page(
+      '<form id="payment"></form>' +
+      '<form id="chat"><textarea placeholder="ChatGPT"></textarea>' +
+      '<button id="composer-submit-button" form="payment" type="submit">Send</button>' +
+      '<button id="real" type="submit" aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(anotherOwnerWithValidButton)?.id, 'real');
+    const externalOwnerUnscoped = page(
+      '<form id="payment"></form><section id="composer">' +
+      '<textarea placeholder="ChatGPT"></textarea>' +
+      '<button form="payment" aria-label="Send message">Send</button></section>'
+    );
+    assert.equal(core.sendButton(externalOwnerUnscoped), null);
     const plainUnscoped = page(
       '<div><textarea placeholder="ChatGPT"></textarea>' +
       '<button aria-label="Send message">Send</button></div>'
