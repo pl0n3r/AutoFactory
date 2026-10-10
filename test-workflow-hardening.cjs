@@ -34,13 +34,19 @@ function verify(source) {
   assert.match(source, /^          cache: npm$/m);
   const install = source.indexOf('      - run: npm ci\n');
   const test = source.indexOf('      - run: npm test\n');
+  const chromeSmoke = source.indexOf('        run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"\n');
+  assert.match(source, /^      - name: Real Chrome MV3 extension-load smoke \(non-release checkout\)$/m);
+  assert.ok(chromeSmoke !== -1, 'CI must execute real Chrome worker smoke on the checked-out SHA');
   const contract = source.indexOf('      - run: node test-workflow-hardening.cjs\n');
-  assert.ok(install !== -1 && install < test && test < contract,
+  assert.ok(install !== -1 && install < test && test < chromeSmoke && chromeSmoke < contract,
     'npm dependencies, tests and workflow contract must run in order');
 }
 
 const workflow = fs.readFileSync('.github/workflows/validate.yml', 'utf8');
 verify(workflow);
+assert.throws(() => verify(workflow.replace(
+  '        run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"', '        run: echo skip-chrome-worker-smoke'
+)));
 assert.throws(() => verify(workflow.replace(CHECKOUT, 'actions/checkout@v4')));
 assert.throws(() => verify(workflow.replace(SETUP_NODE, 'actions/setup-node@v4')));
 assert.throws(() => verify(workflow.replace('persist-credentials: false',

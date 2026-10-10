@@ -18,10 +18,17 @@ ASSETS = (
     "account-budget-background.js",
     "account-budget-guard.js",
     "account-budget.js",
+    "adaptive-recovery.js",
     "autopilot-core.js",
     "background-entry.js",
     "background.js",
     "content.js",
+    "factory-control-authorization.js",
+    "factory-control-instance-transport.js",
+    "factory-control-instance.js",
+    "factory-control-ledger.js",
+    "factory-control-protocol.js",
+    "factory-control-runtime.js",
     "icons/icon-128.png",
     "icons/icon-16.png",
     "icons/icon-32.png",
@@ -30,7 +37,10 @@ ASSETS = (
     "popup-budget.js",
     "popup.html",
     "popup.js",
+    "recovery-incident.js",
     "reliability.js",
+    "shared-learning-protocol.js",
+    "shared-learning-sync.js",
 )
 SAFARI = Path("safari") / "ChatGPT Autopilot Local Extension" / "Resources"
 
@@ -65,6 +75,7 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
                     "autopilot-core.js",
                     "account-budget-guard.js",
                     "learning.js",
+                    "adaptive-recovery.js",
                     "reliability.js",
                     "content.js",
                 ],
@@ -106,7 +117,11 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
         )
         self._mirror(
             "background-entry.js",
-            "importScripts('account-budget.js','background.js',"
+            "importScripts('account-budget.js','factory-control-protocol.js',"
+            "'factory-control-authorization.js','factory-control-ledger.js',"
+            "'factory-control-instance.js','factory-control-runtime.js',"
+            "'factory-control-instance-transport.js','shared-learning-protocol.js',"
+            "'shared-learning-sync.js','recovery-incident.js','background.js',"
             "'account-budget-background.js');",
         )
 

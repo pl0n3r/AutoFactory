@@ -27,18 +27,21 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
             "const m=require(process.argv[1]);"
             "const mode=process.argv[6];"
             "let capture=null;"
-            "const spawn=(binary,args,options)=>{"
+            "const spawnProcess=(binary,args,options)=>{"
             "capture={binary,args,env:options.env};"
-            "if(mode==='runtime')return {status:0,stdout:'',"
-            "stderr:'Failed to load extension: synthetic failure'};"
-            "return {status:0,stdout:'<html>ok</html>',stderr:''};"
+            "return {exitCode:null,kill:()=>true,on:()=>{},once:(_event,cb)=>cb(),"
+            "stderr:{on:(event,cb)=>{if(mode==='runtime'&&event==='data')"
+            "cb('Failed to load extension: synthetic failure')}}};"
             "};"
-            "try{const evidence=m.runChromeSmoke({"
+            "const probeWorker=async()=>mode==='missing-worker'?null:"
+            "{type:'service_worker',url:'chrome-extension://'+"
+            "'a'.repeat(32)+'/background-entry.js'};"
+            "(async()=>{try{const evidence=await m.runChromeSmoke({"
             "root:process.argv[2],tag:process.argv[3],commitSha:process.argv[4],"
-            "tempRoot:process.argv[5],spawn,"
+            "tempRoot:process.argv[5],spawnProcess,probeWorker,"
             "binaryResolver:()=>'/trusted/google-chrome'});"
             "console.log(JSON.stringify({evidence,capture}));}"
-            "catch(e){console.error(e.message);process.exit(1)}"
+            "catch(e){console.error(e.message);process.exitCode=1}})();"
         )
         return subprocess.run(
             [
@@ -74,7 +77,7 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
     def test_trusted_chrome_binary_is_regular_nonsymlink_and_executable(self):
         valid = self._binary_boundary("success")
         self.assertEqual(valid.returncode, 0, valid.stderr)
-        self.assertEqual(valid.stdout.strip(), "/usr/bin/google-chrome")
+        self.assertEqual(valid.stdout.strip(), "/usr/local/share/chromium/chrome-linux/chrome")
 
         symlink_binary = self._binary_boundary("symlink")
         self.assertNotEqual(symlink_binary.returncode, 0)
@@ -117,8 +120,15 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         self.assertFalse(Path(profile).exists())
         self.assertFalse(Path(extension).exists())
         self.assertIn("--disable-background-networking", capture["args"])
+        self.assertIn("--remote-debugging-port=0", capture["args"])
+        self.assertNotIn("--dump-dom", capture["args"])
+        self.assertEqual(evidence["worker_url"], "chrome-extension://" + "a" * 32 + "/background-entry.js")
 
     def test_runtime_error_or_permission_drift_fails_closed(self):
+        missing_worker = self._smoke("missing-worker")
+        self.assertNotEqual(missing_worker.returncode, 0)
+        self.assertIn("service worker evidence missing", missing_worker.stderr)
+
         runtime = self._smoke("runtime")
         self.assertNotEqual(runtime.returncode, 0)
         self.assertIn("runtime/load error", runtime.stderr)

@@ -256,7 +256,7 @@
     if (cachedConfigPromise) return cachedConfigPromise;
     const defaults = {
       prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION,
-      delaySeconds: 15, learning: learning.EMPTY, ...SCROLL_DEFAULTS
+      delaySeconds: 15, learning: learning.EMPTY, sharedLearning: null, ...SCROLL_DEFAULTS
     };
     cachedConfigPromise = new Promise((resolve, reject) => {
       try {
@@ -759,7 +759,7 @@
         const decision = adaptiveRecovery?.chooseRecovery({
           problemCode: signal.code, interfaceState: 'error', isResponding: generationAtSignal,
           defaults: { action: defaultAction }, policy: recoveryConfig.sharedLearning?.policy,
-          mode: recoveryConfig.sharedLearning?.mode || 'observe', now: Date.now(),
+          mode: 'observe', now: Date.now(),
           replacementOpened: Date.now() - state.conversationTransferAt < CONVERSATION_TRANSFER_COOLDOWN_MS
         }) || { action: defaultAction, source: 'default', confidence: 0, policyVersion: 0 };
         const escalation = decision.action === 'open_replacement_chat' ? 'new-chat' : decision.action;

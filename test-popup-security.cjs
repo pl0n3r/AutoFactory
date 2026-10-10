@@ -57,6 +57,16 @@ assert.equal(shared.querySelector('img'), null);
 assert.equal(shared.textContent.includes('Política 7'), true);
 assert.equal(shared.textContent.includes('45 compartidas'), true);
 assert.equal(shared.textContent.includes(injection), true);
+window.chrome.runtime.sendMessage=(payload,reply)=>reply(payload.type==='autopilot:shared-learning-status'?{policyVersion:9}:{ok:false});
+for(const [button,errorCode] of [['shared-learning-reset','reset_failed'],['shared-learning-rollback','rollback_failed']]) {
+  window.document.getElementById(button).click();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(shared.textContent.includes(errorCode),true,'Rejected '+button+' must surface '+errorCode);
+}
+window.chrome.runtime.sendMessage=(payload,reply)=>reply(payload.type==='autopilot:shared-learning-status'?{policyVersion:9}:{ok:true});
+window.document.getElementById('shared-learning-reset').click();
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(shared.textContent.includes('Política 9'),true,'Successful reset must refresh status');
 const textareaCount = window.document.querySelectorAll('textarea').length;
 window.navigator.clipboard = { writeText: async () => { throw new Error('denied'); } };
 await window.copyText('diagnostic fallback');

@@ -51,12 +51,13 @@ function verifyWorkflow(source) {
   assert.match(source, /^permissions:\n  contents: read$/m);
   assert.match(source, /^concurrency:\n  group: release-/m);
   assert.match(source, /^  cancel-in-progress: false$/m);
-  assert.match(source, /^    needs: preflight$/m);
+  assert.equal(source.match(/^    needs: preflight$/gm)?.length, 2);
+  assert.match(source, /^    needs: \[preflight, chrome_smoke, safari_smoke\]$/m);
   assert.match(source, /^    timeout-minutes: 20$/m);
   assert.match(source, /^    timeout-minutes: 10$/m);
-  assert.equal(source.match(/persist-credentials: false/g)?.length, 2);
+  assert.equal(source.match(/persist-credentials: false/g)?.length, 4);
   assert.equal(source.match(/contents: write/g)?.length, 1);
-  assert.equal(source.match(/actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1/g)?.length, 2);
+  assert.equal(source.match(/actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1/g)?.length, 4);
   assert.match(source, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/);
   const verifyAt = source.indexOf('node scripts/verify-release-metadata.cjs');
   const ancestryAt = source.indexOf('git rev-parse refs/remotes/origin/main');
@@ -65,7 +66,12 @@ function verifyWorkflow(source) {
   const liveMainGuard =
     `test "$(git rev-parse HEAD)" = "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.commit.sha')"`;
   const preflightJobAt = source.indexOf('\n  preflight:\n');
+  const chromeJobAt = source.indexOf('\n  chrome_smoke:\n');
+  const safariJobAt = source.indexOf('\n  safari_smoke:\n');
   const publishJobAt = source.indexOf('\n  publish:\n');
+  assert.ok(chromeJobAt > preflightJobAt && safariJobAt > chromeJobAt && publishJobAt > safariJobAt);
+  assert.match(source, /node scripts\/chrome-ephemeral-smoke\.cjs "\$GITHUB_REF_NAME" "\$GITHUB_SHA"/);
+  assert.match(source, /bash scripts\/safari-unsigned-build-smoke\.sh "\$GITHUB_REF_NAME" "\$GITHUB_SHA"/);
   const preflightAt = source.indexOf(preflightGuard);
   const liveMainAt = source.indexOf(liveMainGuard);
   const packageAt = source.indexOf('python3 scripts/package-release.py');

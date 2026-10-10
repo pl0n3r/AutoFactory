@@ -25,5 +25,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Real Chrome MV3 extension-load smoke (non-release checkout)
+        run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"
       - run: node test-workflow-hardening.cjs
       - run: node test-release-evidence.cjs
