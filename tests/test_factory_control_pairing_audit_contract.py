@@ -50,8 +50,10 @@ class FactoryControlPairingAuditContractTests(unittest.TestCase):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn("if (intentRecorded !== true)", source)
         self.assertIn("if (outcomeRecorded !== true)", source)
-        self.assertLess(source.index("if (intentRecorded !== true)"),
-                        source.index("const result = checkedPairingResult(await pairing.revoke(input))"))
+        persisted = source.split("function createPersistedPairingContract", 1)[1]
+        explicit_revoke = persisted.split("    async function revoke(input) {", 1)[1]
+        self.assertLess(explicit_revoke.index("if (intentRecorded !== true)"),
+                        explicit_revoke.index("const result = checkedPairingResult(await pairing.revoke(input))"))
 
 
 if __name__ == "__main__":
