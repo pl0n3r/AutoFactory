@@ -230,40 +230,23 @@
   }
   function recoverableEscalation(attempts) {
     const count = Math.max(0, Number(attempts) || 0);
-    if (count <= 2) return 'retry';
-    if (count === 3) return 'reload';
+    if (count === 1) return 'retry';
+    if (count === 2) return 'reload';
+    if (count === 3) return 'new-chat';
     return 'wait';
   }
-  function recoverablePlan(value = {}, path = '', now = Date.now(), cooldownMs = 60000) {
+  function recoverablePlan(value = {}, path = '') {
     const currentPath = String(path || '');
     const currentAttempts = value.path === currentPath
       ? Math.max(0, Number(value.attempts) || 0) : 0;
-    const currentRetryAt = value.path === currentPath
-      ? Math.max(0, Number(value.retryAt) || 0) : 0;
-    const cooldown = Math.max(1000, Number(cooldownMs) || 60000);
-    if (currentAttempts >= 5) {
+    if (currentAttempts >= 3) {
       return Object.freeze({
-        path: currentPath, attempts: 5, action: 'wait', retryAt: 0
-      });
-    }
-    if (currentAttempts === 4) {
-      if (currentRetryAt > now) {
-        return Object.freeze({
-          path: currentPath, attempts: 4, action: 'wait',
-          retryAt: Math.min(currentRetryAt, now + cooldown)
-        });
-      }
-      return Object.freeze({
-        path: currentPath, attempts: 5, action: 'new-chat', retryAt: 0
+        path: currentPath, attempts: 4, action: 'wait', retryAt: 0
       });
     }
     const attempts = currentAttempts + 1;
-    const action = recoverableEscalation(attempts);
     return Object.freeze({
-      path: currentPath,
-      attempts,
-      action,
-      retryAt: action === 'wait' ? now + cooldown : 0
+      path: currentPath, attempts, action: recoverableEscalation(attempts), retryAt: 0
     });
   }
   function pageSignal(doc = document) {

@@ -40,7 +40,7 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 | UNKNOWN | UNKNOWN | UNKNOWN |
 <!-- factory:progress-readiness:end -->
 
-## Versión 1.6.28
+## Versión 1.6.29
 
 - Solo abre otro chat cuando existe una alerta visible de duración máxima y nunca si ya está en el chat nuevo.
 - Limpia la protección cuando ChatGPT confirma tarde el envío mediante una generación o respuesta real.
@@ -51,7 +51,7 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 - Mantiene el presupuesto compartido desactivado por defecto; puede activarse voluntariamente desde el popup.
 - Muestra en tiempo real la cuenta regresiva del presupuesto compartido y continúa automáticamente al liberarse el turno.
 - Detiene inmediatamente una generación cuando ChatGPT informa una conexión interrumpida; recarga solo si no se estabiliza en 30 segundos.
-- Recupera conversaciones inaccesibles con dos reintentos, una recarga controlada y una pausa de un minuto; si el error persiste, abre un único chat nuevo con bloqueo contra duplicados.
+- Recupera conversaciones inaccesibles rápidamente con un Retry, una recarga y, si el error persiste, un único chat nuevo con bloqueo contra duplicados.
 - Selecciona GPT-6 por defecto o GPT-5.6 Sol según configuración, y permite conservar el modelo actual.
 - Distingue el selector de razonamiento del selector general del modelo y, cuando es necesario, abre Thinking/Pensando antes de elegir Alto/High.
 

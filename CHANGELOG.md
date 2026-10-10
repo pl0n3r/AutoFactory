@@ -2,6 +2,12 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.6.29 — 2026-10-10
+
+- Simplifica la recuperación a un Retry, una recarga y un único chat nuevo.
+- Reduce las pausas entre pasos de 10 a 4 segundos y elimina la espera adicional de un minuto.
+- Migra el runtime y descarta estados lentos heredados para evitar bloqueos persistentes.
+
 ## 1.6.28 — 2026-10-10
 
 - Ignora botones Retry residuales cuando el chat nuevo ya cargó su compositor.

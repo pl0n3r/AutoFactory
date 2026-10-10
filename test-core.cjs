@@ -43,34 +43,23 @@ function page(html) {
   assert.equal(core.isSafeRecoverySignal(core.pageSignal(doc)), true);
   assert.equal(core.isSafeRecoverySignal({ code: 'connection', action: 'reload' }), false);
   assert.equal(core.recoverableEscalation(1), 'retry');
-  assert.equal(core.recoverableEscalation(2), 'retry');
-  assert.equal(core.recoverableEscalation(3), 'reload');
+  assert.equal(core.recoverableEscalation(2), 'reload');
+  assert.equal(core.recoverableEscalation(3), 'new-chat');
   assert.equal(core.recoverableEscalation(4), 'wait');
-  assert.deepEqual(core.recoverablePlan({}, '/c/1', 1000), {
+  assert.deepEqual(core.recoverablePlan({}, '/c/1'), {
     path: '/c/1', attempts: 1, action: 'retry', retryAt: 0
   });
-  assert.deepEqual(core.recoverablePlan({ path: '/c/1', attempts: 3 }, '/c/1', 1000), {
-    path: '/c/1', attempts: 4, action: 'wait', retryAt: 61000
+  assert.deepEqual(core.recoverablePlan({ path: '/c/1', attempts: 1 }, '/c/1'), {
+    path: '/c/1', attempts: 2, action: 'reload', retryAt: 0
   });
-  assert.deepEqual(core.recoverablePlan({
-    path: '/c/1', attempts: 4, retryAt: 301000
-  }, '/c/1', 1000), {
-    path: '/c/1', attempts: 4, action: 'wait', retryAt: 61000
+  assert.deepEqual(core.recoverablePlan({ path: '/c/1', attempts: 2 }, '/c/1'), {
+    path: '/c/1', attempts: 3, action: 'new-chat', retryAt: 0
   });
-  assert.deepEqual(core.recoverablePlan({
-    path: '/c/1', attempts: 4, retryAt: 301000
-  }, '/c/1', 300999), {
-    path: '/c/1', attempts: 4, action: 'wait', retryAt: 301000
+  assert.deepEqual(core.recoverablePlan({ path: '/c/1', attempts: 3 }, '/c/1'), {
+    path: '/c/1', attempts: 4, action: 'wait', retryAt: 0
   });
-  assert.deepEqual(core.recoverablePlan({
-    path: '/c/1', attempts: 4, retryAt: 301000
-  }, '/c/1', 301000), {
-    path: '/c/1', attempts: 5, action: 'new-chat', retryAt: 0
-  });
-  assert.deepEqual(core.recoverablePlan({
-    path: '/c/1', attempts: 5, retryAt: 0
-  }, '/c/1', 302000), {
-    path: '/c/1', attempts: 5, action: 'wait', retryAt: 0
+  assert.deepEqual(core.recoverablePlan({ path: '/c/1', attempts: 8 }, '/c/1'), {
+    path: '/c/1', attempts: 4, action: 'wait', retryAt: 0
   });
   assert.deepEqual(core.recoverableState(null), {});
   assert.deepEqual(core.recoverableState('{"path":"/c/1","attempts":2}'), {

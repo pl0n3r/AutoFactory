@@ -34,8 +34,12 @@ assert.match(content, /signal\.code === 'recoverable'[\s\S]{0,180}isNewChatRoute
   'un Retry residual no debe bloquear un chat nuevo que ya tiene compositor');
 assert.match(content, /const plan = core\.recoverablePlan\(previous, location\.pathname, Date\.now\(\)\)/,
   'una conversación inaccesible debe usar el plan de recuperación limitado');
-assert.match(content, /state\.nextSendAt = plan\.retryAt/,
-  'la pausa de recuperación debe conservar su vencimiento');
+assert.match(content, /runtimeSchemaVersion = 4/,
+  'la actualización debe migrar el runtime de recuperación');
+assert.match(content, /sessionStorage\.removeItem\(RECOVERABLE_STATE_KEY\)/,
+  'la actualización debe limpiar estados lentos de recuperación anteriores');
+assert.match(content, /Date\.now\(\) - state\.lastRecoveryAt <= 4000/,
+  'los pasos de recuperación deben usar una pausa corta');
 assert.match(content, /escalation === 'new-chat'[\s\S]{0,900}sessionStorage\.setItem\(CONVERSATION_TRANSFER_KEY[\s\S]{0,900}openFreshConversation\(null\)/,
   'una recuperación agotada debe abrir como máximo un chat nuevo con bloqueo persistente');
 assert.match(content, /Conversación no disponible; verificando recuperación'\s*,\s*'error'/,

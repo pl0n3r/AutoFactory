@@ -28,7 +28,7 @@
   const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state';
   const CONVERSATION_TRANSFER_KEY = 'chatgpt-autopilot-conversation-transfer-at';
   const CONVERSATION_TRANSFER_COOLDOWN_MS = 10 * 60 * 1000;
-  const runtimeSchemaVersion = 3;
+  const runtimeSchemaVersion = 4;
   const runtimeWasUpgraded = sessionStorage.getItem('chatgpt-autopilot-runtime-schema') !== String(runtimeSchemaVersion);
   if (runtimeWasUpgraded) {
     restored.consecutiveFailures = 0;
@@ -38,6 +38,7 @@
     reliability.save(sessionStorage, restored);
     sessionStorage.setItem('chatgpt-autopilot-runtime-schema', String(runtimeSchemaVersion));
     sessionStorage.removeItem('chatgpt-autopilot-last-reload');
+    sessionStorage.removeItem(RECOVERABLE_STATE_KEY);
   }
   const state = {
     enabled: false,
@@ -729,7 +730,7 @@
         signal = { code: 'ready', action: 'none' };
       }
       if (core.isSafeRecoverySignal(signal)) {
-        if (Date.now() - state.lastRecoveryAt <= 10000) {
+        if (Date.now() - state.lastRecoveryAt <= 4000) {
           setStatus('Conversación no disponible; verificando recuperación', 'error');
           return;
         }
@@ -757,7 +758,7 @@
         }
         if (escalation === 'retry') {
           signal.element.click();
-          setStatus(`Conversación no disponible; reintento ${attempts}/2`);
+          setStatus(`Conversación no disponible; reintento ${attempts}/1`);
         } else if (escalation === 'reload') {
           setStatus('Conversación no disponible; recarga controlada', 'error');
           location.reload();
