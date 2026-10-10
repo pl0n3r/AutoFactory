@@ -120,7 +120,7 @@
       if (ariaLabel && !exactSendLabels.has(ariaLabel)) return false;
       if (title && !exactSendLabels.has(title)) return false;
       if (button.id === 'composer-submit-button'
-        || button.getAttribute('data-testid') === 'send-button') return true;
+        || button.dataset?.testid === 'send-button') return true;
       return exactSendLabels.has(ariaLabel)
         || exactSendLabels.has(title)
         || (button.type === 'submit' && exactSendLabels.has(text));
