@@ -14,6 +14,75 @@ function page(html) {
   return dom.window.document;
 }
 
+
+const sendButtonScopeCases = {
+  prefers_visible_enabled_composer_button() {
+    const doc = page(
+      '<button id="composer-submit-button" disabled>Enviar</button>' +
+      '<form id="other"><button type="submit" aria-label="Send message">Send</button></form>' +
+      '<form id="chat"><textarea placeholder="ChatGPT"></textarea>' +
+      '<button id="actual" data-testid="send-button" aria-label="Send message">Send</button></form>'
+    );
+    assert.equal(core.sendButton(doc)?.id, 'actual');
+    const hidden = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<div hidden><button id="hidden" aria-label="Send message">Send</button></div>' +
+      '<button id="visible" aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(hidden)?.id, 'visible');
+  },
+  unrelated_or_unsafe_controls_fail_closed() {
+    const unrelated = page(
+      '<form><textarea placeholder="ChatGPT"></textarea></form>' +
+      '<form><button type="submit" aria-label="Send message">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(unrelated), null);
+    const unsafe = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button data-testid="send-voice" aria-label="Voice">Voice</button>' +
+      '<button data-testid="send-payment" aria-label="Confirmar compra">Comprar</button>' +
+      '<button aria-label="Enviar mensaje" disabled>Enviar</button>' +
+      '<button style="display:none" aria-label="Send message">Send</button>' +
+      '<button aria-label="Autorizar envío">Autorizar</button>' +
+      '<button aria-label="Stop generating">Stop</button></form>'
+    );
+    assert.equal(core.sendButton(unsafe), null);
+    const ambiguous = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button aria-label="Send message">Send</button>' +
+      '<button aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(ambiguous), null);
+  },
+  normal_composer_backward_compatibility() {
+    const legacy = page(
+      '<div id="prompt-textarea" contenteditable="true"></div>' +
+      '<button id="composer-submit-button">Enviar</button>'
+    );
+    assert.equal(core.sendButton(legacy)?.id, 'composer-submit-button');
+    const form = page(
+      '<form id="chat"><textarea placeholder="ChatGPT"></textarea>' +
+      '<button type="submit" aria-label="Send message">Send</button></form>'
+    );
+    assert.equal(core.sendButton(form)?.getAttribute('aria-label'), 'Send message');
+    form.querySelector('button').remove();
+    assert.equal(core.sendButton(form), null);
+    const replacement = form.createElement('button');
+    replacement.setAttribute('aria-label', 'Enviar mensaje');
+    form.querySelector('form').appendChild(replacement);
+    assert.equal(core.sendButton(form), replacement);
+  }
+};
+const requestedSendCase = process.argv.find(arg => arg.startsWith('--send-button-case='));
+if (requestedSendCase) {
+  const name = requestedSendCase.slice('--send-button-case='.length);
+  assert.equal(typeof sendButtonScopeCases[name], 'function', 'Unknown send-button case');
+  sendButtonScopeCases[name]();
+  console.log('Send-button case passed: ' + name);
+  process.exit(0);
+}
+for (const run of Object.values(sendButtonScopeCases)) run();
+
 {
   const doc = page('<div id="prompt-textarea" contenteditable="true"></div><button id="composer-submit-button">Enviar</button>');
   const field = core.composer(doc);

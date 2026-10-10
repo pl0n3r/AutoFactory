@@ -70,19 +70,43 @@
     };
   }
   function sendButton(doc = document) {
-    const direct = first(doc, SEND_SELECTORS);
-    if (direct) return direct;
     const field = composer(doc);
-    const scope = field?.closest?.('form') || field?.parentElement?.parentElement;
+    if (!field) return null;
+    const fieldForm = field.closest?.('form') || null;
+    const scope = fieldForm
+      || field.closest?.('[data-testid="composer"], [data-testid="composer-container"], #composer')
+      || field.parentElement?.parentElement;
     if (!scope?.querySelectorAll) return null;
-    return [...scope.querySelectorAll('button')].find(button => {
-      const label = normalize([
-        button.getAttribute('aria-label'), button.getAttribute('data-testid'),
-        button.getAttribute('title')
+
+    function isVisible(element) {
+      for (let node = element; node?.nodeType === 1; node = node.parentElement) {
+        if (node.hidden || node.hasAttribute('inert')
+          || node.getAttribute('aria-hidden') === 'true') return false;
+        const style = doc.defaultView?.getComputedStyle?.(node);
+        if (style && (style.display === 'none' || style.visibility === 'hidden'
+          || style.visibility === 'collapse' || style.pointerEvents === 'none')) return false;
+      }
+      return typeof element.checkVisibility !== 'function'
+        || element.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
+    }
+
+    const candidates = [...scope.querySelectorAll('button')].filter(button => {
+      if (button.disabled || button.getAttribute('aria-disabled') === 'true'
+        || button.closest('fieldset[disabled], #chatgpt-autopilot-badge')
+        || !isVisible(button)) return false;
+      const buttonForm = button.closest('form');
+      if (fieldForm ? buttonForm !== fieldForm : Boolean(buttonForm)) return false;
+      const identity = normalize([
+        button.id, button.getAttribute('data-testid'), button.getAttribute('aria-label'),
+        button.getAttribute('title'), button.getAttribute('name'),
+        button.getAttribute('value'), button.textContent
       ].filter(Boolean).join(' ')).toLowerCase();
-      return /(^|\s)(send|enviar)(\s|$|-)/.test(label)
-        && !/stop|detener|voice|voz|dictate|dictado/.test(label);
-    }) || null;
+      if (/stop|detener|voice|voz|dictat|microph|micr[oó]fono|compr|purchas|pay|pagar|autoriza|authoriz|permit|allow|subscri|suscrib|confirm|cancel|delete|eliminar|retry|reintentar/.test(identity)) return false;
+      return button.id === 'composer-submit-button'
+        || /(?:^|[\s-])(send|enviar)(?:[\s-]|$)/.test(identity);
+    });
+    // An ambiguous composer must never guess which control to activate.
+    return candidates.length === 1 ? candidates[0] : null;
   }
   function sendControlSnapshot(doc = document) {
     const field = composer(doc);
