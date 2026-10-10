@@ -56,6 +56,10 @@ function verifyWorkflow(source) {
   assert.match(source, /^    timeout-minutes: 20$/m);
   assert.match(source, /^    timeout-minutes: 10$/m);
   assert.equal(source.match(/persist-credentials: false/g)?.length, 4);
+  assert.equal((source.match(/^          package-manager-cache: false$/gm) || []).length, 3,
+    'release preflight, Chrome and Safari must all disable setup-node caching');
+  assert.doesNotMatch(source, /^\s+cache: npm$/m,
+    'no release job may restore a PR-writable npm cache');
   assert.equal((source.match(/^      - run: npm ci --ignore-scripts$/gm) || []).length, 2,
     'preflight and Chrome jobs must not execute dependency install lifecycle scripts');
   assert.equal(source.match(/contents: write/g)?.length, 1);
@@ -87,6 +91,7 @@ function verifyWorkflow(source) {
     'both GitHub API checks must receive a scoped token');
 }
 verifyWorkflow(workflow);
+assert.throws(() => verifyWorkflow(workflow.replace('package-manager-cache: false', 'cache: npm')));
 assert.throws(() => verifyWorkflow(workflow.replace('npm ci --ignore-scripts', 'npm ci')));
 assert.throws(() => verifyWorkflow(workflow.replace('persist-credentials: false',
   'persist-credentials: true')));
