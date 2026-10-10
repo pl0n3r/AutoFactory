@@ -606,7 +606,14 @@
     } finally {
       clearInterval(statusTimer);
     }
-    if (!budgetReady || !state.enabled) return false;
+    if (budgetReady?.reason === 'budget_unavailable') {
+      state.enabled = false;
+      state.nextSendAt = 0;
+      log('budget-blocked', { code: 'budget_unavailable' });
+      setStatus('Pausado: presupuesto compartido no verificable', 'error');
+      return false;
+    }
+    if (budgetReady !== true || !state.enabled) return false;
     const field = core.composer(document);
     const currentText = core.composerText(field);
     if (currentText && !promptMatches(currentText, prompt)) {

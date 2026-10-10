@@ -130,3 +130,68 @@ async function flush() {
   console.error(error);
   process.exitCode = 1;
 });
+
+
+async function unavailableScenario(mode) {
+  const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
+    url: 'https://chatgpt.com/', runScripts: 'outside-only'
+  });
+  const { window } = dom;
+  const button = window.document.getElementById('send');
+  let fakeNow = 100000;
+  let clickCount = 0;
+  let consumeCount = 0;
+  let storageReply;
+  window.Date.now = () => fakeNow;
+  window.setInterval = () => 0;
+  window.setTimeout = (callback, milliseconds = 0) => {
+    fakeNow += Math.max(0, Number(milliseconds) || 0);
+    void Promise.resolve().then(callback);
+    return 0;
+  };
+  window.clearTimeout = () => {};
+  button.addEventListener('click', () => { clickCount += 1; });
+  window.ChatGPTAutopilotCore = {
+    canSend: candidate => candidate === button && !candidate.disabled,
+    pageSignal: () => ({ code: 'ready' }),
+    sendButton: () => button
+  };
+  window.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(message, reply) {
+        if (message.type === 'autopilot:budget-consume') consumeCount += 1;
+        if (message.type === 'autopilot:budget-status' && mode === 'invalid') {
+          reply({ ok: true, snapshot: { budget: 'invalid' } });
+        }
+        // 'silent' simulates a service worker that never invokes the callback.
+      }
+    },
+    storage: {
+      local: { get(_defaults, callback) { storageReply = callback; } },
+      onChanged: { addListener() {} }
+    }
+  };
+  window.eval(fs.readFileSync('./account-budget-guard.js', 'utf8'));
+  storageReply({
+    masterEnabled: true, accountBudgetEnabled: true,
+    reasoningLevel: 'high', accountBudgetSnapshotV1: null
+  });
+  const decision = await window.ChatGPTAutopilotBudgetGuard.waitUntilReady();
+  assert.deepEqual(JSON.parse(JSON.stringify(decision)), {
+    ok: false, reason: 'budget_unavailable'
+  }, mode + ': unavailable background must fail closed with a typed result');
+  assert.ok(fakeNow >= 108000, mode + ': waiting must be bounded by fake clock');
+  assert.equal(consumeCount, 0, mode + ': no budget slots can be consumed');
+  assert.equal(window.ChatGPTAutopilotCore.canSend(button), false,
+    mode + ': no send permission without a valid snapshot');
+  assert.equal(clickCount, 0, mode + ': must not click a send control');
+}
+(async () => {
+  await unavailableScenario('invalid');
+  await unavailableScenario('silent');
+  console.log('account-budget-guard: unavailable service worker fails closed');
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

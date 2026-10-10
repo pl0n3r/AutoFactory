@@ -12,6 +12,9 @@
 
   const AUTHORIZATION_TTL_MS = 5000;
   const WAIT_POLL_MS = 250;
+  const UNAVAILABLE_WAIT_MS = 8000;
+  const SNAPSHOT_RESPONSE_TIMEOUT_MS = 2000;
+  const BUDGET_UNAVAILABLE = Object.freeze({ ok: false, reason: 'budget_unavailable' });
   let masterEnabled = null;
   let budgetEnabled = null;
   let ready = false;
@@ -103,19 +106,39 @@
   }
 
   async function waitBudgetReadyStep() {
-    if (budgetEnabled === false) return true;
-    if (masterEnabled === false) return false;
-    const refreshed = await ensureSnapshot();
-    if (!refreshed || masterEnabled !== true || budgetEnabled !== true) {
-      await delay(WAIT_POLL_MS);
-      return waitBudgetReadyStep();
+    let unavailableSince = Date.now();
+    for (;;) {
+      if (budgetEnabled === false) return true;
+      if (masterEnabled === false) return false;
+      let timeoutId;
+      let refreshed;
+      try {
+        refreshed = await Promise.race([
+          ensureSnapshot(),
+          new Promise(resolve => {
+            timeoutId = setTimeout(() => resolve(false), SNAPSHOT_RESPONSE_TIMEOUT_MS);
+          })
+        ]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (budgetEnabled === false) return true;
+      if (masterEnabled === false) return false;
+      if (!refreshed || masterEnabled !== true || budgetEnabled !== true) {
+        const elapsed = Date.now() - unavailableSince;
+        if (!Number.isFinite(elapsed) || elapsed >= UNAVAILABLE_WAIT_MS) {
+          return BUDGET_UNAVAILABLE;
+        }
+        await delay(Math.min(WAIT_POLL_MS, UNAVAILABLE_WAIT_MS - elapsed));
+        continue;
+      }
+      unavailableSince = Date.now();
+      if (snapshot.nextAllowedAt === null && snapshot.remaining > 0) return true;
+      await delay(waitDelayMs());
+      if (snapshot?.nextAllowedAt !== null && Date.now() >= snapshot.nextAllowedAt) {
+        ready = false;
+      }
     }
-    if (snapshot.nextAllowedAt === null && snapshot.remaining > 0) return true;
-    await delay(waitDelayMs());
-    if (snapshot?.nextAllowedAt !== null && Date.now() >= snapshot.nextAllowedAt) {
-      ready = false;
-    }
-    return waitBudgetReadyStep();
   }
 
   function waitUntilReady() {
