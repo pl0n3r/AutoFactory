@@ -56,6 +56,8 @@ function verifyWorkflow(source) {
   assert.match(source, /^    timeout-minutes: 20$/m);
   assert.match(source, /^    timeout-minutes: 10$/m);
   assert.equal(source.match(/persist-credentials: false/g)?.length, 4);
+  assert.equal((source.match(/^      - run: npm ci --ignore-scripts$/gm) || []).length, 2,
+    'preflight and Chrome jobs must not execute dependency install lifecycle scripts');
   assert.equal(source.match(/contents: write/g)?.length, 1);
   assert.equal(source.match(/actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1/g)?.length, 4);
   assert.match(source, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/);
@@ -85,6 +87,7 @@ function verifyWorkflow(source) {
     'both GitHub API checks must receive a scoped token');
 }
 verifyWorkflow(workflow);
+assert.throws(() => verifyWorkflow(workflow.replace('npm ci --ignore-scripts', 'npm ci')));
 assert.throws(() => verifyWorkflow(workflow.replace('persist-credentials: false',
   'persist-credentials: true')));
 assert.throws(() => verifyWorkflow(workflow.replace(
