@@ -73,7 +73,9 @@ async function microtasks() {
   await new Promise(resolve => setImmediate(resolve));
 }
 
-function bootFakeTab(session, decision, { failBudgetBlockWrite = false } = {}) {
+function bootFakeTab(session, decision, {
+  failBudgetBlockWrite = false, missingGuard = false, budgetEnabled = true
+} = {}) {
   const dom = new JSDOM(
     '<!doctype html><div id="prompt-textarea" contenteditable="true">Draft fixture</div>',
     { url: 'https://chatgpt.com/', runScripts: 'outside-only', pretendToBeVisual: true }
@@ -112,7 +114,7 @@ function bootFakeTab(session, decision, { failBudgetBlockWrite = false } = {}) {
   window.ChatGPTAutopilotLearning = learning;
   window.ChatGPTAutopilotReliability = reliability;
   window.ChatGPTAutopilotAdaptiveRecovery = {};
-  window.ChatGPTAutopilotBudgetGuard = {
+  window.ChatGPTAutopilotBudgetGuard = missingGuard ? null : {
     nextAllowedAt: () => null,
     waitUntilReady: async () => {
       budgetCalls += 1;
@@ -130,6 +132,7 @@ function bootFakeTab(session, decision, { failBudgetBlockWrite = false } = {}) {
         get(defaults, callback) {
           callback({
             ...defaults, masterEnabled: true,
+            accountBudgetEnabled: budgetEnabled,
             prompt: 'Draft fixture', promptSchemaVersion: 2,
             conversationMode: 'chat', modelTarget: 'keep', reasoningLevel: 'keep',
             periodicReload: false, autoReload: false, followScroll: false
@@ -200,6 +203,32 @@ function bootFakeTab(session, decision, { failBudgetBlockWrite = false } = {}) {
   assert.equal(storageFault.clicks(), 0,
     'storage exception cannot authorize a provider click');
   storageFault.close();
+
+  const missingGuard = bootFakeTab(new Map(), () => true,
+    { missingGuard: true, budgetEnabled: true });
+  missingGuard.advance();
+  missingGuard.emit('autopilot:heartbeat');
+  await microtasks();
+  assert.equal(missingGuard.isEnabled(), false,
+    'an enabled shared budget cannot be bypassed if its guard script is missing');
+  assert.equal(missingGuard.budgetCalls(), 0,
+    'a missing guard does not invent a successful authorization');
+  assert.equal(missingGuard.draft(), 'Draft fixture',
+    'a missing budget guard preserves an unsent draft');
+  assert.equal(missingGuard.clicks(), 0,
+    'a missing budget guard never sends');
+  missingGuard.close();
+
+  const budgetOff = bootFakeTab(new Map(), () => true,
+    { missingGuard: true, budgetEnabled: false });
+  budgetOff.advance();
+  budgetOff.emit('autopilot:heartbeat');
+  await microtasks();
+  assert.equal(budgetOff.isEnabled(), true,
+    'explicitly disabled budgets preserve the local path without a guard');
+  assert.equal(budgetOff.budgetCalls(), 0,
+    'disabled budget must not consume shared capacity');
+  budgetOff.close();
 
   const reloaded = bootFakeTab(persisted, () => true);
   reloaded.advance();

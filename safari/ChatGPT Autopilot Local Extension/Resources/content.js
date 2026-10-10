@@ -257,7 +257,8 @@
     if (cachedConfigPromise) return cachedConfigPromise;
     const defaults = {
       prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION,
-      delaySeconds: 15, learning: learning.EMPTY, sharedLearning: null, ...SCROLL_DEFAULTS
+      delaySeconds: 15, learning: learning.EMPTY, sharedLearning: null,
+      accountBudgetEnabled: false, ...SCROLL_DEFAULTS
     };
     cachedConfigPromise = new Promise((resolve, reject) => {
       try {
@@ -594,8 +595,31 @@
     return 'unavailable';
   }
 
+  function pauseForBudgetUnavailable() {
+    state.enabled = false;
+    state.nextSendAt = 0;
+    try {
+      sessionStorage.setItem(BUDGET_BLOCK_KEY, '1');
+    } catch (_error) {
+      // Si el almacenamiento falla, la sesión actual permanece pausada.
+    }
+    log('budget-blocked', { code: 'budget_unavailable' });
+    setStatus('Pausado: presupuesto compartido no verificable', 'error');
+    return false;
+  }
+
   async function waitForBudgetBeforeSend(prompt) {
-    if (!budgetGuard?.waitUntilReady) return true;
+    if (!budgetGuard?.waitUntilReady) {
+      // El guard puede faltar si su script no cargó. Solo el presupuesto
+      // explícitamente desactivado autoriza continuar sin esa protección.
+      try {
+        const settings = await config();
+        if (settings.accountBudgetEnabled === false) return true;
+      } catch (_error) {
+        // Estado no verificable: no permitir envío.
+      }
+      return pauseForBudgetUnavailable();
+    }
     const updateBudgetStatus = () => {
       setStatus(core.budgetWaitLabel(budgetGuard.nextAllowedAt?.()));
     };
@@ -608,17 +632,7 @@
       clearInterval(statusTimer);
     }
     if (budgetReady?.reason === 'budget_unavailable') {
-      // Pausa primero: sessionStorage puede lanzar SecurityError/QuotaExceededError.
-      state.enabled = false;
-      state.nextSendAt = 0;
-      try {
-        sessionStorage.setItem(BUDGET_BLOCK_KEY, '1');
-      } catch (_error) {
-        // Si no se puede persistir el latch, la pestaña permanece pausada.
-      }
-      log('budget-blocked', { code: 'budget_unavailable' });
-      setStatus('Pausado: presupuesto compartido no verificable', 'error');
-      return false;
+      return pauseForBudgetUnavailable();
     }
     if (budgetReady !== true || !state.enabled) return false;
     const field = core.composer(document);
