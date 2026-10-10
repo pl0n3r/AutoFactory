@@ -245,7 +245,7 @@ function effects(spy) {
       authorizer: { authorize: async () => { throw Error('private-grant'); } },
       effects: effects(deniedEffects),
       auditStore: { append: async e => { deniedEvents.push(structuredClone(e)); return true; } }
-    }).execute(command('audited-denied', 'send_message', 7), context);
+    }).execute(command('audited-denied', 'send_message', 7, { text: privateText }), context);
     assert.equal(denied.code, 'unauthorized');
     assert.equal(deniedEffects.length, 0);
     assert.deepEqual(deniedEvents.map(e => e.outcome), ['unauthorized', 'unauthorized']);
@@ -261,7 +261,7 @@ function effects(spy) {
         effects: effects(effectsCalled),
         auditStore: { append: async () => reply }
       });
-      const outcome = await badAudit.execute(command('audit-not-written', 'send_message', 7), context);
+      const outcome = await badAudit.execute(command('audit-not-written', 'send_message', 7, { text: privateText }), context);
       assert.equal(outcome.code, 'failed');
       assert.equal(effectsCalled.length, 0);
     }
@@ -270,7 +270,7 @@ function effects(spy) {
       ledger: createLedger(memoryStore()), authorizer,
       effects: effects(errors),
       auditStore: { append: async () => { throw Error('private-adapter-secret'); } }
-    }).execute(command('audit-error', 'send_message', 7), context);
+    }).execute(command('audit-error', 'send_message', 7, { text: privateText }), context);
     assert.equal(withError.code, 'failed');
     assert.equal(errors.length, 0);
     assert.doesNotMatch(JSON.stringify(withError), /private-adapter-secret/);
