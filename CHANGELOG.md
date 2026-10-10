@@ -2,6 +2,13 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.0 — 2026-10-10
+
+- Añade memoria compartida preparada para ControlBot con eventos estrictamente sanitizados y caché local.
+- Coordina incidentes entre pestañas para impedir chats de recuperación duplicados.
+- Incorpora un selector adaptativo seguro en modo observación y controles de rollback.
+- Mantiene la sincronización remota desactivada hasta superar consentimiento, seguridad y puerta legal.
+
 ## 1.6.29 — 2026-10-10
 
 - Simplifica la recuperación a un Retry, una recarga y un único chat nuevo.

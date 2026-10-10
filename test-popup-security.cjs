@@ -51,6 +51,12 @@ for (const [actual, expected] of [
   [window.document.getElementById('recoveries').textContent, '2'],
   [window.document.getElementById('failures').textContent, '1']
 ]) assert.equal(actual, expected);
+window.renderSharedLearning({enabled:true,mode:'observe',policyVersion:7,localSamples:12,sharedSamples:45,confidence:.91,successRate:.88,lastSyncAt:1800000000000,source:'shared-observe',lastError:injection});
+const shared = window.document.getElementById('shared-learning-details');
+assert.equal(shared.querySelector('img'), null);
+assert.equal(shared.textContent.includes('Política 7'), true);
+assert.equal(shared.textContent.includes('45 compartidas'), true);
+assert.equal(shared.textContent.includes(injection), true);
 const textareaCount = window.document.querySelectorAll('textarea').length;
 window.navigator.clipboard = { writeText: async () => { throw new Error('denied'); } };
 await window.copyText('diagnostic fallback');
