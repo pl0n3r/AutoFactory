@@ -114,6 +114,10 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
         self.assertEqual(result.returncode, 0, result.stderr)
         cases = json.loads(result.stdout)
         self.assertEqual(len(cases), 12)
+        self.assertIn(
+            "timeoutMs: hostedLinux ? 45000 : 15000",
+            SCRIPT.read_text(encoding="utf-8"),
+        )
         for case in cases:
             scoped = (
                 case["platform"] == "linux"
@@ -122,6 +126,7 @@ class ChromeEphemeralSmokeTests(ReleaseArtifactAttestationTests):
             )
             with self.subTest(platform=case["platform"], env=case["env"]):
                 self.assertEqual("--no-sandbox" in case["args"], scoped)
+                self.assertEqual("--disable-dev-shm-usage" in case["args"], scoped)
                 self.assertIn("--load-extension=/tmp/attested-extension", case["args"])
                 self.assertIn("--user-data-dir=/tmp/isolated-profile", case["args"])
                 self.assertIn("--remote-debugging-port=0", case["args"])
