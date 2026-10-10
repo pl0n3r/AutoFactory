@@ -180,10 +180,21 @@ async function probeChromeWorker(profileDir, timeoutMs, child) {
     }
     if (fs.existsSync(portFile)) {
       devtoolsPortSeen = true;
-      const result = await inspectWorkerTargets(readDevToolsPort(portFile));
-      lastTargets = result.kinds;
-      lastProbeError = result.error;
-      if (result.worker) return { type: result.worker.type, url: result.worker.url };
+      // Chrome creates DevToolsActivePort before finishing its contents.
+      // A partial or transiently unreadable file is startup-in-progress,
+      // never evidence that the MV3 worker loaded.
+      let port = null;
+      try {
+        port = readDevToolsPort(portFile);
+      } catch (_error) {
+        lastProbeError = 'port-pending';
+      }
+      if (port !== null) {
+        const result = await inspectWorkerTargets(port);
+        lastTargets = result.kinds;
+        lastProbeError = result.error;
+        if (result.worker) return { type: result.worker.type, url: result.worker.url };
+      }
     }
     await new Promise(resolve => setTimeout(resolve, 150));
   }
