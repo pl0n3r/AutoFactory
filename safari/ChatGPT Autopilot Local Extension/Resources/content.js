@@ -27,6 +27,7 @@
   });
   const restored = reliability.load(sessionStorage);
   const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state';
+  const BUDGET_BLOCK_KEY = 'chatgpt-autopilot-budget-blocked-v1';
   const CONVERSATION_TRANSFER_KEY = 'chatgpt-autopilot-conversation-transfer-at';
   const CONVERSATION_TRANSFER_COOLDOWN_MS = 10 * 60 * 1000;
   const runtimeSchemaVersion = 4;
@@ -607,6 +608,7 @@
       clearInterval(statusTimer);
     }
     if (budgetReady?.reason === 'budget_unavailable') {
+      sessionStorage.setItem(BUDGET_BLOCK_KEY, '1');
       state.enabled = false;
       state.nextSendAt = 0;
       log('budget-blocked', { code: 'budget_unavailable' });
@@ -1159,8 +1161,16 @@
     }
   }
 
-  function setEnabled(enabled) {
+  function setEnabled(enabled, explicit = false) {
     const nextEnabled = Boolean(enabled);
+    if (nextEnabled && sessionStorage.getItem(BUDGET_BLOCK_KEY) === '1') {
+      if (!explicit) {
+        state.enabled = false;
+        setStatus('Pausado: presupuesto compartido no verificable', 'error');
+        return;
+      }
+      sessionStorage.removeItem(BUDGET_BLOCK_KEY);
+    }
     if (!core.enabledStateChanged(state.enabled, nextEnabled)) return;
     state.enabled = nextEnabled;
     log('enabled-change', { enabled: state.enabled });
@@ -1194,7 +1204,9 @@
   }
 
   extensionApi.runtime.onMessage.addListener((message, _sender, reply) => {
-    if (message?.type === 'autopilot:set-enabled') setEnabled(message.enabled);
+    if (message?.type === 'autopilot:set-enabled') {
+      setEnabled(message.enabled, message.enabled === true);
+    }
     if (message?.type === 'autopilot:heartbeat') void tick();
     if (message?.type === 'autopilot:get-status') {
       reply({ enabled: state.enabled, status: state.status });
@@ -1209,7 +1221,11 @@
     if (changes.learning?.newValue) {
       state.learned = learning.normalize(changes.learning.newValue);
     }
-    if (changes.masterEnabled) setEnabled(Boolean(changes.masterEnabled.newValue));
+    if (changes.masterEnabled) {
+      const change = changes.masterEnabled;
+      setEnabled(Boolean(change.newValue),
+        change.oldValue === false && change.newValue === true);
+    }
   });
 
   extensionApi.storage.local.get({ masterEnabled: false, learning: learning.EMPTY }, values => {
