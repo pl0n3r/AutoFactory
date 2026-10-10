@@ -23,6 +23,9 @@
       throw new TypeError('A protocol, storage adapter and bounded capacity are required');
     }
     let queue = Promise.resolve();
+    // Per-instance capability for an ambiguous post-effect audit result.
+    const ambiguousResult = Object.freeze({});
+    function deferOutcome() { return ambiguousResult; }
 
     function checked(receipts) {
       if (!Array.isArray(receipts) || receipts.length > maxEntries) {
@@ -71,6 +74,12 @@
         let ack;
         try {
           const outcome = await handler(command);
+          if (outcome === ambiguousResult) {
+            // Retain the persisted pending receipt and block future replays.
+            return protocol.acknowledgement({
+              id: command.id, ok: false, code: 'not_ready'
+            });
+          }
           ack = protocol.acknowledgement({ id: command.id, ok: outcome?.ok, code: outcome?.code });
         } catch (_error) {
           ack = protocol.acknowledgement({ id: command.id, ok: false, code: 'failed' });
@@ -81,7 +90,7 @@
       queue = task.then(() => undefined, () => undefined);
       return task;
     }
-    return Object.freeze({ execute });
+    return Object.freeze({ execute, deferOutcome });
   }
 
   function commandKey(command) {
