@@ -136,5 +136,82 @@
     function stop() { stopped = true; }
     return Object.freeze({ tick, stop });
   }
-  return Object.freeze({ PURPOSE, MIN_INTERVAL_MS, buildHeartbeatSnapshot, createHeartbeatCoordinator });
+
+  // Read-only evidence derived solely from successful, acknowledged fake transport.
+  // No timers, polling, network access or connection to Production Authority.
+  const OFFLINE_AFTER_MISSES = 3;
+
+  function createHeartbeatPresenceCoordinator(config = {}) {
+    const { now, deliver, ...rest } = config;
+    if (typeof now !== 'function' || typeof deliver !== 'function') {
+      throw new TypeError('Heartbeat presence dependencies are required');
+    }
+    let stopped = false;
+    let firstAttemptAt = null;
+    let lastConfirmedAt = null;
+    let lastClockAt = null;
+
+    function clock() {
+      let current;
+      try { current = now(); } catch (_error) { return null; }
+      if (!Number.isSafeInteger(current) || current < 0 ||
+          (lastClockAt !== null && current < lastClockAt)) return null;
+      lastClockAt = current;
+      return current;
+    }
+
+    const coordinator = createHeartbeatCoordinator({
+      ...rest, now,
+      deliver: async payload => {
+        const receipt = await deliver(payload);
+        // Missing/ambiguous acknowledgement is not proof of presence.
+        if (!exactEnumerableObject(receipt, ['confirmed']) ||
+            receipt.confirmed !== true) {
+          throw new TypeError('Heartbeat delivery not confirmed');
+        }
+      }
+    });
+
+    async function tick() {
+      if (stopped) return 'stopped';
+      const started = clock();
+      if (started === null) return 'failed';
+      if (firstAttemptAt === null) firstAttemptAt = started;
+      const outcome = await coordinator.tick();
+      if (outcome === 'sent') {
+        const finished = clock();
+        if (finished === null) return 'failed';
+        lastConfirmedAt = finished;
+      }
+      return outcome;
+    }
+
+    function presence() {
+      if (stopped) {
+        return Object.freeze({ state: 'offline', lastConfirmedAt: null, missedIntervals: 0 });
+      }
+      const current = clock();
+      if (current === null) {
+        return Object.freeze({ state: 'unknown', lastConfirmedAt: null, missedIntervals: 0 });
+      }
+      const anchor = lastConfirmedAt === null ? firstAttemptAt : lastConfirmedAt;
+      if (anchor === null || anchor > current) {
+        return Object.freeze({ state: 'unknown', lastConfirmedAt: null, missedIntervals: 0 });
+      }
+      const missed = Math.floor((current - anchor) / MIN_INTERVAL_MS);
+      const state = missed >= OFFLINE_AFTER_MISSES ? 'offline'
+        : lastConfirmedAt === null ? 'unknown' : 'online';
+      return Object.freeze({
+        state, lastConfirmedAt, missedIntervals: Math.min(missed, OFFLINE_AFTER_MISSES)
+      });
+    }
+
+    function stop() {
+      stopped = true;
+      coordinator.stop();
+    }
+    return Object.freeze({ tick, presence, stop });
+  }
+
+  return Object.freeze({ PURPOSE, MIN_INTERVAL_MS, OFFLINE_AFTER_MISSES, buildHeartbeatSnapshot, createHeartbeatCoordinator, createHeartbeatPresenceCoordinator });
 });

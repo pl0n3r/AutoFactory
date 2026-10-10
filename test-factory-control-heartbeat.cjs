@@ -3,6 +3,8 @@ const {
   PURPOSE,
   buildHeartbeatSnapshot,
   createHeartbeatCoordinator,
+  createHeartbeatPresenceCoordinator,
+  OFFLINE_AFTER_MISSES,
   MIN_INTERVAL_MS
 } = require('./factory-control-heartbeat.js');
 
@@ -273,5 +275,103 @@ const validConsent = () => ({
   assert.equal(await heartbeat.tick(), 'failed');
   heartbeat = build({ now: () => { throw Error('private clock token'); } });
   assert.equal(await heartbeat.tick(), 'failed');
+
+  // AC-01: only an explicit acknowledgement from a fake delivery proves online.
+  {
+    let clock = 100_000;
+    let sends = 0;
+    const observer = createHeartbeatPresenceCoordinator({
+      loadVerifiedConsent: async () => validConsent(),
+      snapshot: async () => synthetic(),
+      deliver: async () => { sends += 1; return { confirmed: true }; },
+      now: () => clock,
+      profileAlias: 'sample-profile'
+    });
+    assert.equal(OFFLINE_AFTER_MISSES, 3);
+    assert.equal(observer.presence().state, 'unknown');
+    assert.equal(await observer.tick(), 'sent');
+    assert.equal(observer.presence().state, 'online');
+    assert.equal(observer.presence().lastConfirmedAt, clock);
+    assert.equal(await observer.tick(), 'throttled');
+    assert.equal(sends, 1);
+    clock += MIN_INTERVAL_MS;
+    assert.equal(await observer.tick(), 'sent');
+    assert.equal(sends, 2);
+    console.log('heartbeat-presence AC-01: ok');
+  }
+
+  // AC-02: unconfirmed sends never establish presence. After three complete
+  // missed 60s slots, offline; a subsequent confirmed delivery can recover.
+  {
+    let clock = 100_000;
+    let confirmed = false;
+    const observer = createHeartbeatPresenceCoordinator({
+      loadVerifiedConsent: async () => validConsent(),
+      snapshot: async () => synthetic(),
+      deliver: async () => confirmed ? { confirmed: true } : { confirmed: false },
+      now: () => clock,
+      profileAlias: 'sample-profile'
+    });
+    assert.equal(await observer.tick(), 'failed');
+    assert.equal(observer.presence().state, 'unknown');
+    clock += MIN_INTERVAL_MS;
+    assert.equal(await observer.tick(), 'failed');
+    clock += MIN_INTERVAL_MS;
+    assert.equal(await observer.tick(), 'failed');
+    clock += MIN_INTERVAL_MS;
+    assert.deepEqual(observer.presence(), {
+      state: 'offline', lastConfirmedAt: null, missedIntervals: 3
+    });
+    confirmed = true;
+    assert.equal(await observer.tick(), 'sent');
+    assert.deepEqual(observer.presence(), {
+      state: 'online', lastConfirmedAt: clock, missedIntervals: 0
+    });
+    clock += 3 * MIN_INTERVAL_MS;
+    assert.equal(observer.presence().state, 'offline');
+    assert.equal(await observer.tick(), 'sent');
+    assert.equal(observer.presence().state, 'online');
+    console.log('heartbeat-presence AC-02: ok');
+  }
+
+  // AC-03: stop and invalid clocks fail closed; acknowledgements with secret
+  // extras do not establish presence or reflect private error text.
+  {
+    let clock = 100_000;
+    let sends = 0;
+    const observer = createHeartbeatPresenceCoordinator({
+      loadVerifiedConsent: async () => validConsent(),
+      snapshot: async () => synthetic(),
+      deliver: async () => {
+        sends += 1;
+        return { confirmed: true, secret: 'private-token' };
+      },
+      now: () => clock,
+      profileAlias: 'sample-profile'
+    });
+    assert.equal(await observer.tick(), 'failed');
+    assert.equal(observer.presence().state, 'unknown');
+    clock = Number.NaN;
+    assert.equal(observer.presence().state, 'unknown');
+    observer.stop();
+    assert.equal(observer.presence().state, 'offline');
+    assert.equal(await observer.tick(), 'stopped');
+    assert.equal(sends, 1);
+    const safeJson = JSON.stringify(observer.presence()).toLowerCase();
+    for (const forbidden of ['secret', 'token', 'email', 'chat', 'private']) {
+      assert.equal(safeJson.includes(forbidden), false);
+    }
+    const brokenClock = createHeartbeatPresenceCoordinator({
+      loadVerifiedConsent: async () => validConsent(),
+      snapshot: async () => synthetic(),
+      deliver: async () => ({ confirmed: true }),
+      now: () => { throw Error('private clock token'); },
+      profileAlias: 'sample-profile'
+    });
+    assert.equal(await brokenClock.tick(), 'failed');
+    assert.equal(brokenClock.presence().state, 'unknown');
+    console.log('heartbeat-presence AC-03: ok');
+  }
+
   console.log('Factory Control heartbeat: consent, 60s cadence, revocation and safe failures pass');
 })().catch(error => { console.error(error); process.exitCode = 1; });
