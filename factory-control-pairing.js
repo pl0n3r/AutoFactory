@@ -170,7 +170,7 @@
     return value;
   }
 
-  function createPersistedPairingContract({ pairing, credentialStore } = {}) {
+  function createPersistedPairingContract({ pairing, credentialStore, auditStore } = {}) {
     if (!pairing || typeof pairing.pair !== 'function' || typeof pairing.revoke !== 'function' ||
         !credentialStore || typeof credentialStore.save !== 'function' ||
         typeof credentialStore.remove !== 'function') {
@@ -215,19 +215,32 @@
           !validAlias(input.profileAlias) || !validId(input.credentialId)) {
         return safeResult(false, 'invalid');
       }
+      // Audit must be durable before a remote revocation is attempted. The
+      // audit events never contain a profile, pairing code, or credential handle.
+      if (!auditStore || typeof auditStore.append !== 'function') {
+        return safeResult(false, 'failed');
+      }
       try {
+        const intentRecorded = await auditStore.append(Object.freeze({
+          event: 'pairing_revocation', phase: 'attempt'
+        }));
+        if (intentRecorded !== true) return safeResult(false, 'failed');
+
         const result = checkedPairingResult(await pairing.revoke(input));
         if (!['revoked', 'not_found'].includes(result.code)) return result;
-        try {
-          await credentialStore.remove({
-            profileAlias: input.profileAlias,
-            id: input.credentialId
-          });
-        } catch (_error) {
-          return safeResult(false, 'failed');
-        }
+
+        const removed = await credentialStore.remove({
+          profileAlias: input.profileAlias,
+          id: input.credentialId
+        });
+        if (removed !== true) return safeResult(false, 'failed');
+
+        const outcomeRecorded = await auditStore.append(Object.freeze({
+          event: 'pairing_revocation', phase: 'result', outcome: result.code
+        }));
+        if (outcomeRecorded !== true) return safeResult(false, 'failed');
         return result;
-      } catch (_error) { // NOSONAR: remote/store details and opaque handles must not escape this boundary.
+      } catch (_error) { // NOSONAR: audit/remote/store details must never escape this boundary.
         // Deliberately discard remote/store exception details; handles and adapter messages are sensitive.
         return safeResult(false, 'failed');
       }
