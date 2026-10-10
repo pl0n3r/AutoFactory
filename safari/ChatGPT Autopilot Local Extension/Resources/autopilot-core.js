@@ -59,7 +59,34 @@
     return null;
   }
 
-  function composer(doc = document) { return first(doc, COMPOSER_SELECTORS); }
+  function isVisible(element, doc) {
+    for (let node = element; node?.nodeType === 1; node = node.parentElement) {
+      if (node.hidden || node.hasAttribute('inert')
+        || node.getAttribute('aria-hidden') === 'true'
+        || node.getAttribute('aria-disabled') === 'true') return false;
+      const style = doc.defaultView?.getComputedStyle?.(node);
+      if (style && (style.display === 'none' || style.visibility === 'hidden'
+        || style.visibility === 'collapse' || style.pointerEvents === 'none'
+        || Number.parseFloat(style.opacity) === 0)) return false;
+    }
+    return typeof element.checkVisibility !== 'function'
+      || element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  }
+
+
+  function composer(doc = document) {
+    if (doc.nodeType !== 9) return first(doc, COMPOSER_SELECTORS);
+    const usableFields = new Set();
+    for (const selector of COMPOSER_SELECTORS) {
+      for (const field of doc.querySelectorAll(selector)) {
+        if (field.disabled || field.readOnly || field.getAttribute('aria-readonly') === 'true'
+          || field.closest('fieldset[disabled]') || !isVisible(field, doc)) continue;
+        usableFields.add(field);
+        if (usableFields.size > 1) return null;
+      }
+    }
+    return usableFields.values().next().value || null;
+  }
   function interfaceSnapshot(doc = document) {
     return {
       path: doc.location?.pathname || '',
@@ -82,24 +109,11 @@
     // control directly alongside the field is eligible.
     const unscoped = !fieldForm && !composerRegion;
 
-    function isVisible(element) {
-      for (let node = element; node?.nodeType === 1; node = node.parentElement) {
-        if (node.hidden || node.hasAttribute('inert')
-          || node.getAttribute('aria-hidden') === 'true'
-          || node.getAttribute('aria-disabled') === 'true') return false;
-        const style = doc.defaultView?.getComputedStyle?.(node);
-        if (style && (style.display === 'none' || style.visibility === 'hidden'
-          || style.visibility === 'collapse' || style.pointerEvents === 'none'
-          || Number.parseFloat(style.opacity) === 0)) return false;
-      }
-      return typeof element.checkVisibility !== 'function'
-        || element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
-    }
 
     const candidates = [...scope.querySelectorAll('button')].filter(button => {
       if (button.disabled || button.getAttribute('aria-disabled') === 'true'
         || button.closest('fieldset[disabled], #chatgpt-autopilot-badge')
-        || !isVisible(button)) return false;
+        || !isVisible(button, doc)) return false;
       const buttonForm = button.closest('form');
       // HTML's form="" attribute can redirect submission outside its ancestor form.
       // The effective owner must agree with the composer, not only the DOM parent.

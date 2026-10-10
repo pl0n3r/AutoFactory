@@ -42,10 +42,45 @@ const sendButtonScopeCases = {
       '<button id="visible" aria-label="Enviar mensaje">Enviar</button></form>'
     );
     assert.equal(core.sendButton(inheritedOpacity)?.id, 'visible');
+    const hiddenFirst = page(
+      '<form id="old"><textarea placeholder="ChatGPT" hidden></textarea>' +
+      '<button id="old-send" aria-label="Send message">Send</button></form>' +
+      '<form id="live"><textarea placeholder="ChatGPT"></textarea>' +
+      '<button id="live-send" aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.composer(hiddenFirst)?.closest('form')?.id, 'live');
+    assert.equal(core.sendButton(hiddenFirst)?.id, 'live-send');
+    for (const attribute of ['hidden', 'style="display:none"', 'style="opacity:0"',
+      'aria-hidden="true"', 'inert', 'aria-disabled="true"']) {
+      const doc = page('<form id="old"><div ' + attribute + '>' +
+        '<textarea placeholder="ChatGPT"></textarea></div>' +
+        '<button aria-label="Send message">Send</button></form>' +
+        '<form id="live"><textarea placeholder="ChatGPT"></textarea>' +
+        '<button id="live-send" aria-label="Enviar mensaje">Enviar</button></form>');
+      assert.equal(core.composer(doc)?.closest('form')?.id, 'live');
+      assert.equal(core.sendButton(doc)?.id, 'live-send');
+    }
   },
   unrelated_or_unsafe_controls_fail_closed() {
     const withoutComposer = page('<button aria-label="Send message">Send</button>');
     assert.equal(core.sendButton(withoutComposer), null);
+    for (const attribute of ['hidden', 'style="opacity:0"', 'aria-hidden="true"', 'inert']) {
+      const doc = page('<form><div ' + attribute + '>' +
+        '<textarea placeholder="ChatGPT"></textarea></div>' +
+        '<button aria-label="Send message">Send</button></form>');
+      assert.equal(core.composer(doc), null);
+      assert.equal(core.sendButton(doc), null);
+    }
+    const disabledEditor = page('<form><textarea placeholder="ChatGPT" disabled></textarea>' +
+      '<button aria-label="Send message">Send</button></form>');
+    assert.equal(core.composer(disabledEditor), null);
+    assert.equal(core.sendButton(disabledEditor), null);
+    const ambiguousEditors = page('<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button aria-label="Send message">Send</button></form>' +
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button aria-label="Enviar mensaje">Enviar</button></form>');
+    assert.equal(core.composer(ambiguousEditors), null);
+    assert.equal(core.sendButton(ambiguousEditors), null);
     const unrelated = page(
       '<form><textarea placeholder="ChatGPT"></textarea></form>' +
       '<form><button type="submit" aria-label="Send message">Enviar</button></form>'
