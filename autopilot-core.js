@@ -85,10 +85,11 @@
           || node.getAttribute('aria-disabled') === 'true') return false;
         const style = doc.defaultView?.getComputedStyle?.(node);
         if (style && (style.display === 'none' || style.visibility === 'hidden'
-          || style.visibility === 'collapse' || style.pointerEvents === 'none')) return false;
+          || style.visibility === 'collapse' || style.pointerEvents === 'none'
+          || Number.parseFloat(style.opacity) === 0)) return false;
       }
       return typeof element.checkVisibility !== 'function'
-        || element.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
+        || element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
     }
 
     const candidates = [...scope.querySelectorAll('button')].filter(button => {

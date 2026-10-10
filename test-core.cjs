@@ -30,6 +30,18 @@ const sendButtonScopeCases = {
       '<button id="visible" aria-label="Enviar mensaje">Enviar</button></form>'
     );
     assert.equal(core.sendButton(hidden)?.id, 'visible');
+    const transparent = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button id="transparent" aria-label="Send message" style="opacity:0">Send</button>' +
+      '<button id="solid" aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(transparent)?.id, 'solid');
+    const inheritedOpacity = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<div style="opacity:0"><button id="invisible" aria-label="Send message">Send</button></div>' +
+      '<button id="visible" aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(inheritedOpacity)?.id, 'visible');
   },
   unrelated_or_unsafe_controls_fail_closed() {
     const withoutComposer = page('<button aria-label="Send message">Send</button>');
@@ -49,6 +61,16 @@ const sendButtonScopeCases = {
       '<button aria-label="Stop generating">Stop</button></form>'
     );
     assert.equal(core.sendButton(unsafe), null);
+    const transparentOnly = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<button aria-label="Send message" style="opacity:0">Send</button></form>'
+    );
+    assert.equal(core.sendButton(transparentOnly), null);
+    const parentInvisibleOnly = page(
+      '<form><textarea placeholder="ChatGPT"></textarea>' +
+      '<div style="opacity:0"><button aria-label="Send message">Send</button></div></form>'
+    );
+    assert.equal(core.sendButton(parentInvisibleOnly), null);
     const genericAction = page(
       '<form><textarea placeholder="ChatGPT"></textarea>' +
       '<button type="button">Send feedback</button></form>'
