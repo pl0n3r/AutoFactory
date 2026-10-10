@@ -377,7 +377,7 @@ function fixture(overrides = {}) {
   // successful revocation if the post-effect evidence cannot be committed.
   {
     const input = { profileAlias: 'perfil-1', credentialId: 'credential-001' };
-    for (const invalidAck of [false, undefined, null]) {
+    await Promise.all([false, undefined, null].map(async invalidAck => {
       const { contract, calls } = fixture();
       let removed = false;
       const persisted = createPersistedPairingContract({
@@ -391,7 +391,7 @@ function fixture(overrides = {}) {
       assert.deepEqual(await persisted.revoke(input), { ok: false, code: 'failed' });
       assert.equal(calls.some(call => call.kind === 'revoke'), false);
       assert.equal(removed, false);
-    }
+    }));
     // A throwing write-ahead adapter is also a strict no-effect failure.
     {
       const { contract, calls } = fixture();
@@ -543,6 +543,24 @@ function fixture(overrides = {}) {
   }
 
   console.log('pairing-audit AC-01: ok');
+
+  // The existing npm test invokes this Node test. Execute all four Python
+  // acceptance wrappers through that route without changing shared package.json.
+  // The child guard prevents recursively launching the same Python suite.
+  if (process.env.FACTORY_PAIRING_PYTHON_CHILD !== '1') {
+    const { spawnSync } = require('node:child_process');
+    const run = spawnSync('python3', [
+      '-m', 'unittest', 'discover',
+      '-s', 'tests', '-p', 'test_factory_control_pairing_audit_contract.py'
+    ], {
+      cwd: __dirname,
+      env: { ...process.env, FACTORY_PAIRING_PYTHON_CHILD: '1' },
+      encoding: 'utf8',
+      timeout: 30000
+    });
+    assert.equal(run.status, 0, 'pairing Python AC-01..04 failed');
+    console.log('pairing-audit Python AC-01..04: ok');
+  }
 
   console.log('factory-control pairing contract: ok');
 })().catch(error => {
