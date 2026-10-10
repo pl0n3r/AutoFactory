@@ -121,5 +121,30 @@ const protocol=require('./shared-learning-protocol.js');
  assert.deepEqual(sent.map(x=>x.eventId),['concurrent-a','concurrent-b'],
   'concurrent sync must upload each event only once');
  assert.equal((await concurrent.snapshot()).queued,0);
+ // A storage adapter may return additional keys. They must never be interpreted
+ // as consent, metrics or queue state of the isolated sharedLearning namespace.
+ let foreignState={unrelated:{enabled:true,queue:[{eventId:'foreign-event'}],localSamples:99}};
+ const foreignStorage={
+  async get(){return foreignState},
+  async set(value){foreignState={...foreignState,...value}}
+ };
+ let foreignUploads=0,foreignFetches=0;
+ const foreign=createSharedLearningSync({storage:foreignStorage,clock:()=>now,
+  schedule:()=>0,cancelSchedule:()=>{},
+  uploadEvents:async()=>{foreignUploads++},
+  fetchPolicy:async()=>{foreignFetches++;return {notModified:true}}
+ });
+ const initialForeign=await foreign.snapshot();
+ assert.equal(initialForeign.enabled,false,'other storage keys cannot grant consent');
+ assert.equal(initialForeign.localSamples,0,'other storage keys cannot inject metrics');
+ assert.equal(initialForeign.queued,0,'other storage keys cannot inject outcomes');
+ await foreign.sync();
+ assert.equal(foreignUploads,0,'foreign storage may not trigger upload');
+ assert.equal(foreignFetches,0,'foreign storage may not trigger policy fetch');
+ assert.deepEqual(foreignState.unrelated,{enabled:true,queue:[{eventId:'foreign-event'}],localSamples:99});
+ assert.equal(foreignState.sharedLearning.enabled,false);
+ assert.equal(Object.hasOwn(foreignState.sharedLearning,'unrelated'),false,
+  'writes cannot nest unrelated storage under sharedLearning');
+
  console.log('shared-learning sync: bounded queue, expired-event pruning, policy cache, rollback and reset pass');
 })().catch(e=>{console.error(e);process.exit(1)});
