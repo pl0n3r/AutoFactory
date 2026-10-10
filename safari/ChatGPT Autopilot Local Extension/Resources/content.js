@@ -3,6 +3,7 @@
   const core = globalThis.ChatGPTAutopilotCore;
   const learning = globalThis.ChatGPTAutopilotLearning;
   const reliability = globalThis.ChatGPTAutopilotReliability;
+  const adaptiveRecovery = globalThis.ChatGPTAutopilotAdaptiveRecovery;
   const extensionApi = globalThis.chrome || globalThis.browser;
   const budgetGuard = globalThis.ChatGPTAutopilotBudgetGuard;
   const DEFAULT_PROMPT = 'Continúa autónomamente el desarrollo del proyecto desde el estado real más reciente. Antes de modificar nada: inspecciona el estado actual del repo, rama, issues, PRs, CI y revisiones. No te detengas después de cada paso; avanza mientras sea seguro, sin duplicar trabajo, y reporta solo hitos grandes.';
@@ -753,7 +754,17 @@
           || Number(previous.attempts) !== plan.attempts
           || Number(previous.retryAt) !== plan.retryAt;
         const attempts = plan.attempts;
-        const escalation = plan.action;
+        const defaultAction = plan.action === 'new-chat' ? 'open_replacement_chat' : plan.action;
+        const recoveryConfig = await config();
+        const decision = adaptiveRecovery?.chooseRecovery({
+          problemCode: signal.code, interfaceState: 'error', isResponding: generationAtSignal,
+          defaults: { action: defaultAction }, policy: recoveryConfig.sharedLearning?.policy,
+          mode: recoveryConfig.sharedLearning?.mode || 'observe', now: Date.now(),
+          replacementOpened: Date.now() - state.conversationTransferAt < CONVERSATION_TRANSFER_COOLDOWN_MS
+        }) || { action: defaultAction, source: 'default', confidence: 0, policyVersion: 0 };
+        const escalation = decision.action === 'open_replacement_chat' ? 'new-chat' : decision.action;
+        log('recovery', { code: signal.code, action: decision.recommendedAction || decision.action,
+          source: decision.source, version: String(decision.policyVersion || 0) });
         state.lastRecoveryAt = Date.now();
         state.circuitOpenUntil = 0;
         state.consecutiveFailures = 0;
