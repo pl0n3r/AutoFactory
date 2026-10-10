@@ -296,6 +296,50 @@
     }).catch(() => {});
   }
 
+  function handleIncidentMessage(message, sender, reply) {
+    if (message?.type !== 'autopilot:incident-acquire' &&
+        message?.type !== 'autopilot:incident-complete' &&
+        message?.type !== 'autopilot:incident-release') return undefined;
+    if (!incidentCoordinator || !Number.isSafeInteger(sender?.tab?.id)) {
+      reply(message.type === 'autopilot:incident-acquire' ? { granted: false } : { ok: false });
+      return false;
+    }
+    const ownerId = 'tab-' + sender.tab.id;
+    if (message.type === 'autopilot:incident-acquire') {
+      incidentCoordinator.acquire({ problemCode: message.problemCode, route: message.route,
+        ownerId, replacement: Boolean(message.replacement) })
+        .then(reply).catch(() => reply({ granted: false }));
+      return true;
+    }
+    const method = message.type.endsWith('complete') ? 'complete' : 'release';
+    incidentCoordinator[method]({ incidentId: message.incidentId, ownerId })
+      .then(ok => reply({ ok })).catch(() => reply({ ok: false }));
+    return true;
+  }
+
+  function handleSharedLearningMessage(message, reply) {
+    const type = message?.type;
+    if (!type?.startsWith('autopilot:shared-learning-')) return undefined;
+    if (!sharedLearning) {
+      reply(type === 'autopilot:shared-learning-status'
+        ? { enabled: false, mode: 'off' }
+        : { ok: false });
+      return false;
+    }
+    const operations = {
+      'autopilot:shared-learning-status': () => sharedLearning.snapshot(),
+      'autopilot:shared-learning-reset': () => sharedLearning.reset().then(state => ({ ok: true, state })),
+      'autopilot:shared-learning-rollback': () => sharedLearning.rollback().then(state => ({ ok: true, state })),
+      'autopilot:shared-learning-outcome': () => sharedLearning.record(message.outcome).then(() => ({ ok: true }))
+    };
+    const operation = operations[type];
+    if (!operation) return undefined;
+    operation().then(reply).catch(() => reply(type === 'autopilot:shared-learning-status'
+      ? { enabled: false, mode: 'observe', lastError: 'status_failed' }
+      : { ok: false }));
+    return true;
+  }
+
   ensureHeartbeat();
   extensionApi.runtime.onInstalled?.addListener(ensureHeartbeat);
   extensionApi.runtime.onStartup?.addListener(ensureHeartbeat);
@@ -304,6 +348,10 @@
   });
 
   extensionApi.runtime.onMessage.addListener((message, sender, reply) => {
+    const incidentResult = handleIncidentMessage(message, sender, reply);
+    if (incidentResult !== undefined) return incidentResult;
+    const sharedLearningResult = handleSharedLearningMessage(message, reply);
+    if (sharedLearningResult !== undefined) return sharedLearningResult;
     if (message?.type === 'autopilot:factory-control-status') {
       reply(factoryControlLocalAgentStatus());
       return;
@@ -317,40 +365,6 @@
       append(message, sender);
       reply({ ok: true });
       return;
-    }
-    if (message?.type === 'autopilot:incident-acquire') {
-      if (!incidentCoordinator || !Number.isSafeInteger(sender?.tab?.id)) { reply({ granted: false }); return; }
-      incidentCoordinator.acquire({ problemCode: message.problemCode, route: message.route,
-        ownerId: 'tab-' + sender.tab.id, replacement: Boolean(message.replacement) })
-        .then(reply).catch(() => reply({ granted: false }));
-      return true;
-    }
-    if (message?.type === 'autopilot:incident-complete' || message?.type === 'autopilot:incident-release') {
-      if (!incidentCoordinator || !Number.isSafeInteger(sender?.tab?.id)) { reply({ ok: false }); return; }
-      const method = message.type.endsWith('complete') ? 'complete' : 'release';
-      incidentCoordinator[method]({ incidentId: message.incidentId, ownerId: 'tab-' + sender.tab.id })
-        .then(ok => reply({ ok })).catch(() => reply({ ok: false }));
-      return true;
-    }
-    if (message?.type === 'autopilot:shared-learning-status') {
-      if (!sharedLearning) { reply({ enabled: false, mode: 'off' }); return; }
-      sharedLearning.snapshot().then(reply).catch(() => reply({ enabled: false, mode: 'observe', lastError: 'status_failed' }));
-      return true;
-    }
-    if (message?.type === 'autopilot:shared-learning-reset') {
-      if (!sharedLearning) { reply({ ok: false }); return; }
-      sharedLearning.reset().then(state => reply({ ok: true, state })).catch(() => reply({ ok: false }));
-      return true;
-    }
-    if (message?.type === 'autopilot:shared-learning-rollback') {
-      if (!sharedLearning) { reply({ ok: false }); return; }
-      sharedLearning.rollback().then(state => reply({ ok: true, state })).catch(() => reply({ ok: false }));
-      return true;
-    }
-    if (message?.type === 'autopilot:shared-learning-outcome') {
-      if (!sharedLearning) { reply({ ok: false }); return; }
-      sharedLearning.record(message.outcome).then(() => reply({ ok: true })).catch(() => reply({ ok: false }));
-      return true;
     }
     if (message?.type === 'autopilot:learning-event') {
       learningQueue = learningQueue.then(async () => {
