@@ -234,6 +234,26 @@
     if (count === 3) return 'reload';
     return 'wait';
   }
+  function recoverablePlan(value = {}, path = '', now = Date.now(), cooldownMs = 300000) {
+    const currentPath = String(path || '');
+    const currentAttempts = value.path === currentPath
+      ? Math.max(0, Number(value.attempts) || 0) : 0;
+    const currentRetryAt = value.path === currentPath
+      ? Math.max(0, Number(value.retryAt) || 0) : 0;
+    if (currentAttempts >= 4 && currentRetryAt > now) {
+      return Object.freeze({
+        path: currentPath, attempts: currentAttempts, action: 'wait', retryAt: currentRetryAt
+      });
+    }
+    const attempts = currentAttempts >= 4 ? 1 : currentAttempts + 1;
+    const action = recoverableEscalation(attempts);
+    return Object.freeze({
+      path: currentPath,
+      attempts,
+      action,
+      retryAt: action === 'wait' ? now + Math.max(1000, Number(cooldownMs) || 300000) : 0
+    });
+  }
   function pageSignal(doc = document) {
     if (platformReview(doc)) return { code: 'platform-review', action: 'wait' };
     const recovery = recoveryButton(doc);
@@ -365,6 +385,7 @@
     additionalSafetyCheck,
     isSafeRecoverySignal,
     recoverableEscalation,
+    recoverablePlan,
     recoverableState,
     pageSignal,
     providerAccountSignal,

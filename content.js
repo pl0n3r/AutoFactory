@@ -711,29 +711,32 @@
     state.busy = true;
     try {
       let signal = core.pageSignal(document);
-      if (signal.code === 'conversation-limit' && core.stopButton(document)) {
+      const generationAtSignal = Boolean(core.stopButton(document));
+      if (signal.code === 'recoverable' && generationAtSignal) {
+        signal = { code: 'ready', action: 'none' };
+      }
+      if (signal.code === 'conversation-limit' && generationAtSignal) {
         signal = { code: 'ready', action: 'none' };
       }
       if (signal.code === 'conversation-limit'
           && (location.pathname === '/' || location.pathname === '')) {
         signal = { code: 'ready', action: 'none' };
       }
-      if (core.isSafeRecoverySignal(signal)
-          && Date.now() - state.lastRecoveryAt > 10000) {
+      if (core.isSafeRecoverySignal(signal)) {
+        if (Date.now() - state.lastRecoveryAt <= 10000) {
+          setStatus('Conversación no disponible; verificando recuperación');
+          return;
+        }
         const previous = core.recoverableState(
           sessionStorage.getItem(RECOVERABLE_STATE_KEY)
         );
-        if (previous.path === location.pathname
-            && Math.max(0, Number(previous.attempts) || 0) >= 4) {
-          setStatus('Conversación inaccesible; esperando aquí sin abrir otro chat', 'error');
-          return;
-        }
-        const attempts = previous.path === location.pathname
-          ? Math.max(0, Number(previous.attempts) || 0) + 1 : 1;
-        sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify({
-          path: location.pathname, attempts
-        }));
-        const escalation = core.recoverableEscalation(attempts);
+        const plan = core.recoverablePlan(previous, location.pathname, Date.now());
+        sessionStorage.setItem(RECOVERABLE_STATE_KEY, JSON.stringify(plan));
+        const recoveryChanged = previous.path !== plan.path
+          || Number(previous.attempts) !== plan.attempts
+          || Number(previous.retryAt) !== plan.retryAt;
+        const attempts = plan.attempts;
+        const escalation = plan.action;
         state.lastRecoveryAt = Date.now();
         state.circuitOpenUntil = 0;
         state.consecutiveFailures = 0;
@@ -742,8 +745,10 @@
         state.assistantCountBeforeSend = core.assistantMessageCount(document);
         state.lastRecovery = { code: signal.code, action: escalation };
         persistRuntime();
-        saveLearning('recovery');
-        saveLearning('error', 0, { code: signal.code });
+        if (recoveryChanged) {
+          saveLearning('recovery');
+          saveLearning('error', 0, { code: signal.code });
+        }
         if (escalation === 'retry') {
           signal.element.click();
           setStatus(`Conversación no disponible; reintento ${attempts}/2`);
@@ -752,12 +757,13 @@
           location.reload();
         } else {
           state.waiting = false;
-          state.nextSendAt = Date.now() + 60000;
+          state.nextSendAt = plan.retryAt;
           persistRuntime();
-          setStatus('Conversación inaccesible; esperando aquí sin abrir otro chat', 'error');
+          const remainingMinutes = Math.max(1, Math.ceil((plan.retryAt - Date.now()) / 60000));
+          setStatus(`Conversación inaccesible; Retry automático en ${remainingMinutes} min`, 'error');
         }
         log('recovery', { code: signal.code, action: escalation, attempts,
-          priority: 'circuit-bypass' });
+          retryAt: plan.retryAt, priority: 'circuit-bypass' });
         return;
       }
       if (signal.code !== 'recoverable') {

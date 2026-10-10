@@ -46,6 +46,22 @@ function page(html) {
   assert.equal(core.recoverableEscalation(2), 'retry');
   assert.equal(core.recoverableEscalation(3), 'reload');
   assert.equal(core.recoverableEscalation(4), 'wait');
+  assert.deepEqual(core.recoverablePlan({}, '/c/1', 1000), {
+    path: '/c/1', attempts: 1, action: 'retry', retryAt: 0
+  });
+  assert.deepEqual(core.recoverablePlan({ path: '/c/1', attempts: 3 }, '/c/1', 1000), {
+    path: '/c/1', attempts: 4, action: 'wait', retryAt: 301000
+  });
+  assert.deepEqual(core.recoverablePlan({
+    path: '/c/1', attempts: 4, retryAt: 301000
+  }, '/c/1', 300999), {
+    path: '/c/1', attempts: 4, action: 'wait', retryAt: 301000
+  });
+  assert.deepEqual(core.recoverablePlan({
+    path: '/c/1', attempts: 4, retryAt: 301000
+  }, '/c/1', 301000), {
+    path: '/c/1', attempts: 1, action: 'retry', retryAt: 0
+  });
   assert.deepEqual(core.recoverableState(null), {});
   assert.deepEqual(core.recoverableState('{"path":"/c/1","attempts":2}'), {
     path: '/c/1', attempts: 2

@@ -28,6 +28,12 @@ assert.match(content, /if \(periodicReloadDue && generating\) \{[\s\S]{0,250}ret
   'el refresh vencido debe esperar una generación real y recargar al terminar');
 assert.doesNotMatch(content, /Conversación inaccesible; continuando en un chat nuevo/,
   'un fallo de carga no debe abrir automáticamente otro chat');
+assert.match(content, /if \(signal\.code === 'recoverable' && generationAtSignal\)[\s\S]{0,120}signal = \{ code: 'ready', action: 'none' \}/,
+  'un control Retry visible no debe interrumpir una respuesta activa');
+assert.match(content, /const plan = core\.recoverablePlan\(previous, location\.pathname, Date\.now\(\)\)/,
+  'una conversación inaccesible debe usar el plan de recuperación limitado');
+assert.match(content, /state\.nextSendAt = plan\.retryAt/,
+  'la pausa de recuperación debe conservar su vencimiento');
 assert.match(content, /CONVERSATION_TRANSFER_KEY[\s\S]*sessionStorage\.getItem\(CONVERSATION_TRANSFER_KEY\)/,
   'el bloqueo de transferencia debe sobrevivir la navegación dentro de la pestaña');
 assert.match(content, /CONVERSATION_TRANSFER_COOLDOWN_MS\s*=\s*10 \* 60 \* 1000/,
