@@ -111,6 +111,24 @@ const sendButtonScopeCases = {
       '<button form="payment" aria-label="Send message">Send</button></section>'
     );
     assert.equal(core.sendButton(externalOwnerUnscoped), null);
+    for (const override of [
+      'formaction="/settings/export"', 'formmethod="post"',
+      'formenctype="text/plain"', 'formtarget="_blank"', 'formnovalidate'
+    ]) {
+      const unsafeSubmit = page(
+        '<form id="chat" action="/chat"><textarea placeholder="ChatGPT"></textarea>' +
+        '<button id="composer-submit-button" type="submit" aria-label="Send message" ' +
+        override + '>Send</button></form>'
+      );
+      assert.equal(core.sendButton(unsafeSubmit), null);
+    }
+    const mixedSubmit = page(
+      '<form id="chat" action="/chat"><textarea placeholder="ChatGPT"></textarea>' +
+      '<button id="composer-submit-button" type="submit" formaction="/settings/export" ' +
+      'formmethod="post" aria-label="Send message">Send</button>' +
+      '<button id="safe-submit" type="submit" aria-label="Enviar mensaje">Enviar</button></form>'
+    );
+    assert.equal(core.sendButton(mixedSubmit)?.id, 'safe-submit');
     const plainUnscoped = page(
       '<div><textarea placeholder="ChatGPT"></textarea>' +
       '<button aria-label="Send message">Send</button></div>'

@@ -123,6 +123,9 @@
       if (unscoped && (button.id !== 'composer-submit-button'
         || button.parentElement !== field.parentElement)) return false;
       if (button.type === 'reset') return false;
+      // A submit override can redirect the same form to a different endpoint
+      // or bypass its validation even when button.form matches the composer.
+      if (button.matches('[formaction], [formmethod], [formenctype], [formtarget], [formnovalidate]')) return false;
       const exactSendLabels = new Set([
         'send', 'send message', 'send prompt',
         'enviar', 'enviar mensaje', 'enviar prompt'
