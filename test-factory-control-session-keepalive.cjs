@@ -28,11 +28,36 @@ function ac01() {
   assert.equal(a.idle_since, BASE - 700);
   assert.equal(Object.isFrozen(a), true);
 
+  // AC-01: never reengage if the most recent completed reply belongs
+  // to an older prompt; prior identical UI reads do not fix chronology.
+  const staleReply = sample();
+  staleReply.chat.last_prompt_s = BASE - 750;
+  staleReply.chat.last_reply_s = BASE - 850;
+  staleReply.chat.last_activity_s = BASE - 750;
+  assert.equal(policy.decide(staleReply).action, 'detener');
+  assert.equal(policy.decide(staleReply).idle_reason, 'desconocido');
+  assert.equal(policy.decide(staleReply).continuation, null);
+  staleReply.chat.reply_complete = false;
+  assert.equal(policy.decide(staleReply).action, 'esperar',
+    'a pending newer prompt should wait, not propose a second send');
+  staleReply.chat.reply_complete = true;
+  staleReply.chat.last_reply_s = BASE - 740;
+  staleReply.chat.last_activity_s = BASE - 740;
+  assert.equal(policy.decide(staleReply).action, 'reenganchar',
+    'a newer completed reply may authorize the safe offline suggestion');
+  for (const key of ['last_prompt_s', 'last_reply_s']) {
+    const missing = sample(); missing.chat[key] = null;
+    assert.equal(policy.decide(missing).action, 'detener',
+      'a completed reply without both timestamps cannot be attributed');
+  }
+
   snap.chat.last_prompt_s = BASE - 20;
-  snap.chat.last_activity_s = BASE - 20;
+  snap.chat.last_reply_s = BASE - 10; // newest prompt has finished
+  snap.chat.last_activity_s = BASE - 10;
   assert.deepEqual([policy.decide(snap).action, policy.decide(snap).idle_reason],
     ['esperar', 'esperando_pacing']);
   snap.chat.last_prompt_s = BASE - 900;
+  snap.chat.last_reply_s = BASE - 800;
   snap.chat.last_activity_s = BASE - 700;
   snap.chat.identical_read_count = 1;
   assert.equal(policy.decide(snap).action, 'detener');
