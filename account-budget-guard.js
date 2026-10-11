@@ -24,6 +24,7 @@
   let authorizationInFlight = false;
   let authorizedButton = null;
   let authorizedAt = 0;
+  let authorizationEpoch = 0;
   let sentButtonAwaitingConfirmation = null;
   let refreshInFlight = null;
   let limitActive = false;
@@ -84,6 +85,13 @@
   function clearAuthorization() {
     authorizedButton = null;
     authorizedAt = 0;
+    authorizationEpoch += 1;
+  }
+
+  function invalidateBudgetEvidence() {
+    ready = false;
+    snapshot = null;
+    clearAuthorization();
   }
 
   function authorizationValid(button) {
@@ -97,15 +105,18 @@
 
   async function refreshStatus() {
     if (refreshInFlight) return refreshInFlight;
+    const requestEpoch = authorizationEpoch;
     refreshInFlight = runtimeMessage({ type: 'autopilot:budget-status' })
       .then(response => {
+        // Never accept an old account's status after its authorization was revoked.
+        if (authorizationEpoch !== requestEpoch) return false;
         if (!response?.ok || !applySnapshot(response.snapshot)) {
-          ready = false;
+          invalidateBudgetEvidence();
           return false;
         }
         return true;
       }, () => {
-        ready = false;
+        invalidateBudgetEvidence();
         return false;
       })
       .finally(() => { refreshInFlight = null; });
@@ -204,9 +215,17 @@
       return; // storage unavailable: fail closed before any mutation
     }
     authorizationInFlight = true;
+    const requestEpoch = authorizationEpoch;
     ready = false;
     void runtimeMessage({ type: 'autopilot:budget-consume', reasoningLevel })
       .then(response => {
+        if (authorizationEpoch !== requestEpoch) {
+          // A canonical no-debit denial can release the latch, but never a stale grant.
+          if (response?.ok === true && response.allowed === false) {
+            try { sessionStorage.removeItem(PENDING_CONSUME_KEY); } catch (_error) {}
+          }
+          return;
+        }
         if (response?.ok !== true || !applySnapshot(response.snapshot)) return;
         if (response.allowed === false) {
           // A canonical rejection proves the backend did not consume a slot.
@@ -237,13 +256,18 @@
       if (!limitActive) {
         limitActive = true;
         clearAuthorization();
+        const requestEpoch = authorizationEpoch;
         void runtimeMessage({
           type: 'autopilot:budget-limit',
           reasoningLevel,
           resetAt: null
         }).then(response => {
-          if (response?.ok) applySnapshot(response.snapshot);
-        }, () => { ready = false; });
+          // Never let an old account's limit update overwrite newer budget evidence.
+          if (authorizationEpoch !== requestEpoch) return;
+          if (!response?.ok || !applySnapshot(response.snapshot)) invalidateBudgetEvidence();
+        }, () => {
+          if (authorizationEpoch === requestEpoch) invalidateBudgetEvidence();
+        });
       }
     } else {
       limitActive = false;
@@ -287,7 +311,9 @@
       if (budgetEnabled) void refreshStatus();
     }
     if (changes.reasoningLevel) {
-      reasoningLevel = changes.reasoningLevel.newValue === 'high' ? 'high' : 'unknown';
+      const nextLevel = changes.reasoningLevel.newValue === 'high' ? 'high' : 'unknown';
+      if (nextLevel !== reasoningLevel) clearAuthorization();
+      reasoningLevel = nextLevel;
     }
     if (changes.accountBudgetSnapshotV1?.newValue) {
       applySnapshot(changes.accountBudgetSnapshotV1.newValue);

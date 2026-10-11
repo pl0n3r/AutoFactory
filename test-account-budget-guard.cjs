@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
 const { JSDOM } = require('jsdom');
 
 function readySnapshot(nextAllowedAt = null) {
@@ -337,3 +338,214 @@ async function ambiguousDebitScenario() {
 ambiguousDebitScenario().then(() => {
   console.log('account-budget-guard: delayed consume is not charged twice');
 }).catch(error => { console.error(error); process.exitCode = 1; });
+
+
+// #161: refresh-status failures revoke an already-consumed local send grant,
+// and delayed consume callbacks cannot restore it after a denial.
+async function refreshRevocationScenario(mode) {
+  const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
+    url: 'https://chatgpt.com/', runScripts: 'outside-only'
+  });
+  const w = dom.window, button = w.document.getElementById('send');
+  let interval, storageReply, onStorageChanged, delayedConsume, limitReply;
+  let clicks = 0, consumes = 0, statuses = 0;
+  let signalCode = 'ready';
+  const timers = [], statusReplies = [];
+  w.Date.now = () => 100000;
+  w.setInterval = fn => { interval = fn; return 1; };
+  w.setTimeout = (fn, ms) => {
+    if (mode === 'status-timeout') timers.push({ fn, ms });
+    return 1;
+  };
+  w.clearTimeout = () => {};
+  button.addEventListener('click', () => { clicks++; });
+  const initial = readySnapshot();
+  const consumed = { ...initial, sent: 1, remaining: 39 };
+  w.ChatGPTAutopilotCore = {
+    canSend: candidate => candidate === button && !candidate.disabled,
+    pageSignal: () => ({ code: signalCode }),
+    sendButton: () => button
+  };
+  w.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(message, callback) {
+        if (message.type === 'autopilot:budget-consume') {
+          consumes++;
+          if (mode === 'late-consume' || mode === 'late-consume-denied' || mode === 'toggle-account') {
+            delayedConsume = callback;
+          } else {
+            callback({ ok: true, allowed: true, snapshot: consumed });
+          }
+        } else if (message.type === 'autopilot:budget-status') {
+          statuses++;
+          if (mode === 'stale-account-status') {
+            statusReplies.push(callback);
+          } else if (mode === 'stale-limit-response') {
+            callback({ ok: true, snapshot: { ...initial, sent: initial.budget, remaining: 0 } });
+          } else if (mode === 'status-timeout') {
+            // The runtime never answers; the recorded timeout must revoke the grant.
+          } else if (mode === 'status-denied' || mode === 'late-consume' || mode === 'late-consume-denied') {
+            callback({ ok: false });
+          } else if (mode === 'transport-error') {
+            w.chrome.runtime.lastError = { message: 'test-only' };
+            callback(undefined);
+            w.chrome.runtime.lastError = null;
+          } else if (mode === 'invalid-snapshot') {
+            callback({ ok: true, snapshot: { ...initial, remaining: -1 } });
+          } else {
+            callback({ ok: true, snapshot: consumed });
+          }
+        } else if (message.type === 'autopilot:budget-limit') {
+          limitReply = callback;
+        }
+      }
+    },
+    storage: {
+      local: { get(_defaults, callback) { storageReply = callback; } },
+      onChanged: { addListener(listener) { onStorageChanged = listener; } }
+    }
+  };
+  w.eval(fs.readFileSync('./account-budget-guard.js', 'utf8'));
+  storageReply({
+    masterEnabled: true, accountBudgetEnabled: true,
+    reasoningLevel: 'high', accountBudgetSnapshotV1: initial
+  });
+  if (mode === 'stale-limit-response') {
+    signalCode = 'rate-limit';
+    w.ChatGPTAutopilotCore.pageSignal(w.document);
+    assert.ok(limitReply, 'account A must have pending budget-limit response');
+    onStorageChanged({
+      accountBudgetAccountAlias: { oldValue: 'fixture_A', newValue: 'fixture_B' }
+    }, 'local');
+    await flush();
+    await flush();
+    assert.equal(consumes, 0, 'B has zero capacity before stale A response');
+    limitReply({ ok: true, snapshot: initial });
+    await flush();
+    await flush();
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+    await flush();
+    await flush();
+    button.click();
+    assert.equal(consumes, 0, 'stale A budget-limit must never debit depleted B');
+    assert.equal(clicks, 0, 'stale A budget-limit must never authorize B send');
+    w.close();
+    return;
+  }
+  if (mode === 'stale-account-status') {
+    interval();
+    assert.equal(statusReplies.length, 1);
+    onStorageChanged({
+      accountBudgetAccountAlias: { oldValue: 'fixture_A', newValue: 'fixture_B' }
+    }, 'local');
+    statusReplies.shift()({ ok: true, snapshot: initial });
+    await flush();
+    await flush();
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+    button.click();
+    assert.equal(clicks, 0, 'old account status must not authorize a click');
+    assert.equal(consumes, 0, 'old account status must not consume new account capacity');
+    interval();
+    assert.equal(statusReplies.length, 1);
+    statusReplies.shift()({ ok: true, snapshot: initial });
+    await flush();
+    await flush();
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+    await flush();
+    await flush();
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), true);
+    button.click();
+    button.click();
+    assert.equal(clicks, 1, 'fresh account status grants exactly one fake click');
+    assert.equal(consumes, 1);
+    assert.equal(statuses, 2);
+    w.close();
+    return;
+  }
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+  await flush();
+  await flush();
+  if (!delayedConsume) {
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), true,
+      mode + ': consume initially authorizes a single send');
+  }
+  if (mode === 'toggle-account') {
+    onStorageChanged({ accountBudgetEnabled: { newValue: false } }, 'local');
+    onStorageChanged({ accountBudgetEnabled: { newValue: true } }, 'local');
+  } else if (mode === 'reasoning-level-change') {
+    onStorageChanged({ reasoningLevel: { oldValue: 'high', newValue: 'low' } }, 'local');
+  } else {
+    interval();
+  }
+  if (mode === 'status-timeout') {
+    const timeout = timers.find(item => item.ms === 2000);
+    assert.ok(timeout, 'status refresh must time out after two seconds');
+    timeout.fn();
+  }
+  await flush();
+  await flush();
+  if (delayedConsume) {
+    delayedConsume({ ok: true, allowed: mode !== 'late-consume-denied', snapshot: consumed });
+    await flush();
+    await flush();
+  }
+  if (mode === 'healthy') {
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), true);
+    button.click();
+    button.click();
+    assert.equal(clicks, 1, 'one authorized click remains permitted');
+    assert.equal(w.ChatGPTAutopilotBudgetGuard.confirmSent(), true);
+  } else {
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), false,
+      mode + ': stale grant or delayed consume must be revoked');
+    button.click();
+    assert.equal(clicks, 0, mode + ': never click under untrusted status');
+    assert.equal(w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'),
+      mode === 'late-consume-denied' ? null : '1',
+      mode + ': only a canonical no-debit denial may clear the pending latch');
+  }
+  assert.equal(consumes, 1, mode + ': no second consume/replay');
+  if (mode !== 'toggle-account' && mode !== 'reasoning-level-change') {
+    assert.equal(statuses, 1, mode);
+  }
+  w.close();
+}
+
+(async () => {
+  await refreshRevocationScenario('status-denied');
+  await refreshRevocationScenario('transport-error');
+  await refreshRevocationScenario('status-timeout');
+  console.log('AF161-FAILED-STATUS-REVOKES');
+  await refreshRevocationScenario('invalid-snapshot');
+  await refreshRevocationScenario('late-consume');
+  await refreshRevocationScenario('late-consume-denied');
+  await refreshRevocationScenario('toggle-account');
+  await refreshRevocationScenario('reasoning-level-change');
+  await refreshRevocationScenario('stale-account-status');
+  await refreshRevocationScenario('stale-limit-response');
+  console.log('AF161-RACES-FAIL-CLOSED');
+  await refreshRevocationScenario('healthy');
+  console.log('AF161-HEALTHY');
+
+  // Validate the three Python acceptance entrypoints in the existing npm test.
+  // Each Python method invokes this real JSDOM test under the child flag;
+  // this prevents subprocess recursion without skipping any JS assertions.
+  if (process.env.AF161_PYTHON_ACCEPTANCE_CHILD !== '1') {
+    // Pin the system interpreter; never resolve an executable through mutable PATH.
+    const result = spawnSync('/usr/bin/python3', [
+      '-m', 'unittest', 'discover', '-s', 'tests',
+      '-p', 'test_autopilot_budget_refresh_revoke.py', '-v'
+    ], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 120000,
+      env: { ...process.env, AF161_PYTHON_ACCEPTANCE_CHILD: '1' }
+    });
+    assert.equal(result.error, undefined, String(result.error || ''));
+    assert.equal(result.status, 0,
+      'AC-01/02/03 Python entrypoints must pass: ' +
+      (result.stdout || '') + '\n' + (result.stderr || ''));
+    assert.match(result.stderr || '', /Ran 3 tests in /,
+      'the Python discovery must execute exactly three acceptance tests');
+    console.log('AF161-PYTHON-ACCEPTANCE-3-PASS');
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
