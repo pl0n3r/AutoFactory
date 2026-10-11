@@ -72,6 +72,75 @@ setImmediate(() => {
       assert.deepEqual(sanitized.entries[0].details, { code: 'error' });
       assert.equal(JSON.stringify(sanitized.entries).includes('stale-secret'), false);
       console.log('Diagnostic log: redaction, technical metadata and legacy export correctos');
+      // AF152: exercise the real background listener and storage, without chat or browser.
+      const fakeSender = { tab: { id: 27, windowId: 2,
+        url: 'https://chatgpt.com/c/PRIVATE-SEND-DIAGNOSTIC-ID' } };
+      const composer = { path: '/c/PRIVATE-SEND-DIAGNOSTIC-ID',
+        textareas: 1, editable: 1, textboxes: 1, forms: 1 };
+      const button = (disabled) => ({
+        ariaLabel: 'PRIVATE-DOM-ATTRIBUTE', testId: 'PRIVATE-DOM-TEST-ID',
+        title: 'PRIVATE-DOM-TITLE', type: 'submit', disabled
+      });
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { controls: [button(false), button(true)], composer } },
+      fakeSender, () => {});
+      // The same numbers on another event are NOT allowlisted.
+      listener({ type: 'autopilot:log', event: 'status',
+        details: { code: 'safe', sendControlCount: 99, sendDisabledCount: 8,
+          composerFieldCount: 300, token: 'PRIVATE' } },
+      fakeSender, () => {});
+      // Strict booleans and finite counts are required, no partial diagnostic.
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { controls: [button('true')], composer } },
+      fakeSender, () => {});
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { controls: [button(false)],
+          composer: { ...composer, editable: -1 } } },
+      fakeSender, () => {});
+      listener({ type: 'autopilot:get-log' }, {}, result => {
+        const matching = result.entries.filter(row => row.event === 'send-control-missing');
+        assert.equal(matching.length, 3);
+        assert.deepEqual(matching[0].details, {
+          sendControlCount: 2, sendDisabledCount: 1, composerFieldCount: 3
+        });
+        console.log('AF152-COUNTS-OK');
+        assert.deepEqual(result.entries.find(row =>
+          row.event === 'status' && row.tabId === 27).details, { code: 'safe' });
+        assert.deepEqual(matching[1].details, {});
+        assert.deepEqual(matching[2].details, {});
+        const serialized = JSON.stringify(result.entries);
+        for (const secret of ['PRIVATE-SEND-DIAGNOSTIC-ID', 'PRIVATE-DOM-ATTRIBUTE',
+          'PRIVATE-DOM-TEST-ID', 'PRIVATE-DOM-TITLE', '"controls"', '"composer"', '"token"']) {
+          assert.equal(serialized.includes(secret), false, 'Sensitive diagnostic leaked: ' + secret);
+        }
+        console.log('AF152-PRIVACY-OK');
+        // Re-sanitize stored legacy diagnostics as well, preserving only verified counters.
+        store.diagnosticLog = [
+          { at: new Date().toISOString(), event: 'send-control-missing',
+            path: '/c/PRIVATE-LEGACY-ROUTE',
+            details: { sendControlCount: 2, sendDisabledCount: 1, composerFieldCount: 3 } },
+          { at: new Date().toISOString(), event: 'send-control-missing',
+            path: '/c/PRIVATE-LEGACY-ROUTE',
+            details: { sendControlCount: 2, sendDisabledCount: 1,
+              composerFieldCount: 3, title: 'PRIVATE-LEGACY-TITLE' } },
+          { at: new Date().toISOString(), event: 'failure',
+            details: { sendControlCount: 1, code: 'recoverable',
+              email: 'private@example.invalid' } }
+        ];
+        listener({ type: 'autopilot:get-log' }, {}, legacy => {
+          assert.equal(legacy.entries.length, 3);
+          assert.deepEqual(legacy.entries[0].details,
+            { sendControlCount: 2, sendDisabledCount: 1, composerFieldCount: 3 });
+          assert.deepEqual(legacy.entries[1].details, {});
+          assert.deepEqual(legacy.entries[2].details, { code: 'recoverable' });
+          const output = JSON.stringify(legacy.entries);
+          assert.equal(output.includes('PRIVATE-LEGACY-ROUTE'), false);
+          assert.equal(output.includes('PRIVATE-LEGACY-TITLE'), false);
+          assert.equal(output.includes('private@example.invalid'), false);
+          console.log('AF152-MIRROR-LEGACY-OK');
+        });
+      });
+
     });
   });
   listener({ type: 'autopilot:learning-event', event: 'cycle', durationMs: 1200 }, {}, first => {
