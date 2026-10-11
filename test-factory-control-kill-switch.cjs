@@ -82,6 +82,25 @@ function setup(overrides = {}) {
   assert.deepEqual(await receipt, { ok: false, code: 'stopped' });
   assert.equal(nonCooperative.switcher.status().code, 'rollback_failed');
 
+  // Synchronous exceptions and rejected promises from untrusted command
+  // adapters must not leak private exception text in receipts or status.
+  const rejectsImmediately = setup({
+    executeCommand() { throw new Error('PRIVATE-CHAT-PROMPT-123'); }
+  });
+  assert.deepEqual(await rejectsImmediately.switcher.dispatch({ token: 'PRIVATE' }),
+    { ok: false, code: 'failed' });
+  assert.equal(JSON.stringify(rejectsImmediately.switcher.status())
+    .includes('PRIVATE-CHAT-PROMPT-123'), false);
+  assert.equal((await rejectsImmediately.switcher.kill()).status, 'safe');
+  const asyncRejects = setup({
+    executeCommand() { return Promise.reject(new Error('PRIVATE-ASYNC-123')); }
+  });
+  assert.deepEqual(await asyncRejects.switcher.dispatch({ token: 'PRIVATE' }),
+    { ok: false, code: 'failed' });
+  assert.equal(JSON.stringify(asyncRejects.switcher.status())
+    .includes('PRIVATE-ASYNC-123'), false);
+  assert.equal((await asyncRejects.switcher.kill()).status, 'safe');
+
   // AC-02: a failed adapter still invokes revoke/rollback; the terminal
   // fence remains set and a secret embedded in a failure is never echoed.
   const fallback = setup({
@@ -181,7 +200,7 @@ function setup(overrides = {}) {
   assert.equal(restoring.switcher.status().code, 'rollback_failed');
   assert.deepEqual(await restoring.switcher.dispatch({}),
     { ok: false, code: 'stopped' });
-  for (const invalid of [0, -1, Infinity, NaN, 60001, '1']) {
+  for (const invalid of [0, -1, Infinity, Number.NaN, 60001, '1']) {
     assert.throws(() => setup({ rollbackTimeoutMs: invalid }), TypeError);
   }
 

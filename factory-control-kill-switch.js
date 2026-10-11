@@ -53,8 +53,10 @@
         }
         return !result.failed && result.value === true
           ? response(true, 'handled') : response(false, 'failed');
-      } catch (_error) {
-        // Never expose untrusted adapter exceptions or command contents.
+      } catch {
+        // Intentionally suppress: adapter exceptions can contain raw prompts,
+        // pairing tokens or chat data. Logging/rethrowing them leaks secrets.
+        // Convert any synchronous failure into fixed, non-sensitive evidence.
         return response(false, stopped ? 'stopped' : 'failed');
       } finally {
         if (onAbort) controller.signal.removeEventListener('abort', onAbort);
