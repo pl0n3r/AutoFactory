@@ -249,7 +249,7 @@
     const clean = Object.create(null);
     for (const key of keys) {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor?.enumerable || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) return null;
+      if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return null;
       clean[key] = descriptor.value;
     }
     return clean;
@@ -259,17 +259,20 @@
     return Number.isSafeInteger(value) && value >= 0 && value <= limit;
   }
 
-  function safeSendControlCounts(details) {
+  function safeSendControlCounts(details, fromStorage) {
     try {
-      // Previously stored safe counters must survive legacy re-sanitization.
-      const saved = exactFields(details, ['sendControlCount', 'sendDisabledCount', 'composerFieldCount']);
-      if (saved) {
-        if (!boundedInteger(saved.sendControlCount, 12) ||
-            !boundedInteger(saved.sendDisabledCount, saved.sendControlCount) ||
-            !boundedInteger(saved.composerFieldCount, 15000)) return {};
-        return { sendControlCount: saved.sendControlCount,
-          sendDisabledCount: saved.sendDisabledCount,
-          composerFieldCount: saved.composerFieldCount };
+      // Trust the derived-count shape ONLY when re-sanitizing stored records,
+      // never as an incoming content-script report.
+      if (fromStorage) {
+        const saved = exactFields(details, ['sendControlCount', 'sendDisabledCount', 'composerFieldCount']);
+        if (saved) {
+          if (!boundedInteger(saved.sendControlCount, 12) ||
+              !boundedInteger(saved.sendDisabledCount, saved.sendControlCount) ||
+              !boundedInteger(saved.composerFieldCount, 15000)) return {};
+          return { sendControlCount: saved.sendControlCount,
+            sendDisabledCount: saved.sendDisabledCount,
+            composerFieldCount: saved.composerFieldCount };
+        }
       }
 
       const snapshot = exactFields(details, ['controls', 'composer']);
@@ -282,7 +285,7 @@
       let disabled = 0;
       for (let index = 0; index < snapshot.controls.length; index += 1) {
         const descriptor = Object.getOwnPropertyDescriptor(snapshot.controls, String(index));
-        if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) return {};
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) return {};
         const button = exactFields(descriptor.value, ['ariaLabel', 'testId', 'title', 'type', 'disabled']);
         if (!button || typeof button.disabled !== 'boolean' ||
             !['ariaLabel', 'testId', 'title'].every(key =>
@@ -294,13 +297,14 @@
       return { sendControlCount: snapshot.controls.length, sendDisabledCount: disabled,
         composerFieldCount: composer.textareas + composer.editable + composer.textboxes };
     } catch (_error) {
-      // Do not echo hostile getters, proxies, paths or free-text errors.
+      // Intentionally ignore untrusted getter/proxy errors: abort to an empty count set.
+      // Never echo an exception because its message might contain chat text or a URL.
       return {};
     }
   }
 
-  function safeDetails(details, event) {
-    if (event === 'send-control-missing') return safeSendControlCounts(details);
+  function safeDetails(details, event, fromStorage) {
+    if (event === 'send-control-missing') return safeSendControlCounts(details, fromStorage);
     if (!details || typeof details !== 'object' || Array.isArray(details)) return {};
     const clean = {};
     for (const [key, value] of Object.entries(details)) {
@@ -320,7 +324,7 @@
     return '/other';
   }
 
-  function safeEntry(entry) {
+  function safeEntry(entry, fromStorage = false) {
     const time = Date.parse(entry?.at || '');
     const event = DIAGNOSTIC_EVENTS.has(entry?.event) ? entry.event : 'unknown';
     return {
@@ -329,7 +333,7 @@
       tabId: Number.isSafeInteger(entry?.tabId) && entry.tabId >= 0 ? entry.tabId : null,
       windowId: Number.isSafeInteger(entry?.windowId) && entry.windowId >= 0 ? entry.windowId : null,
       path: safeRoute(entry?.path),
-      details: safeDetails(entry?.details, event)
+      details: safeDetails(entry?.details, event, fromStorage)
     };
   }
 
@@ -346,7 +350,7 @@
           const timestamp = Date.parse(item?.at || '');
           return Number.isFinite(timestamp) && Date.now() - timestamp <= MAX_LOG_AGE_MS;
         })
-        .map(safeEntry);
+        .map(item => safeEntry(item, true));
       retainedLog.push(safeEntry({
         at: new Date().toISOString(),
         event: entry?.event,
@@ -442,7 +446,7 @@
     }
     if (message?.type === 'autopilot:get-log') {
       writeQueue.then(() => storageGet({ diagnosticLog: [] }))
-        .then(({ diagnosticLog }) => reply({ entries: (Array.isArray(diagnosticLog) ? diagnosticLog : []).slice(-MAX_ENTRIES).map(safeEntry) }))
+        .then(({ diagnosticLog }) => reply({ entries: (Array.isArray(diagnosticLog) ? diagnosticLog : []).slice(-MAX_ENTRIES).map(item => safeEntry(item, true)) }))
         .catch(error => reply({ entries: [], error: error.message }));
       return true;
     }
