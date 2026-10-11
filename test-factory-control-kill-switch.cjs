@@ -12,6 +12,7 @@ function setup(overrides = {}) {
   const calls = [];
   const switcher = createFactoryControlKillSwitch({
     now: overrides.now || (() => 1_800_000_000_000),
+    rollbackTimeoutMs: overrides.rollbackTimeoutMs,
     executeCommand: overrides.executeCommand || (async () => true),
     stopBridge: overrides.stopBridge || (() => { calls.push('stop'); return true; }),
     revokePairing: overrides.revokePairing || (() => { calls.push('revoke'); return true; }),
@@ -117,6 +118,44 @@ function setup(overrides = {}) {
   assert.deepEqual(await rejectedChain.switcher.dispatch({ token: 'PRIVATE-CHAT' }),
     { ok: false, code: 'stopped' });
   assert.equal(JSON.stringify(failedChain).includes('PRIVATE-TOKEN'), false);
+
+  // A hung adapter may not keep kill() pending forever. The timer reports
+  // an irreversible fail-closed result, even if the adapter resolves later.
+  const held = deferred();
+  const hung = setup({
+    stopBridge: () => held.promise,
+    rollbackTimeoutMs: 15
+  });
+  const hungKill = hung.switcher.kill();
+  assert.equal(hung.switcher.status().stopped, true);
+  assert.equal((await hungKill).status, 'rollback_failed');
+  assert.equal(hung.switcher.status().code, 'rollback_failed');
+  assert.deepEqual(await hung.switcher.dispatch({ token: 'PRIVATE-CHAT' }),
+    { ok: false, code: 'stopped' });
+  held.resolve(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(hung.switcher.status().code, 'rollback_failed');
+  assert.equal(hung.switcher.kill(), hungKill);
+  assert.equal(JSON.stringify(await hungKill).includes('PRIVATE-CHAT'), false);
+
+  // Restore itself may hang; its eventual result cannot undo the timeout.
+  const lateRestore = deferred();
+  const restoring = setup({
+    restoreSafeState: () => lateRestore.promise,
+    rollbackTimeoutMs: 15
+  });
+  const restoreKill = restoring.switcher.kill();
+  assert.equal((await restoreKill).status, 'rollback_failed');
+  lateRestore.resolve(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(restoring.switcher.status().code, 'rollback_failed');
+  assert.deepEqual(await restoring.switcher.dispatch({}),
+    { ok: false, code: 'stopped' });
+  for (const invalid of [0, -1, Infinity, NaN, 60001, '1']) {
+    assert.throws(() => setup({ rollbackTimeoutMs: invalid }), TypeError);
+  }
 
   assert.throws(() => createFactoryControlKillSwitch(), TypeError);
   console.log('AF157-KILL-SWITCH-ROLLBACK-OK');

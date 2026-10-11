@@ -8,11 +8,17 @@
   // Offline coordination contract only: consumers must supply fakes or trusted
   // adapters and enforce a separate activation/legal gate. Never opens a bridge.
   function createFactoryControlKillSwitch({
-    executeCommand, stopBridge, revokePairing, restoreSafeState, now = Date.now
+    executeCommand, stopBridge, revokePairing, restoreSafeState, now = Date.now,
+    rollbackTimeoutMs = 10000
   } = {}) {
     if ([executeCommand, stopBridge, revokePairing, restoreSafeState, now]
       .some(value => typeof value !== 'function')) {
       throw new TypeError('Kill switch dependencies are required');
+    }
+    // A hung adapter must never leave the public rollback result pending forever.
+    if (!Number.isSafeInteger(rollbackTimeoutMs) ||
+        rollbackTimeoutMs < 1 || rollbackTimeoutMs > 60000) {
+      throw new TypeError('Kill switch rollback timeout must be 1-60000 ms');
     }
     let stopped = false;
     let stopPromise = null;
@@ -51,8 +57,24 @@
       for (const controller of controllers) controller.abort();
       const abortedCount = controllers.length;
 
-      // Call both independently: an exception in the stop adapter cannot skip
-      // pairing revocation. Complete rollback even when one operation fails.
+      // Once terminal, late adapters can never replace the fail-closed result.
+      let settled = false;
+      let deadline;
+      function settle(bridgeStopped, pairingRevoked, restored, at) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        publicEvidence = Object.freeze({
+          status: bridgeStopped && pairingRevoked && restored && at !== null
+            ? 'safe' : 'rollback_failed',
+          bridgeStopped, pairingRevoked, restored,
+          abortedCommands: abortedCount, observedAt: at
+        });
+        resolveStop(publicEvidence);
+      }
+      // An unresponsive adapter is UNKNOWN, never proof of successful rollback.
+      deadline = setTimeout(() => settle(false, false, false, null), rollbackTimeoutMs);
+      // Call both independently: stop failures do not skip revocation.
       function invoke(adapter) {
         try { return Promise.resolve(adapter()).then(value => value === true, () => false); }
         catch (_error) { return Promise.resolve(false); }
@@ -60,27 +82,18 @@
       const stop = invoke(stopBridge);
       const revoke = invoke(revokePairing);
       Promise.all([stop, revoke]).then(async ([bridgeStopped, pairingRevoked]) => {
+        if (settled) return;
         const restored = await invoke(restoreSafeState);
-        const safe = bridgeStopped && pairingRevoked && restored;
+        if (settled) return;
         let at = null;
         try {
           const timestamp = now();
           if (Number.isSafeInteger(timestamp) && timestamp >= 0) at = timestamp;
         } catch (_error) { /* Keep evidence static; never echo adapter messages. */ }
-        publicEvidence = Object.freeze({
-          status: safe && at !== null ? 'safe' : 'rollback_failed',
-          bridgeStopped, pairingRevoked, restored,
-          abortedCommands: abortedCount, observedAt: at
-        });
-        return publicEvidence;
-      }).then(resolveStop).catch(() => {
-        // An unexpected asynchronous chain failure is not a successful rollback.
-        // Always settle the public promise with fixed, non-sensitive evidence.
-        publicEvidence = Object.freeze({
-          status: 'rollback_failed', bridgeStopped: false, pairingRevoked: false,
-          restored: false, abortedCommands: abortedCount, observedAt: null
-        });
-        resolveStop(publicEvidence);
+        settle(bridgeStopped, pairingRevoked, restored, at);
+      }).catch(() => {
+        // Never echo exception payloads from a hostile adapter.
+        settle(false, false, false, null);
       });
       return stopPromise;
     }
