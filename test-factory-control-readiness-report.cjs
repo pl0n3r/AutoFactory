@@ -87,6 +87,16 @@ function ac03() {
   malformed.pairing = { state: 'paired', observedAt: 'yesterday' };
   assert.equal(report(malformed).signals.pairing.reason, 'invalid_evidence');
   assert.equal(buildReadinessReport(sample(), { nowMs: -1 }).ready, false);
+  for (const invalidOptions of [null, [], { nowMs: NOW, token: 'private-token' }]) {
+    const result = buildReadinessReport(sample(), invalidOptions);
+    assert.equal(result.ready, false);
+    assert.equal(result.signals.orders.reason, 'invalid_clock_or_age');
+    assert.equal(JSON.stringify(result).includes('private-token'), false);
+  }
+  const getterOptions = { get nowMs() { throw Error('private-options'); } };
+  const accessorReport = buildReadinessReport(sample(), getterOptions);
+  assert.equal(accessorReport.ready, false);
+  assert.equal(JSON.stringify(accessorReport).includes('private-options'), false);
   const disabled = buildReadinessReport(sample(), { nowMs: NOW, maxAgeMs: 300001 });
   assert.equal(disabled.ready, false);
   assert.equal(disabled.signals.orders.state, 'UNKNOWN');
