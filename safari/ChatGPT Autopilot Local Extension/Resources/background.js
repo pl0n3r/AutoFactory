@@ -238,7 +238,78 @@
   const DIAGNOSTIC_BOOLEAN = new Set(['enabled', 'backgroundTabs', 'persistentState']);
   const DIAGNOSTIC_NUMBER = new Set(['promptLength', 'attempt', 'intervalMinutes']);
 
-  function safeDetails(details) {
+  // A send-control-missing event is reduced to bounded counts at the trust edge.
+  // Textual DOM attributes and the conversation path are inspected for shape only.
+  function exactFields(value, keys) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return null;
+    const actual = Reflect.ownKeys(value);
+    if (actual.length !== keys.length || actual.some(key => typeof key !== 'string' || !keys.includes(key))) return null;
+    const clean = Object.create(null);
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return null;
+      clean[key] = descriptor.value;
+    }
+    return clean;
+  }
+
+  function boundedInteger(value, limit) {
+    return Number.isSafeInteger(value) && value >= 0 && value <= limit;
+  }
+
+  // Keep the legacy-log branch separate from untrusted fresh DOM snapshots.
+  function safeStoredControlCounts(details) {
+    const saved = exactFields(details, ['sendControlCount', 'sendDisabledCount', 'composerFieldCount']);
+    if (!saved) return null;
+    if (!boundedInteger(saved.sendControlCount, 12) ||
+        !boundedInteger(saved.sendDisabledCount, saved.sendControlCount) ||
+        !boundedInteger(saved.composerFieldCount, 15000)) return {};
+    return { sendControlCount: saved.sendControlCount,
+      sendDisabledCount: saved.sendDisabledCount,
+      composerFieldCount: saved.composerFieldCount };
+  }
+
+  function safeSendControlCounts(details, fromStorage) {
+    try {
+      // Trust the derived-count shape ONLY when re-sanitizing stored records,
+      // never as an incoming content-script report.
+      if (fromStorage) {
+        const storedCounts = safeStoredControlCounts(details);
+        if (storedCounts !== null) return storedCounts;
+      }
+
+      const snapshot = exactFields(details, ['controls', 'composer']);
+      if (!snapshot || !Array.isArray(snapshot.controls) || snapshot.controls.length > 12 ||
+          Reflect.ownKeys(snapshot.controls).length !== snapshot.controls.length + 1) return {};
+      const composer = exactFields(snapshot.composer, ['path', 'textareas', 'editable', 'textboxes', 'forms']);
+      if (!composer || typeof composer.path !== 'string' || composer.path.length > 4096 ||
+          !['textareas', 'editable', 'textboxes', 'forms'].every(
+            key => boundedInteger(composer[key], 5000))) return {};
+      let disabled = 0;
+      for (let index = 0; index < snapshot.controls.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(snapshot.controls, String(index));
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) return {};
+        const button = exactFields(descriptor.value, ['ariaLabel', 'testId', 'title', 'type', 'disabled']);
+        if (!button || typeof button.disabled !== 'boolean' ||
+            !['ariaLabel', 'testId', 'title'].every(key =>
+              typeof button[key] === 'string' && button[key].length <= 80) ||
+            typeof button.type !== 'string' || button.type.length > 20) return {};
+        if (button.disabled) disabled += 1;
+      }
+      // This is a count of selector matches, not guaranteed unique DOM fields.
+      return { sendControlCount: snapshot.controls.length, sendDisabledCount: disabled,
+        composerFieldCount: composer.textareas + composer.editable + composer.textboxes };
+    } catch (_error) {
+      // Intentionally ignore untrusted getter/proxy errors: abort to an empty count set.
+      // Never echo an exception because its message might contain chat text or a URL.
+      return {};
+    }
+  }
+
+  function safeDetails(details, event, fromStorage) {
+    if (event === 'send-control-missing') return safeSendControlCounts(details, fromStorage);
     if (!details || typeof details !== 'object' || Array.isArray(details)) return {};
     const clean = {};
     for (const [key, value] of Object.entries(details)) {
@@ -258,15 +329,16 @@
     return '/other';
   }
 
-  function safeEntry(entry) {
+  function safeEntry(entry, fromStorage = false) {
     const time = Date.parse(entry?.at || '');
+    const event = DIAGNOSTIC_EVENTS.has(entry?.event) ? entry.event : 'unknown';
     return {
       at: Number.isFinite(time) ? new Date(time).toISOString() : new Date().toISOString(),
-      event: DIAGNOSTIC_EVENTS.has(entry?.event) ? entry.event : 'unknown',
+      event,
       tabId: Number.isSafeInteger(entry?.tabId) && entry.tabId >= 0 ? entry.tabId : null,
       windowId: Number.isSafeInteger(entry?.windowId) && entry.windowId >= 0 ? entry.windowId : null,
       path: safeRoute(entry?.path),
-      details: safeDetails(entry?.details)
+      details: safeDetails(entry?.details, event, fromStorage)
     };
   }
 
@@ -283,7 +355,7 @@
           const timestamp = Date.parse(item?.at || '');
           return Number.isFinite(timestamp) && Date.now() - timestamp <= MAX_LOG_AGE_MS;
         })
-        .map(safeEntry);
+        .map(item => safeEntry(item, true));
       retainedLog.push(safeEntry({
         at: new Date().toISOString(),
         event: entry?.event,
@@ -379,8 +451,8 @@
     }
     if (message?.type === 'autopilot:get-log') {
       writeQueue.then(() => storageGet({ diagnosticLog: [] }))
-        .then(({ diagnosticLog }) => reply({ entries: (Array.isArray(diagnosticLog) ? diagnosticLog : []).slice(-MAX_ENTRIES).map(safeEntry) }))
-        .catch(error => reply({ entries: [], error: error.message }));
+        .then(({ diagnosticLog }) => reply({ entries: (Array.isArray(diagnosticLog) ? diagnosticLog : []).slice(-MAX_ENTRIES).map(item => safeEntry(item, true)) }))
+        .catch(() => reply({ entries: [], error: 'storage_unavailable' }));
       return true;
     }
     if (message?.type === 'autopilot:clear-log') {
