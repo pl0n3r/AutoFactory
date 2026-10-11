@@ -13,7 +13,7 @@ Por defecto **el módulo está desconectado y no hay flag de popup activado**. L
 - `chat`: `reservation_active`, `reply_complete`, `last_prompt_s`, `last_reply_s`, `last_activity_s`, `last_reply_chars`, `msgs_hour`, `state` y `identical_read_count` (mínimo dos lecturas iguales).
 - `account`: `observed_limit_hour` conocido, `msgs_hour` y `usage_limited`; saldo permitido como máximo 80 % del límite observado. No se deducen límites de un plan o de la velocidad de respuesta.
 - `controls`: `enabled`, `manual_pause`, `kill_switch_running`, `circuit_breaker_open`, `ambiguous_send`, `session_closed`.
-- `history.retries_s`: instantes **atestiguados** de intentos de continuación, ordenados, sin duplicados y conservados por el adaptador responsable. Ventana móvil de 3600 s, máximo 3 intentos, con espera exponencial.
+- `history.retries_s`: instantes **atestiguados** de intentos de continuación, ordenados, sin duplicados y conservados por el adaptador responsable. Ventana móvil de 3600 s, máximo 3 intentos, con espera exponencial. Al terminar el backoff, un intento posterior a la última respuesta completada sigue siendo **incierto**: se devuelve `detener/desconocido` hasta tener evidencia de respuesta observada; el reloj por sí solo no autoriza reenvío.
 
 Las fechas son segundos Unix enteros UTC. Se exige pacing mínimo de 60 segundos desde el último prompt, configurable con `controls.min_pacing_s` entre 60 y 3600 segundos (un valor inválido detiene la sugerencia) y al menos 600 segundos sin actividad después de una respuesta terminada. Los relojes inválidos, cuotas desconocidas, confirmación ambigua y señales contradictorias fallan cerrado; nunca prueban que otro agente abandonó el trabajo.
 

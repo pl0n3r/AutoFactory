@@ -68,6 +68,15 @@ function ac01() {
   snap.history.retries_s = [BASE - 700, BASE - 400, BASE - 180];
   assert.equal(policy.decide(snap).action, 'esperar');
   assert.equal(policy.decide(snap).next_allowed_s, BASE - 700 + 3600);
+  // After backoff expires, a retry not represented by a newer reply
+  // must NEVER be treated as safe to resend.
+  snap.history.retries_s = [BASE - 180];
+  assert.equal(policy.decide(snap).action, 'detener');
+  assert.equal(policy.decide(snap).idle_reason, 'desconocido');
+  assert.equal(policy.decide(snap).continuation, null);
+  // The latest retry is provably followed by the observed completed reply.
+  snap.history.retries_s = [BASE - 900];
+  assert.equal(policy.decide(snap).action, 'reenganchar');
   snap.history.retries_s = [BASE - 3700];
   assert.equal(policy.decide(snap).action, 'reenganchar');
   assert.equal(createPolicy({now: () => BASE - 1}).decide(sample()).action, 'reenganchar');

@@ -108,6 +108,9 @@
       const backoff = Math.min(900, 60 * (2 ** recent.length));
       const next = recent[recent.length - 1] + backoff;
       if (now_s < next) return result('esperar', 'esperando_pacing', next);
+      // Expired backoff is NOT delivery evidence. A retry newer than the
+      // last observed completed reply may have sent a prompt still in flight.
+      if (recent[recent.length - 1] > chat.last_reply_s) return unknown();
     }
     return result('reenganchar', 'activo');
   }
