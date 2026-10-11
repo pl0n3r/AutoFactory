@@ -79,6 +79,20 @@ function ac01() {
   assert.equal(policy.decide(snap).action, 'reenganchar');
   snap.history.retries_s = [BASE - 3700];
   assert.equal(policy.decide(snap).action, 'reenganchar');
+  // A retry older than the sliding-hour window can still lack an ACK.
+  // An old unconfirmed send never becomes safe just because time elapsed.
+  const expiredWithoutAck = sample();
+  expiredWithoutAck.chat.last_prompt_s = BASE - 4400;
+  expiredWithoutAck.chat.last_reply_s = BASE - 4200;
+  expiredWithoutAck.chat.last_activity_s = BASE - 4100;
+  expiredWithoutAck.history.retries_s = [BASE - 3700];
+  assert.equal(policy.decide(expiredWithoutAck).action, 'detener');
+  assert.equal(policy.decide(expiredWithoutAck).idle_reason, 'desconocido');
+  assert.equal(policy.decide(expiredWithoutAck).continuation, null);
+  // A new, actually observed reply after that retry clears the uncertainty.
+  expiredWithoutAck.chat.last_reply_s = BASE - 3500;
+  expiredWithoutAck.chat.last_activity_s = BASE - 3400;
+  assert.equal(policy.decide(expiredWithoutAck).action, 'reenganchar');
   assert.equal(createPolicy({now: () => BASE - 1}).decide(sample()).action, 'reenganchar');
   // Configurable minimum pacing cannot lower the safety floor of 60 s.
   const paced = sample();
