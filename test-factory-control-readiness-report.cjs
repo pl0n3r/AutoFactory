@@ -64,7 +64,7 @@ function ac02() {
   }
   const getter = sample();
   Object.defineProperty(getter.orders, 'state', {
-    get() { throw Error('private chat'); }, enumerable: true
+    get() { throw new Error('private chat'); }, enumerable: true
   });
   assert.equal(report(getter).signals.orders.reason, 'invalid_evidence');
   assert.equal(JSON.stringify(report(getter)).includes('private chat'), false);
@@ -93,7 +93,7 @@ function ac03() {
     assert.equal(result.signals.orders.reason, 'invalid_clock_or_age');
     assert.equal(JSON.stringify(result).includes('private-token'), false);
   }
-  const getterOptions = { get nowMs() { throw Error('private-options'); } };
+  const getterOptions = { get nowMs() { throw new Error('private-options'); } };
   const accessorReport = buildReadinessReport(sample(), getterOptions);
   assert.equal(accessorReport.ready, false);
   assert.equal(JSON.stringify(accessorReport).includes('private-options'), false);

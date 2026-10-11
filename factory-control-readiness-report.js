@@ -13,6 +13,9 @@
     orders: Object.freeze(['ready', 'blocked', 'unknown']),
     account: Object.freeze(['ready', 'limit', 'requires_login', 'error', 'unknown'])
   });
+  const READY_STATES = Object.freeze({
+    pairing: 'paired', heartbeat: 'online', orders: 'ready', account: 'ready'
+  });
   const DEFAULT_MAX_AGE_MS = 180000;
   const HARD_MAX_AGE_MS = 300000;
 
@@ -46,10 +49,7 @@
     if (nowMs - observedAt > maxAgeMs) return unknown('stale_evidence', 'stale');
     if (state === 'unknown') return unknown('unknown_state', 'fresh');
 
-    const ready = (name === 'pairing' && state === 'paired') ||
-      (name === 'heartbeat' && state === 'online') ||
-      (name === 'orders' && state === 'ready') ||
-      (name === 'account' && state === 'ready');
+    const ready = READY_STATES[name] === state;
     return Object.freeze({
       state: ready ? 'ready' : 'blocked',
       freshness: 'fresh',
@@ -71,12 +71,18 @@
         maxAgeMs = Object.hasOwn(options, 'maxAgeMs')
           ? options.maxAgeMs : DEFAULT_MAX_AGE_MS;
       }
-    } catch (_error) { validOptions = false; }
+    } catch (_error) {
+      // Deliberately discard potentially private thrown messages from caller options.
+      validOptions = false;
+    }
     const validClock = validOptions && Number.isSafeInteger(nowMs) && nowMs >= 0;
     const validAge = Number.isSafeInteger(maxAgeMs) &&
       maxAgeMs > 0 && maxAgeMs <= HARD_MAX_AGE_MS;
     let validInput = false;
-    try { validInput = fields(input, SIGNALS); } catch (_error) { validInput = false; }
+    try { validInput = fields(input, SIGNALS); } catch (_error) {
+      // Malicious proxy introspection may throw sensitive data. Fail closed.
+      validInput = false;
+    }
 
     const signals = {};
     for (const name of SIGNALS) {
