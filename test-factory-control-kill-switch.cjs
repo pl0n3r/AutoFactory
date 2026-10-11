@@ -27,11 +27,14 @@ function setup(overrides = {}) {
   const pending = deferred();
   let signal;
   let adapterCalls = 0;
+  let effectsAfterStop = 0;
   const first = setup({
     executeCommand: async (_command, context) => {
       adapterCalls++;
       signal = context.signal;
       await pending.promise;
+      // Deliberately non-cooperative fake: side effect after abort.
+      if (context.signal.aborted) effectsAfterStop++;
       return true;
     }
   });
@@ -42,13 +45,19 @@ function setup(overrides = {}) {
   assert.deepEqual(await first.switcher.dispatch({ token: 'DONT_LOG_ME' }),
     { ok: false, code: 'stopped' });
   assert.equal(adapterCalls, 1);
-  pending.resolve();
-  assert.deepEqual(await inFlight, { ok: false, code: 'stopped' });
+  // All rollback adapters can confirm local work while in-flight effects remain
+  // UNKNOWN; request-to-abort is never proof of remote cancellation.
   const evidence = await killing;
   assert.deepEqual(evidence, {
-    status: 'safe', bridgeStopped: true, pairingRevoked: true,
+    status: 'rollback_failed', bridgeStopped: true, pairingRevoked: true,
     restored: true, abortedCommands: 1, observedAt: 1_800_000_000_000
   });
+  assert.equal(effectsAfterStop, 0);
+  pending.resolve();
+  assert.deepEqual(await inFlight, { ok: false, code: 'stopped' });
+  assert.equal(effectsAfterStop, 1, 'synthetic non-cooperative late effect');
+  assert.equal(first.switcher.status().code, 'rollback_failed');
+  assert.deepEqual(first.switcher.kill(), killing);
   assert.deepEqual(first.calls, ['stop', 'revoke', 'rollback']);
   assert.equal(first.switcher.kill(), killing, 'kill is idempotent');
   assert.equal(JSON.stringify(evidence).includes('DONT_LOG_ME'), false);

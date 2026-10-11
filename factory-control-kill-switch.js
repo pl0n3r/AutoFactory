@@ -65,8 +65,10 @@
         settled = true;
         clearTimeout(deadline);
         publicEvidence = Object.freeze({
-          status: bridgeStopped && pairingRevoked && restored && at !== null
-            ? 'safe' : 'rollback_failed',
+          // Abort requests are advisory: active effects need external reconciliation.
+          // Never certify safe while a command was in flight at the kill boundary.
+          status: bridgeStopped && pairingRevoked && restored && at !== null &&
+            abortedCount === 0 ? 'safe' : 'rollback_failed',
           bridgeStopped, pairingRevoked, restored,
           abortedCommands: abortedCount, observedAt: at
         });
