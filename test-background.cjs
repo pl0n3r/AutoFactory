@@ -98,7 +98,7 @@ setImmediate(() => {
           composer: { ...composer, editable: -1 } } },
       fakeSender, () => {});
       listener({ type: 'autopilot:log', event: 'send-control-missing',
-        details: { controls: Array(13).fill(button(false)), composer } },
+        details: { controls: Array.from({ length: 13 }, () => button(false)), composer } },
       fakeSender, () => {});
       listener({ type: 'autopilot:log', event: 'send-control-missing',
         details: { controls: [button(false)],
@@ -115,9 +115,14 @@ setImmediate(() => {
       listener({ type: 'autopilot:log', event: 'send-control-missing',
         details: { sendControlCount: 2, sendDisabledCount: 3, composerFieldCount: 1 } },
       fakeSender, () => {});
+      // Incoming precomputed counts are not evidence of DOM controls.
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { sendControlCount: 12, sendDisabledCount: 12,
+          composerFieldCount: 15000 } },
+      fakeSender, () => {});
       listener({ type: 'autopilot:get-log' }, {}, result => {
         const matching = result.entries.filter(row => row.event === 'send-control-missing');
-        assert.equal(matching.length, 7);
+        assert.equal(matching.length, 8);
         assert.deepEqual(matching[0].details, {
           sendControlCount: 2, sendDisabledCount: 1, composerFieldCount: 3
         });
