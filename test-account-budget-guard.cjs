@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
 const { JSDOM } = require('jsdom');
 
 function readySnapshot(nextAllowedAt = null) {
@@ -526,4 +527,24 @@ async function refreshRevocationScenario(mode) {
   console.log('AF161-RACES-FAIL-CLOSED');
   await refreshRevocationScenario('healthy');
   console.log('AF161-HEALTHY');
+
+  // Validate the three Python acceptance entrypoints in the existing npm test.
+  // Each Python method invokes this real JSDOM test under the child flag;
+  // this prevents subprocess recursion without skipping any JS assertions.
+  if (process.env.AF161_PYTHON_ACCEPTANCE_CHILD !== '1') {
+    const result = spawnSync('python3', [
+      '-m', 'unittest', 'discover', '-s', 'tests',
+      '-p', 'test_autopilot_budget_refresh_revoke.py', '-v'
+    ], {
+      cwd: process.cwd(), encoding: 'utf8', timeout: 120000,
+      env: { ...process.env, AF161_PYTHON_ACCEPTANCE_CHILD: '1' }
+    });
+    assert.equal(result.error, undefined, String(result.error || ''));
+    assert.equal(result.status, 0,
+      'AC-01/02/03 Python entrypoints must pass: ' +
+      (result.stdout || '') + '\n' + (result.stderr || ''));
+    assert.match(result.stderr || '', /Ran 3 tests in /,
+      'the Python discovery must execute exactly three acceptance tests');
+    console.log('AF161-PYTHON-ACCEPTANCE-3-PASS');
+  }
 })().catch(error => { console.error(error); process.exitCode = 1; });
