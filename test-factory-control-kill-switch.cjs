@@ -56,8 +56,8 @@ function setup(overrides = {}) {
   // AC-02: a failed adapter still invokes revoke/rollback; the terminal
   // fence remains set and a secret embedded in a failure is never echoed.
   const fallback = setup({
-    stopBridge() { throw Error('PRIVATE-TOKEN'); },
-    now: () => { throw Error('PRIVATE-TOKEN'); }
+    stopBridge() { throw new Error('PRIVATE-TOKEN'); },
+    now: () => { throw new Error('PRIVATE-TOKEN'); }
   });
   const failed = await fallback.switcher.kill();
   assert.equal(failed.status, 'rollback_failed');
@@ -95,9 +95,28 @@ function setup(overrides = {}) {
   const raceKill = race.switcher.kill();
   assert.equal(reentrantKill, raceKill);
   await raceKill;
-  assert.deepEqual(await reentrant, { ok: false, code: 'stopped' });
+  assert.deepEqual(await Promise.resolve(reentrant), { ok: false, code: 'stopped' });
   assert.deepEqual(await racing, { ok: false, code: 'stopped' });
   console.log('AF157-AC03-NO-NEW-COMMANDS-OK');
+
+  // Unexpected rejection in the kill chain must resolve fail-closed, not hang.
+  const originalAll = Promise.all;
+  const rejectedChain = setup();
+  let rejectedPromise;
+  try {
+    Promise.all = () => Promise.reject(new Error('PRIVATE-TOKEN'));
+    rejectedPromise = rejectedChain.switcher.kill();
+  } finally {
+    Promise.all = originalAll;
+  }
+  const failedChain = await rejectedPromise;
+  assert.equal(failedChain.status, 'rollback_failed');
+  assert.equal(failedChain.bridgeStopped, false);
+  assert.equal(failedChain.restored, false);
+  assert.equal(rejectedChain.switcher.status().stopped, true);
+  assert.deepEqual(await rejectedChain.switcher.dispatch({ token: 'PRIVATE-CHAT' }),
+    { ok: false, code: 'stopped' });
+  assert.equal(JSON.stringify(failedChain).includes('PRIVATE-TOKEN'), false);
 
   assert.throws(() => createFactoryControlKillSwitch(), TypeError);
   console.log('AF157-KILL-SWITCH-ROLLBACK-OK');

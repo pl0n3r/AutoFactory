@@ -33,6 +33,7 @@
         if (stopped || controller.signal.aborted) return response(false, 'stopped');
         return outcome === true ? response(true, 'handled') : response(false, 'failed');
       } catch (_error) {
+        // Intentionally discard untrusted adapter exceptions: never echo chat contents.
         return response(false, stopped ? 'stopped' : 'failed');
       } finally {
         inflight.delete(controller);
@@ -72,7 +73,15 @@
           abortedCommands: abortedCount, observedAt: at
         });
         return publicEvidence;
-      }).then(resolveStop);
+      }).then(resolveStop).catch(() => {
+        // An unexpected asynchronous chain failure is not a successful rollback.
+        // Always settle the public promise with fixed, non-sensitive evidence.
+        publicEvidence = Object.freeze({
+          status: 'rollback_failed', bridgeStopped: false, pairingRevoked: false,
+          restored: false, abortedCommands: abortedCount, observedAt: null
+        });
+        resolveStop(publicEvidence);
+      });
       return stopPromise;
     }
 
