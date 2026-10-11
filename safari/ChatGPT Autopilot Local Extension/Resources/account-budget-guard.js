@@ -24,6 +24,7 @@
   let authorizationInFlight = false;
   let authorizedButton = null;
   let authorizedAt = 0;
+  let authorizationEpoch = 0;
   let sentButtonAwaitingConfirmation = null;
   let refreshInFlight = null;
   let limitActive = false;
@@ -84,6 +85,13 @@
   function clearAuthorization() {
     authorizedButton = null;
     authorizedAt = 0;
+    authorizationEpoch += 1;
+  }
+
+  function invalidateBudgetEvidence() {
+    ready = false;
+    snapshot = null;
+    clearAuthorization();
   }
 
   function authorizationValid(button) {
@@ -100,12 +108,12 @@
     refreshInFlight = runtimeMessage({ type: 'autopilot:budget-status' })
       .then(response => {
         if (!response?.ok || !applySnapshot(response.snapshot)) {
-          ready = false;
+          invalidateBudgetEvidence();
           return false;
         }
         return true;
       }, () => {
-        ready = false;
+        invalidateBudgetEvidence();
         return false;
       })
       .finally(() => { refreshInFlight = null; });
@@ -204,9 +212,11 @@
       return; // storage unavailable: fail closed before any mutation
     }
     authorizationInFlight = true;
+    const requestEpoch = authorizationEpoch;
     ready = false;
     void runtimeMessage({ type: 'autopilot:budget-consume', reasoningLevel })
       .then(response => {
+        if (authorizationEpoch !== requestEpoch) return;
         if (response?.ok !== true || !applySnapshot(response.snapshot)) return;
         if (response.allowed === false) {
           // A canonical rejection proves the backend did not consume a slot.

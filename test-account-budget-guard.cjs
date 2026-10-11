@@ -337,3 +337,112 @@ async function ambiguousDebitScenario() {
 ambiguousDebitScenario().then(() => {
   console.log('account-budget-guard: delayed consume is not charged twice');
 }).catch(error => { console.error(error); process.exitCode = 1; });
+
+
+// #161: refresh-status failures revoke an already-consumed local send grant,
+// and delayed consume callbacks cannot restore it after a denial.
+async function refreshRevocationScenario(mode) {
+  const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
+    url: 'https://chatgpt.com/', runScripts: 'outside-only'
+  });
+  const w = dom.window, button = w.document.getElementById('send');
+  let interval, storageReply, onStorageChanged, delayedConsume;
+  let clicks = 0, consumes = 0, statuses = 0;
+  w.Date.now = () => 100000;
+  w.setInterval = fn => { interval = fn; return 1; };
+  w.setTimeout = () => 1;
+  w.clearTimeout = () => {};
+  button.addEventListener('click', () => { clicks++; });
+  const initial = readySnapshot();
+  const consumed = { ...initial, sent: 1, remaining: 39 };
+  w.ChatGPTAutopilotCore = {
+    canSend: candidate => candidate === button && !candidate.disabled,
+    pageSignal: () => ({ code: 'ready' }),
+    sendButton: () => button
+  };
+  w.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(message, callback) {
+        if (message.type === 'autopilot:budget-consume') {
+          consumes++;
+          if (mode === 'late-consume' || mode === 'toggle-account') {
+            delayedConsume = callback;
+          } else {
+            callback({ ok: true, allowed: true, snapshot: consumed });
+          }
+        } else if (message.type === 'autopilot:budget-status') {
+          statuses++;
+          if (mode === 'status-denied' || mode === 'late-consume') {
+            callback({ ok: false });
+          } else if (mode === 'transport-error') {
+            w.chrome.runtime.lastError = { message: 'test-only' };
+            callback(undefined);
+            w.chrome.runtime.lastError = null;
+          } else if (mode === 'invalid-snapshot') {
+            callback({ ok: true, snapshot: { ...initial, remaining: -1 } });
+          } else {
+            callback({ ok: true, snapshot: consumed });
+          }
+        }
+      }
+    },
+    storage: {
+      local: { get(_defaults, callback) { storageReply = callback; } },
+      onChanged: { addListener(listener) { onStorageChanged = listener; } }
+    }
+  };
+  w.eval(fs.readFileSync('./account-budget-guard.js', 'utf8'));
+  storageReply({
+    masterEnabled: true, accountBudgetEnabled: true,
+    reasoningLevel: 'high', accountBudgetSnapshotV1: initial
+  });
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+  await flush();
+  await flush();
+  if (!delayedConsume) {
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), true,
+      mode + ': consume initially authorizes a single send');
+  }
+  if (mode === 'toggle-account') {
+    onStorageChanged({ accountBudgetEnabled: { newValue: false } }, 'local');
+    onStorageChanged({ accountBudgetEnabled: { newValue: true } }, 'local');
+  } else {
+    interval();
+  }
+  await flush();
+  await flush();
+  if (delayedConsume) {
+    delayedConsume({ ok: true, allowed: true, snapshot: consumed });
+    await flush();
+    await flush();
+  }
+  if (mode === 'healthy') {
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), true);
+    button.click();
+    button.click();
+    assert.equal(clicks, 1, 'one authorized click remains permitted');
+    assert.equal(w.ChatGPTAutopilotBudgetGuard.confirmSent(), true);
+  } else {
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), false,
+      mode + ': stale grant or delayed consume must be revoked');
+    button.click();
+    assert.equal(clicks, 0, mode + ': never click under untrusted status');
+    assert.equal(w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'), '1',
+      mode + ': unknown consumed debit must remain latched');
+  }
+  assert.equal(consumes, 1, mode + ': no second consume/replay');
+  if (mode !== 'toggle-account') assert.equal(statuses, 1, mode);
+  w.close();
+}
+(async () => {
+  await refreshRevocationScenario('status-denied');
+  await refreshRevocationScenario('transport-error');
+  console.log('AF161-FAILED-STATUS-REVOKES');
+  await refreshRevocationScenario('invalid-snapshot');
+  await refreshRevocationScenario('late-consume');
+  await refreshRevocationScenario('toggle-account');
+  console.log('AF161-RACES-FAIL-CLOSED');
+  await refreshRevocationScenario('healthy');
+  console.log('AF161-HEALTHY');
+})().catch(error => { console.error(error); process.exitCode = 1; });
