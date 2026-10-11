@@ -97,9 +97,27 @@ setImmediate(() => {
         details: { controls: [button(false)],
           composer: { ...composer, editable: -1 } } },
       fakeSender, () => {});
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { controls: Array(13).fill(button(false)), composer } },
+      fakeSender, () => {});
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { controls: [button(false)],
+          composer: { ...composer, forms: 5001 } } },
+      fakeSender, () => {});
+      const accessorButton = button(false);
+      let accessorReads = 0;
+      Object.defineProperty(accessorButton, 'disabled', { enumerable: true,
+        get() { accessorReads += 1; return true; } });
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { controls: [accessorButton], composer } },
+      fakeSender, () => {});
+      assert.equal(accessorReads, 0, 'The background must never read raw DOM getters');
+      listener({ type: 'autopilot:log', event: 'send-control-missing',
+        details: { sendControlCount: 2, sendDisabledCount: 3, composerFieldCount: 1 } },
+      fakeSender, () => {});
       listener({ type: 'autopilot:get-log' }, {}, result => {
         const matching = result.entries.filter(row => row.event === 'send-control-missing');
-        assert.equal(matching.length, 3);
+        assert.equal(matching.length, 7);
         assert.deepEqual(matching[0].details, {
           sendControlCount: 2, sendDisabledCount: 1, composerFieldCount: 3
         });
@@ -108,6 +126,7 @@ setImmediate(() => {
           row.event === 'status' && row.tabId === 27).details, { code: 'safe' });
         assert.deepEqual(matching[1].details, {});
         assert.deepEqual(matching[2].details, {});
+        for (const rejected of matching.slice(3)) assert.deepEqual(rejected.details, {});
         const serialized = JSON.stringify(result.entries);
         for (const secret of ['PRIVATE-SEND-DIAGNOSTIC-ID', 'PRIVATE-DOM-ATTRIBUTE',
           'PRIVATE-DOM-TEST-ID', 'PRIVATE-DOM-TITLE', '"controls"', '"composer"', '"token"']) {
