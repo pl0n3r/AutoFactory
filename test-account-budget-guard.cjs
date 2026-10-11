@@ -532,7 +532,8 @@ async function refreshRevocationScenario(mode) {
   // Each Python method invokes this real JSDOM test under the child flag;
   // this prevents subprocess recursion without skipping any JS assertions.
   if (process.env.AF161_PYTHON_ACCEPTANCE_CHILD !== '1') {
-    const result = spawnSync('python3', [
+    // Pin the system interpreter; never resolve an executable through mutable PATH.
+    const result = spawnSync('/usr/bin/python3', [
       '-m', 'unittest', 'discover', '-s', 'tests',
       '-p', 'test_autopilot_budget_refresh_revoke.py', '-v'
     ], {
