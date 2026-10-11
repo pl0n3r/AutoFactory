@@ -82,13 +82,18 @@
     if (controls.ambiguous_send) return result('detener', 'envio_ambiguo_5min');
     if (!chat.reservation_active) return result('detener', 'sin_trabajo');
 
+    // Optional explicit per-chat pacing; never accept <60s or unbounded values.
+    const minPacing = Object.hasOwn(controls, 'min_pacing_s')
+      ? controls.min_pacing_s : MIN_PACING_S;
+    if (!second(minPacing) || minPacing < MIN_PACING_S || minPacing > WINDOW_S) return unknown();
     const safeHourBudget = Math.floor(account.observed_limit_hour * 0.8);
     if (safeHourBudget < 1 || account.msgs_hour >= safeHourBudget) {
       return result('detener', 'limite_horario');
     }
     const lastPrompt = chat.last_prompt_s;
-    if (lastPrompt !== null && now_s - lastPrompt < MIN_PACING_S) {
-      return result('esperar', 'esperando_pacing', lastPrompt + MIN_PACING_S);
+    if (lastPrompt !== null && now_s - lastPrompt < minPacing) {
+      const next = lastPrompt + minPacing;
+      return second(next) ? result('esperar', 'esperando_pacing', next) : unknown();
     }
     if (!chat.reply_complete || chat.last_reply_s === null) return result('esperar', 'activo');
     const idleUntil = chat.last_activity_s + IDLE_AFTER_S;

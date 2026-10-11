@@ -15,7 +15,7 @@ Por defecto **el módulo está desconectado y no hay flag de popup activado**. L
 - `controls`: `enabled`, `manual_pause`, `kill_switch_running`, `circuit_breaker_open`, `ambiguous_send`, `session_closed`.
 - `history.retries_s`: instantes **atestiguados** de intentos de continuación, ordenados, sin duplicados y conservados por el adaptador responsable. Ventana móvil de 3600 s, máximo 3 intentos, con espera exponencial.
 
-Las fechas son segundos Unix enteros UTC. Se exige pacing mínimo de 60 segundos desde el último prompt y al menos 600 segundos sin actividad después de una respuesta terminada. Los relojes inválidos, cuotas desconocidas, confirmación ambigua y señales contradictorias fallan cerrado; nunca prueban que otro agente abandonó el trabajo.
+Las fechas son segundos Unix enteros UTC. Se exige pacing mínimo de 60 segundos desde el último prompt, configurable con `controls.min_pacing_s` entre 60 y 3600 segundos (un valor inválido detiene la sugerencia) y al menos 600 segundos sin actividad después de una respuesta terminada. Los relojes inválidos, cuotas desconocidas, confirmación ambigua y señales contradictorias fallan cerrado; nunca prueban que otro agente abandonó el trabajo.
 
 ## Motivos y telemetría limitada
 

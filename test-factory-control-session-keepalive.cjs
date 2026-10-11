@@ -71,6 +71,22 @@ function ac01() {
   snap.history.retries_s = [BASE - 3700];
   assert.equal(policy.decide(snap).action, 'reenganchar');
   assert.equal(createPolicy({now: () => BASE - 1}).decide(sample()).action, 'reenganchar');
+  // Configurable minimum pacing cannot lower the safety floor of 60 s.
+  const paced = sample();
+  paced.controls.min_pacing_s = 90;
+  paced.chat.last_prompt_s = BASE - 70;
+  paced.chat.last_reply_s = BASE - 60;
+  paced.chat.last_activity_s = BASE - 60;
+  const scheduled = policy.decide(paced);
+  assert.equal(scheduled.action, 'esperar');
+  assert.equal(scheduled.idle_reason, 'esperando_pacing');
+  assert.equal(scheduled.next_allowed_s, BASE + 20);
+  paced.controls.min_pacing_s = 60;
+  assert.equal(policy.decide(paced).idle_reason, 'activo');
+  for (const invalid of [null, 0, 59, 3601, true, '90']) {
+    paced.controls.min_pacing_s = invalid;
+    assert.equal(policy.decide(paced).idle_reason, 'desconocido');
+  }
   assert.throws(() => createPolicy({}), /Injected clock/);
 }
 function ac02() {
