@@ -19,14 +19,22 @@
   const DEFAULT_MAX_AGE_MS = 180000;
   const HARD_MAX_AGE_MS = 300000;
 
-  function fields(value, names) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  function snapshotFields(value, names) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    // Never trust later Proxy.get results after validating property descriptors:
+    // bind each field to the data descriptor's value in a single snapshot.
     const keys = Reflect.ownKeys(value);
-    if (keys.length !== names.length) return false;
-    return keys.every(key => typeof key === 'string' && names.includes(key) &&
-      Object.prototype.propertyIsEnumerable.call(value, key) &&
-      Object.hasOwn(Object.getOwnPropertyDescriptors(value), key) &&
-      Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'));
+    if (keys.length !== names.length) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const captured = Object.create(null);
+    for (const key of keys) {
+      if (typeof key !== 'string' || !names.includes(key)) return null;
+      const descriptor = Object.getOwnPropertyDescriptor(descriptors, key)?.value;
+      if (!descriptor || descriptor.enumerable !== true ||
+          !Object.hasOwn(descriptor, 'value')) return null;
+      captured[key] = descriptor.value;
+    }
+    return Object.freeze(captured);
   }
 
   function unknown(reason, freshness = 'unknown') {
@@ -39,8 +47,9 @@
     if (value === undefined || value === null) return unknown('missing_evidence');
     // Only sanitized observation envelopes are accepted. Raw module payloads
     // may carry account aliases, chat IDs or other user data: never copy them.
-    if (!fields(value, ['state', 'observedAt'])) return unknown('invalid_evidence');
-    const { state, observedAt } = value;
+    const evidence = snapshotFields(value, ['state', 'observedAt']);
+    if (!evidence) return unknown('invalid_evidence');
+    const { state, observedAt } = evidence;
     if (typeof state !== 'string' || !ALLOWED_STATES[name].includes(state) ||
         !Number.isSafeInteger(observedAt) || observedAt < 0) {
       return unknown('invalid_evidence');
@@ -60,35 +69,34 @@
 
   function buildReadinessReport(input, options = {}) {
     // Malformed or accessor-backed options must never escape the diagnostic.
-    let validOptions = false;
+    let optionsSnapshot = null;
     let nowMs = null;
     let maxAgeMs = null;
     try {
-      validOptions = fields(options, ['nowMs']) ||
-        fields(options, ['nowMs', 'maxAgeMs']);
-      if (validOptions) {
-        nowMs = options.nowMs;
-        maxAgeMs = Object.hasOwn(options, 'maxAgeMs')
-          ? options.maxAgeMs : DEFAULT_MAX_AGE_MS;
+      optionsSnapshot = snapshotFields(options, ['nowMs']) ||
+        snapshotFields(options, ['nowMs', 'maxAgeMs']);
+      if (optionsSnapshot) {
+        nowMs = optionsSnapshot.nowMs;
+        maxAgeMs = Object.hasOwn(optionsSnapshot, 'maxAgeMs')
+          ? optionsSnapshot.maxAgeMs : DEFAULT_MAX_AGE_MS;
       }
     } catch (_error) {
-      // Deliberately discard potentially private thrown messages from caller options.
-      validOptions = false;
+      // Discard hostile Proxy errors; never reflect sensitive exception messages.
+      optionsSnapshot = null;
     }
-    const validClock = validOptions && Number.isSafeInteger(nowMs) && nowMs >= 0;
+    const validClock = !!optionsSnapshot && Number.isSafeInteger(nowMs) && nowMs >= 0;
     const validAge = Number.isSafeInteger(maxAgeMs) &&
       maxAgeMs > 0 && maxAgeMs <= HARD_MAX_AGE_MS;
-    let validInput = false;
-    try { validInput = fields(input, SIGNALS); } catch (_error) {
-      // Malicious proxy introspection may throw sensitive data. Fail closed.
-      validInput = false;
+    let inputSnapshot = null;
+    try { inputSnapshot = snapshotFields(input, SIGNALS); } catch (_error) {
+      // Reject hostile Proxy descriptors, without reflecting their error text.
+      inputSnapshot = null;
     }
 
     const signals = {};
     for (const name of SIGNALS) {
-      let value;
       try {
-        if (validInput) value = input[name];
+        const value = inputSnapshot ? inputSnapshot[name] : undefined;
         signals[name] = validClock && validAge
           ? readEvidence(name, value, nowMs, maxAgeMs)
           : unknown('invalid_clock_or_age');
@@ -101,7 +109,7 @@
     return Object.freeze({
       version: 1,
       mode: 'offline_diagnostic_only',
-      ready: validInput && allFreshReady,
+      ready: !!inputSnapshot && allFreshReady,
       signals: Object.freeze(signals)
     });
   }

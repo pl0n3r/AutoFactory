@@ -93,6 +93,46 @@ function ac03() {
     assert.equal(result.signals.orders.reason, 'invalid_clock_or_age');
     assert.equal(JSON.stringify(result).includes('private-token'), false);
   }
+  // Proxy.get must never override validated data descriptor values.
+  // All descriptors say unknown, even though subsequent reads claim readiness.
+  const advertised = sample();
+  for (const [name, healthy] of Object.entries({
+    pairing: 'paired', heartbeat: 'online', orders: 'ready', account: 'ready'
+  })) {
+    advertised[name] = new Proxy(
+      { state: 'unknown', observedAt: NOW - 1000 },
+      { get(target, key, receiver) {
+        return key === 'state' ? healthy : Reflect.get(target, key, receiver);
+      } }
+    );
+  }
+  const adversarial = report(advertised);
+  assert.equal(adversarial.ready, false);
+  for (const signal of Object.values(adversarial.signals)) {
+    assert.equal(signal.state, 'UNKNOWN');
+    assert.equal(signal.reason, 'unknown_state');
+  }
+  const rootSample = sample();
+  const rootProxy = new Proxy(rootSample, {
+    get(target, key, receiver) {
+      if (key === 'heartbeat') return { state: 'online', observedAt: NOW };
+      return Reflect.get(target, key, receiver);
+    }
+  });
+  // This descriptor is UNKNOWN while a Proxy.get may inject an ONLINE row.
+  rootSample.heartbeat = { state: 'unknown', observedAt: NOW - 1000 };
+  const rootResult = report(rootProxy);
+  assert.equal(rootResult.ready, false);
+  assert.equal(rootResult.signals.heartbeat.reason, 'unknown_state');
+  const clockProxy = new Proxy({ nowMs: -1 }, {
+    get(target, key, receiver) {
+      return key === 'nowMs' ? NOW : Reflect.get(target, key, receiver);
+    }
+  });
+  const clockResult = buildReadinessReport(sample(), clockProxy);
+  assert.equal(clockResult.ready, false);
+  assert.equal(clockResult.signals.orders.reason, 'invalid_clock_or_age');
+
   const getterOptions = { get nowMs() { throw new Error('private-options'); } };
   const accessorReport = buildReadinessReport(sample(), getterOptions);
   assert.equal(accessorReport.ready, false);
