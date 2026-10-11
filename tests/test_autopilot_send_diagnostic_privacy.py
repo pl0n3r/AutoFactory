@@ -20,6 +20,7 @@ class AutopilotSendDiagnosticPrivacyTests(unittest.TestCase):
         output = result.stdout + "\n" + result.stderr
         self.assertEqual(result.returncode, 0, output[-7000:])
         self.assertIn(marker, result.stdout, output[-7000:])
+        self.assertIn("AF152-GETLOG-ERROR-REDACTED", result.stdout, output[-7000:])
 
     def test_missing_send_control_retains_only_bounded_counts(self) -> None:
         self._run_node("AF152-COUNTS-OK")

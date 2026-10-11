@@ -15,9 +15,15 @@ const store = { diagnosticLog: [{
   details: { message: 'legacy chat content', code: 'recoverable', token: 'legacy-token' }
 }] };
 let listener;
+let rejectDiagnosticLogRead = false;
 global.chrome = {
   storage: { local: {
-    get(defaults, callback) { callback({ ...defaults, ...store }); },
+    get(defaults, callback) {
+      if (rejectDiagnosticLogRead && Object.hasOwn(defaults, 'diagnosticLog')) {
+        throw new Error('PRIVATE-LOG-ERROR-SENTINEL');
+      }
+      callback({ ...defaults, ...store });
+    },
     set(values, callback) { Object.assign(store, values); callback?.(); }
   } },
   runtime: { onMessage: { addListener(value) { listener = value; } } }
@@ -162,6 +168,15 @@ setImmediate(() => {
           assert.equal(output.includes('PRIVATE-LEGACY-TITLE'), false);
           assert.equal(output.includes('private@example.invalid'), false);
           console.log('AF152-MIRROR-LEGACY-OK');
+          // The adapter may throw a message containing private data.
+          // get-log must return a fixed error code rather than echoing it.
+          rejectDiagnosticLogRead = true;
+          listener({ type: 'autopilot:get-log' }, {}, denied => {
+            assert.deepEqual(denied, { entries: [], error: 'storage_unavailable' });
+            assert.equal(JSON.stringify(denied).includes('PRIVATE-LOG-ERROR-SENTINEL'), false);
+            rejectDiagnosticLogRead = false;
+            console.log('AF152-GETLOG-ERROR-REDACTED');
+          });
         });
       });
 

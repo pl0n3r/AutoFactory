@@ -259,20 +259,25 @@
     return Number.isSafeInteger(value) && value >= 0 && value <= limit;
   }
 
+  // Keep the legacy-log branch separate from untrusted fresh DOM snapshots.
+  function safeStoredControlCounts(details) {
+    const saved = exactFields(details, ['sendControlCount', 'sendDisabledCount', 'composerFieldCount']);
+    if (!saved) return null;
+    if (!boundedInteger(saved.sendControlCount, 12) ||
+        !boundedInteger(saved.sendDisabledCount, saved.sendControlCount) ||
+        !boundedInteger(saved.composerFieldCount, 15000)) return {};
+    return { sendControlCount: saved.sendControlCount,
+      sendDisabledCount: saved.sendDisabledCount,
+      composerFieldCount: saved.composerFieldCount };
+  }
+
   function safeSendControlCounts(details, fromStorage) {
     try {
       // Trust the derived-count shape ONLY when re-sanitizing stored records,
       // never as an incoming content-script report.
       if (fromStorage) {
-        const saved = exactFields(details, ['sendControlCount', 'sendDisabledCount', 'composerFieldCount']);
-        if (saved) {
-          if (!boundedInteger(saved.sendControlCount, 12) ||
-              !boundedInteger(saved.sendDisabledCount, saved.sendControlCount) ||
-              !boundedInteger(saved.composerFieldCount, 15000)) return {};
-          return { sendControlCount: saved.sendControlCount,
-            sendDisabledCount: saved.sendDisabledCount,
-            composerFieldCount: saved.composerFieldCount };
-        }
+        const storedCounts = safeStoredControlCounts(details);
+        if (storedCounts !== null) return storedCounts;
       }
 
       const snapshot = exactFields(details, ['controls', 'composer']);
@@ -447,7 +452,7 @@
     if (message?.type === 'autopilot:get-log') {
       writeQueue.then(() => storageGet({ diagnosticLog: [] }))
         .then(({ diagnosticLog }) => reply({ entries: (Array.isArray(diagnosticLog) ? diagnosticLog : []).slice(-MAX_ENTRIES).map(item => safeEntry(item, true)) }))
-        .catch(error => reply({ entries: [], error: error.message }));
+        .catch(() => reply({ entries: [], error: 'storage_unavailable' }));
       return true;
     }
     if (message?.type === 'autopilot:clear-log') {
