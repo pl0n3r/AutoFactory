@@ -346,8 +346,9 @@ async function refreshRevocationScenario(mode) {
     url: 'https://chatgpt.com/', runScripts: 'outside-only'
   });
   const w = dom.window, button = w.document.getElementById('send');
-  let interval, storageReply, onStorageChanged, delayedConsume;
+  let interval, storageReply, onStorageChanged, delayedConsume, limitReply;
   let clicks = 0, consumes = 0, statuses = 0;
+  let signalCode = 'ready';
   const timers = [], statusReplies = [];
   w.Date.now = () => 100000;
   w.setInterval = fn => { interval = fn; return 1; };
@@ -361,7 +362,7 @@ async function refreshRevocationScenario(mode) {
   const consumed = { ...initial, sent: 1, remaining: 39 };
   w.ChatGPTAutopilotCore = {
     canSend: candidate => candidate === button && !candidate.disabled,
-    pageSignal: () => ({ code: 'ready' }),
+    pageSignal: () => ({ code: signalCode }),
     sendButton: () => button
   };
   w.chrome = {
@@ -379,6 +380,8 @@ async function refreshRevocationScenario(mode) {
           statuses++;
           if (mode === 'stale-account-status') {
             statusReplies.push(callback);
+          } else if (mode === 'stale-limit-response') {
+            callback({ ok: true, snapshot: { ...initial, sent: initial.budget, remaining: 0 } });
           } else if (mode === 'status-timeout') {
             // The runtime never answers; the recorded timeout must revoke the grant.
           } else if (mode === 'status-denied' || mode === 'late-consume' || mode === 'late-consume-denied') {
@@ -392,6 +395,8 @@ async function refreshRevocationScenario(mode) {
           } else {
             callback({ ok: true, snapshot: consumed });
           }
+        } else if (message.type === 'autopilot:budget-limit') {
+          limitReply = callback;
         }
       }
     },
@@ -405,6 +410,28 @@ async function refreshRevocationScenario(mode) {
     masterEnabled: true, accountBudgetEnabled: true,
     reasoningLevel: 'high', accountBudgetSnapshotV1: initial
   });
+  if (mode === 'stale-limit-response') {
+    signalCode = 'rate-limit';
+    w.ChatGPTAutopilotCore.pageSignal(w.document);
+    assert.ok(limitReply, 'account A must have pending budget-limit response');
+    onStorageChanged({
+      accountBudgetAccountAlias: { oldValue: 'fixture_A', newValue: 'fixture_B' }
+    }, 'local');
+    await flush();
+    await flush();
+    assert.equal(consumes, 0, 'B has zero capacity before stale A response');
+    limitReply({ ok: true, snapshot: initial });
+    await flush();
+    await flush();
+    assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+    await flush();
+    await flush();
+    button.click();
+    assert.equal(consumes, 0, 'stale A budget-limit must never debit depleted B');
+    assert.equal(clicks, 0, 'stale A budget-limit must never authorize B send');
+    w.close();
+    return;
+  }
   if (mode === 'stale-account-status') {
     interval();
     assert.equal(statusReplies.length, 1);
@@ -495,6 +522,7 @@ async function refreshRevocationScenario(mode) {
   await refreshRevocationScenario('toggle-account');
   await refreshRevocationScenario('reasoning-level-change');
   await refreshRevocationScenario('stale-account-status');
+  await refreshRevocationScenario('stale-limit-response');
   console.log('AF161-RACES-FAIL-CLOSED');
   await refreshRevocationScenario('healthy');
   console.log('AF161-HEALTHY');

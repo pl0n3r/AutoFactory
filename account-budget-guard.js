@@ -256,13 +256,18 @@
       if (!limitActive) {
         limitActive = true;
         clearAuthorization();
+        const requestEpoch = authorizationEpoch;
         void runtimeMessage({
           type: 'autopilot:budget-limit',
           reasoningLevel,
           resetAt: null
         }).then(response => {
-          if (response?.ok) applySnapshot(response.snapshot);
-        }, () => { ready = false; });
+          // Never let an old account's limit update overwrite newer budget evidence.
+          if (authorizationEpoch !== requestEpoch) return;
+          if (!response?.ok || !applySnapshot(response.snapshot)) invalidateBudgetEvidence();
+        }, () => {
+          if (authorizationEpoch === requestEpoch) invalidateBudgetEvidence();
+        });
       }
     } else {
       limitActive = false;
