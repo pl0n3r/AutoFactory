@@ -110,7 +110,9 @@ function setup(overrides = {}) {
   const failed = await fallback.switcher.kill();
   assert.equal(failed.status, 'rollback_failed');
   assert.equal(failed.bridgeStopped, false);
-  assert.deepEqual(fallback.calls, ['revoke', 'rollback']);
+  assert.deepEqual(fallback.calls, ['revoke']);
+  assert.equal(failed.restored, false);
+  assert.equal(failed.reason, 'rollback_not_attempted_due_to_unconfirmed_stop');
   assert.equal(JSON.stringify(failed).includes('PRIVATE-TOKEN'), false);
   assert.deepEqual(await fallback.switcher.dispatch({}), { ok: false, code: 'stopped' });
   console.log('AF157-AC02-ROLLBACK-REDACTED-OK');
@@ -169,22 +171,45 @@ function setup(overrides = {}) {
   // A hung adapter may not keep kill() pending forever. The timer reports
   // an irreversible fail-closed result, even if the adapter resolves later.
   const held = deferred();
+  let restoreCallsWhileStopUnknown = 0;
   const hung = setup({
     stopBridge: () => held.promise,
+    restoreSafeState: () => { restoreCallsWhileStopUnknown++; return true; },
     rollbackTimeoutMs: 15
   });
   const hungKill = hung.switcher.kill();
   assert.equal(hung.switcher.status().stopped, true);
   assert.equal((await hungKill).status, 'rollback_failed');
+  assert.equal((await hungKill).restored, false);
+  assert.equal((await hungKill).reason,
+    'rollback_not_attempted_due_to_unconfirmed_stop');
+  assert.equal(restoreCallsWhileStopUnknown, 0);
   assert.equal(hung.switcher.status().code, 'rollback_failed');
   assert.deepEqual(await hung.switcher.dispatch({ token: 'PRIVATE-CHAT' }),
     { ok: false, code: 'stopped' });
   held.resolve(true);
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(restoreCallsWhileStopUnknown, 0);
   assert.equal(hung.switcher.status().code, 'rollback_failed');
   assert.equal(hung.switcher.kill(), hungKill);
   assert.equal(JSON.stringify(await hungKill).includes('PRIVATE-CHAT'), false);
+
+  // A stop adapter that returns false must not trigger restoration either.
+  let restoreCallsAfterDeniedStop = 0;
+  const stopDenied = setup({
+    stopBridge: () => false,
+    restoreSafeState: () => { restoreCallsAfterDeniedStop++; return true; }
+  });
+  const deniedResult = await stopDenied.switcher.kill();
+  assert.equal(deniedResult.status, 'rollback_failed');
+  assert.equal(deniedResult.bridgeStopped, false);
+  assert.equal(deniedResult.restored, false);
+  assert.equal(deniedResult.reason, 'rollback_not_attempted_due_to_unconfirmed_stop');
+  assert.equal(restoreCallsAfterDeniedStop, 0);
+  assert.deepEqual(await stopDenied.switcher.dispatch({ token: 'PRIVATE-CHAT' }),
+    { ok: false, code: 'stopped' });
 
   // Restore itself may hang; its eventual result cannot undo the timeout.
   const lateRestore = deferred();

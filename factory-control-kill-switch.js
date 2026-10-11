@@ -78,11 +78,18 @@
       // Once terminal, late adapters can never replace the fail-closed result.
       let settled = false;
       let deadline;
+      let stopConfirmed = false;
+      let restorationStarted = false;
       function settle(bridgeStopped, pairingRevoked, restored, at) {
         if (settled) return;
         settled = true;
         clearTimeout(deadline);
+        // Never attempt restoration before a confirmed stop: it could restart a
+        // still-running bridge. On timeout keep the reason explicit and redacted.
+        const reason = !stopConfirmed && !restorationStarted
+          ? 'rollback_not_attempted_due_to_unconfirmed_stop' : null;
         publicEvidence = Object.freeze({
+          ...(reason ? { reason } : {}),
           // Abort requests are advisory: active effects need external reconciliation.
           // Never certify safe while a command was in flight at the kill boundary.
           status: bridgeStopped && pairingRevoked && restored && at !== null &&
@@ -99,10 +106,19 @@
         try { return Promise.resolve(adapter()).then(value => value === true, () => false); }
         catch (_error) { return Promise.resolve(false); }
       }
-      const stop = invoke(stopBridge);
+      const stop = invoke(stopBridge).then(value => {
+        stopConfirmed = value;
+        return value;
+      });
       const revoke = invoke(revokePairing);
       Promise.all([stop, revoke]).then(async ([bridgeStopped, pairingRevoked]) => {
         if (settled) return;
+        if (!bridgeStopped) {
+          // Fail closed: restoring before the bridge actually stops is unsafe.
+          settle(false, pairingRevoked, false, null);
+          return;
+        }
+        restorationStarted = true;
         const restored = await invoke(restoreSafeState);
         if (settled) return;
         let at = null;
