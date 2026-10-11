@@ -86,7 +86,7 @@ function ac03() {
   const malformed = sample();
   malformed.pairing = { state: 'paired', observedAt: 'yesterday' };
   assert.equal(report(malformed).signals.pairing.reason, 'invalid_evidence');
-  assert.equal(report(sample(), { nowMs: -1 }).ready, false);
+  assert.equal(buildReadinessReport(sample(), { nowMs: -1 }).ready, false);
   const disabled = buildReadinessReport(sample(), { nowMs: NOW, maxAgeMs: 300001 });
   assert.equal(disabled.ready, false);
   assert.equal(disabled.signals.orders.state, 'UNKNOWN');
