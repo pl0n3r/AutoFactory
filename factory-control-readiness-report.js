@@ -58,8 +58,21 @@
     });
   }
 
-  function buildReadinessReport(input, { nowMs, maxAgeMs = DEFAULT_MAX_AGE_MS } = {}) {
-    const validClock = Number.isSafeInteger(nowMs) && nowMs >= 0;
+  function buildReadinessReport(input, options = {}) {
+    // Malformed or accessor-backed options must never escape the diagnostic.
+    let validOptions = false;
+    let nowMs = null;
+    let maxAgeMs = null;
+    try {
+      validOptions = fields(options, ['nowMs']) ||
+        fields(options, ['nowMs', 'maxAgeMs']);
+      if (validOptions) {
+        nowMs = options.nowMs;
+        maxAgeMs = Object.hasOwn(options, 'maxAgeMs')
+          ? options.maxAgeMs : DEFAULT_MAX_AGE_MS;
+      }
+    } catch (_error) { validOptions = false; }
+    const validClock = validOptions && Number.isSafeInteger(nowMs) && nowMs >= 0;
     const validAge = Number.isSafeInteger(maxAgeMs) &&
       maxAgeMs > 0 && maxAgeMs <= HARD_MAX_AGE_MS;
     let validInput = false;
