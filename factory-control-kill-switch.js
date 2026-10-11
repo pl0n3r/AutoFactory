@@ -33,15 +33,31 @@
       if (stopped) return response(false, 'stopped');
       const controller = new AbortController();
       inflight.add(controller);
+      let onAbort;
       try {
-        // Only injected adapters see commands; no payload is ever returned/logged.
-        const outcome = await executeCommand(command, { signal: controller.signal });
-        if (stopped || controller.signal.aborted) return response(false, 'stopped');
-        return outcome === true ? response(true, 'handled') : response(false, 'failed');
+        // Invoke synchronously: adapters may install abort listeners before kill().
+        // Race only the public receipt, not any external effect. A non-cooperative
+        // adapter may still mutate state after this function returns 'stopped'.
+        const work = executeCommand(command, { signal: controller.signal });
+        const aborted = new Promise(resolve => {
+          onAbort = () => resolve({ aborted: true });
+          if (controller.signal.aborted) onAbort();
+          else controller.signal.addEventListener('abort', onAbort, { once: true });
+        });
+        const result = await Promise.race([
+          Promise.resolve(work).then(value => ({ value }), () => ({ failed: true })),
+          aborted
+        ]);
+        if (stopped || controller.signal.aborted || result.aborted) {
+          return response(false, 'stopped');
+        }
+        return !result.failed && result.value === true
+          ? response(true, 'handled') : response(false, 'failed');
       } catch (_error) {
-        // Intentionally discard untrusted adapter exceptions: never echo chat contents.
+        // Never expose untrusted adapter exceptions or command contents.
         return response(false, stopped ? 'stopped' : 'failed');
       } finally {
+        if (onAbort) controller.signal.removeEventListener('abort', onAbort);
         inflight.delete(controller);
       }
     }

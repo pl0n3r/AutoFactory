@@ -53,8 +53,12 @@ function setup(overrides = {}) {
     restored: true, abortedCommands: 1, observedAt: 1_800_000_000_000
   });
   assert.equal(effectsAfterStop, 0);
-  pending.resolve();
+  // Receipt must settle on abort without awaiting the non-cooperative adapter.
   assert.deepEqual(await inFlight, { ok: false, code: 'stopped' });
+  assert.equal(effectsAfterStop, 0);
+  pending.resolve();
+  await pending.promise;
+  await Promise.resolve();
   assert.equal(effectsAfterStop, 1, 'synthetic non-cooperative late effect');
   assert.equal(first.switcher.status().code, 'rollback_failed');
   assert.deepEqual(first.switcher.kill(), killing);
@@ -62,6 +66,21 @@ function setup(overrides = {}) {
   assert.equal(first.switcher.kill(), killing, 'kill is idempotent');
   assert.equal(JSON.stringify(evidence).includes('DONT_LOG_ME'), false);
   console.log('AF157-AC01-ABORT-INFLIGHT-OK');
+
+  // A never-settling adapter cannot keep the dispatch receipt pending after kill.
+  // Receipt fencing does not guarantee reversal of remote side effects.
+  const neverResolves = deferred();
+  const nonCooperative = setup({ executeCommand: () => neverResolves.promise });
+  const receipt = nonCooperative.switcher.dispatch({ token: 'PRIVATE-HANG' });
+  const stopNonCooperative = nonCooperative.switcher.kill();
+  assert.deepEqual(await receipt, { ok: false, code: 'stopped' });
+  assert.equal((await stopNonCooperative).status, 'rollback_failed');
+  assert.equal(nonCooperative.switcher.status().stopped, true);
+  assert.equal(JSON.stringify(await stopNonCooperative).includes('PRIVATE-HANG'), false);
+  neverResolves.resolve(true);
+  await Promise.resolve();
+  assert.deepEqual(await receipt, { ok: false, code: 'stopped' });
+  assert.equal(nonCooperative.switcher.status().code, 'rollback_failed');
 
   // AC-02: a failed adapter still invokes revoke/rollback; the terminal
   // fence remains set and a secret embedded in a failure is never echoed.
