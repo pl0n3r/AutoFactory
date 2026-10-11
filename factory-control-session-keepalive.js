@@ -63,6 +63,12 @@
     if (times.some(value => value > now_s) ||
         chat.last_activity_s < Math.max(...times) ||
         history.retries_s.some(value => value > now_s)) return unknown();
+    // A 'complete' reply must belong to the latest prompt. An earlier
+    // reply can be from a prior turn and cannot authorize another send.
+    // While the new reply is still pending, the normal wait path applies.
+    if (chat.reply_complete &&
+        (chat.last_prompt_s === null || chat.last_reply_s === null ||
+         chat.last_reply_s < chat.last_prompt_s)) return unknown();
     for (let i = 1; i < history.retries_s.length; i++) {
       if (history.retries_s[i] <= history.retries_s[i - 1]) return unknown();
     }
