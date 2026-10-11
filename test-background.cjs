@@ -16,6 +16,13 @@ const store = { diagnosticLog: [{
 }] };
 let listener;
 let rejectDiagnosticLogRead = false;
+// Top-level callback: keep the privacy assertion out of nested listener closures.
+function assertRedactedStorageFailure(denied) {
+  assert.deepEqual(denied, { entries: [], error: 'storage_unavailable' });
+  assert.equal(JSON.stringify(denied).includes('PRIVATE-LOG-ERROR-SENTINEL'), false);
+  rejectDiagnosticLogRead = false;
+  console.log('AF152-GETLOG-ERROR-REDACTED');
+}
 global.chrome = {
   storage: { local: {
     get(defaults, callback) {
@@ -171,12 +178,7 @@ setImmediate(() => {
           // The adapter may throw a message containing private data.
           // get-log must return a fixed error code rather than echoing it.
           rejectDiagnosticLogRead = true;
-          listener({ type: 'autopilot:get-log' }, {}, denied => {
-            assert.deepEqual(denied, { entries: [], error: 'storage_unavailable' });
-            assert.equal(JSON.stringify(denied).includes('PRIVATE-LOG-ERROR-SENTINEL'), false);
-            rejectDiagnosticLogRead = false;
-            console.log('AF152-GETLOG-ERROR-REDACTED');
-          });
+          listener({ type: 'autopilot:get-log' }, {}, assertRedactedStorageFailure);
         });
       });
 
