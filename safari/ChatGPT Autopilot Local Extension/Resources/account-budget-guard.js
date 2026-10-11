@@ -306,7 +306,9 @@
       if (budgetEnabled) void refreshStatus();
     }
     if (changes.reasoningLevel) {
-      reasoningLevel = changes.reasoningLevel.newValue === 'high' ? 'high' : 'unknown';
+      const nextLevel = changes.reasoningLevel.newValue === 'high' ? 'high' : 'unknown';
+      if (nextLevel !== reasoningLevel) clearAuthorization();
+      reasoningLevel = nextLevel;
     }
     if (changes.accountBudgetSnapshotV1?.newValue) {
       applySnapshot(changes.accountBudgetSnapshotV1.newValue);

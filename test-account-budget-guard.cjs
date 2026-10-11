@@ -407,6 +407,8 @@ async function refreshRevocationScenario(mode) {
   if (mode === 'toggle-account') {
     onStorageChanged({ accountBudgetEnabled: { newValue: false } }, 'local');
     onStorageChanged({ accountBudgetEnabled: { newValue: true } }, 'local');
+  } else if (mode === 'reasoning-level-change') {
+    onStorageChanged({ reasoningLevel: { oldValue: 'high', newValue: 'low' } }, 'local');
   } else {
     interval();
   }
@@ -433,7 +435,9 @@ async function refreshRevocationScenario(mode) {
       mode + ': only a canonical no-debit denial may clear the pending latch');
   }
   assert.equal(consumes, 1, mode + ': no second consume/replay');
-  if (mode !== 'toggle-account') assert.equal(statuses, 1, mode);
+  if (mode !== 'toggle-account' && mode !== 'reasoning-level-change') {
+    assert.equal(statuses, 1, mode);
+  }
   w.close();
 }
 // #161 AC-01: a silent status query that times out must revoke a valid grant.
@@ -582,6 +586,7 @@ async function staleRefreshAfterAccountSwitchScenario() {
   await refreshRevocationScenario('late-consume');
   await refreshRevocationScenario('late-consume-denied');
   await refreshRevocationScenario('toggle-account');
+  await refreshRevocationScenario('reasoning-level-change');
   await staleRefreshAfterAccountSwitchScenario();
   console.log('AF161-RACES-FAIL-CLOSED');
   await refreshRevocationScenario('healthy');
