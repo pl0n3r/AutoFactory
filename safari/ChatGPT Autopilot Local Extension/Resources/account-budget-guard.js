@@ -219,7 +219,13 @@
     ready = false;
     void runtimeMessage({ type: 'autopilot:budget-consume', reasoningLevel })
       .then(response => {
-        if (authorizationEpoch !== requestEpoch) return;
+        if (authorizationEpoch !== requestEpoch) {
+          // A canonical no-debit denial can release the latch, but never a stale grant.
+          if (response?.ok === true && response.allowed === false) {
+            try { sessionStorage.removeItem(PENDING_CONSUME_KEY); } catch (_error) {}
+          }
+          return;
+        }
         if (response?.ok !== true || !applySnapshot(response.snapshot)) return;
         if (response.allowed === false) {
           // A canonical rejection proves the backend did not consume a slot.

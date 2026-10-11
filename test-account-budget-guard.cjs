@@ -366,14 +366,14 @@ async function refreshRevocationScenario(mode) {
       sendMessage(message, callback) {
         if (message.type === 'autopilot:budget-consume') {
           consumes++;
-          if (mode === 'late-consume' || mode === 'toggle-account') {
+          if (mode === 'late-consume' || mode === 'late-consume-denied' || mode === 'toggle-account') {
             delayedConsume = callback;
           } else {
             callback({ ok: true, allowed: true, snapshot: consumed });
           }
         } else if (message.type === 'autopilot:budget-status') {
           statuses++;
-          if (mode === 'status-denied' || mode === 'late-consume') {
+          if (mode === 'status-denied' || mode === 'late-consume' || mode === 'late-consume-denied') {
             callback({ ok: false });
           } else if (mode === 'transport-error') {
             w.chrome.runtime.lastError = { message: 'test-only' };
@@ -413,7 +413,7 @@ async function refreshRevocationScenario(mode) {
   await flush();
   await flush();
   if (delayedConsume) {
-    delayedConsume({ ok: true, allowed: true, snapshot: consumed });
+    delayedConsume({ ok: true, allowed: mode !== 'late-consume-denied', snapshot: consumed });
     await flush();
     await flush();
   }
@@ -428,13 +428,76 @@ async function refreshRevocationScenario(mode) {
       mode + ': stale grant or delayed consume must be revoked');
     button.click();
     assert.equal(clicks, 0, mode + ': never click under untrusted status');
-    assert.equal(w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'), '1',
-      mode + ': unknown consumed debit must remain latched');
+    assert.equal(w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'),
+      mode === 'late-consume-denied' ? null : '1',
+      mode + ': only a canonical no-debit denial may clear the pending latch');
   }
   assert.equal(consumes, 1, mode + ': no second consume/replay');
   if (mode !== 'toggle-account') assert.equal(statuses, 1, mode);
   w.close();
 }
+// #161 AC-01: a silent status query that times out must revoke a valid grant.
+async function refreshTimeoutAfterGrantScenario() {
+  const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
+    url: 'https://chatgpt.com/', runScripts: 'outside-only'
+  });
+  const w = dom.window, button = w.document.getElementById('send');
+  let interval, storageReply, consumes = 0, clicks = 0, statuses = 0;
+  const timers = [];
+  w.Date.now = () => 100000;
+  w.setInterval = fn => { interval = fn; return 1; };
+  w.setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  w.clearTimeout = () => {};
+  button.addEventListener('click', () => { clicks++; });
+  const initial = readySnapshot();
+  const consumed = { ...initial, sent: 1, remaining: 39 };
+  w.ChatGPTAutopilotCore = {
+    canSend: candidate => candidate === button && !candidate.disabled,
+    pageSignal: () => ({ code: 'ready' }),
+    sendButton: () => button
+  };
+  w.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(message, cb) {
+        if (message.type === 'autopilot:budget-consume') {
+          consumes++;
+          cb({ ok: true, allowed: true, snapshot: consumed });
+        } else if (message.type === 'autopilot:budget-status') {
+          statuses++; // Deliberately never replies: simulate service worker timeout.
+        }
+      }
+    },
+    storage: {
+      local: { get(_defaults, cb) { storageReply = cb; } },
+      onChanged: { addListener() {} }
+    }
+  };
+  w.eval(fs.readFileSync('./account-budget-guard.js', 'utf8'));
+  storageReply({
+    masterEnabled: true, accountBudgetEnabled: true,
+    reasoningLevel: 'high', accountBudgetSnapshotV1: initial
+  });
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+  await flush();
+  await flush();
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), true, 'grant existed before timeout');
+  interval();
+  const timeout = timers.find(item => item.ms === 2000);
+  assert.ok(timeout, 'status query has a bounded two-second runtime timeout');
+  timeout.fn();
+  await flush();
+  await flush();
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+  button.click();
+  assert.equal(clicks, 0, 'timed-out status may never leave a grant live');
+  assert.equal(consumes, 1, 'a failed status may not auto-reconsume');
+  assert.equal(statuses, 1);
+  assert.equal(w.sessionStorage.getItem('chatgpt-autopilot-budget-consume-pending-v1'), '1',
+    'timeout is not evidence that prior debit can be cleared');
+  w.close();
+}
+
 // #161 AC-02: old account status must not re-enable readiness after alias switch.
 async function staleRefreshAfterAccountSwitchScenario() {
   const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
@@ -513,9 +576,11 @@ async function staleRefreshAfterAccountSwitchScenario() {
 (async () => {
   await refreshRevocationScenario('status-denied');
   await refreshRevocationScenario('transport-error');
+  await refreshTimeoutAfterGrantScenario();
   console.log('AF161-FAILED-STATUS-REVOKES');
   await refreshRevocationScenario('invalid-snapshot');
   await refreshRevocationScenario('late-consume');
+  await refreshRevocationScenario('late-consume-denied');
   await refreshRevocationScenario('toggle-account');
   await staleRefreshAfterAccountSwitchScenario();
   console.log('AF161-RACES-FAIL-CLOSED');
