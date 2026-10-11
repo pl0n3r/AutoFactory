@@ -435,6 +435,81 @@ async function refreshRevocationScenario(mode) {
   if (mode !== 'toggle-account') assert.equal(statuses, 1, mode);
   w.close();
 }
+// #161 AC-02: old account status must not re-enable readiness after alias switch.
+async function staleRefreshAfterAccountSwitchScenario() {
+  const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
+    url: 'https://chatgpt.com/', runScripts: 'outside-only'
+  });
+  const w = dom.window, button = w.document.getElementById('send');
+  let interval, storageReply, storageChanged;
+  let statuses = 0, consumes = 0, clicks = 0;
+  const statusReplies = [];
+  const initial = readySnapshot();
+  const consumed = { ...initial, sent: 1, remaining: 39 };
+  button.addEventListener('click', () => { clicks++; });
+  w.Date.now = () => 100000;
+  w.setInterval = fn => { interval = fn; return 1; };
+  w.setTimeout = () => 1;
+  w.clearTimeout = () => {};
+  w.ChatGPTAutopilotCore = {
+    canSend: candidate => candidate === button && !candidate.disabled,
+    pageSignal: () => ({ code: 'ready' }),
+    sendButton: () => button
+  };
+  w.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(message, reply) {
+        if (message.type === 'autopilot:budget-status') {
+          statuses++;
+          statusReplies.push(reply);
+        } else if (message.type === 'autopilot:budget-consume') {
+          consumes++;
+          reply({ ok: true, allowed: true, snapshot: consumed });
+        }
+      }
+    },
+    storage: {
+      local: { get(_defaults, cb) { storageReply = cb; } },
+      onChanged: { addListener(fn) { storageChanged = fn; } }
+    }
+  };
+  w.eval(fs.readFileSync('./account-budget-guard.js', 'utf8'));
+  storageReply({
+    masterEnabled: true, accountBudgetEnabled: true,
+    reasoningLevel: 'high', accountBudgetSnapshotV1: initial
+  });
+  interval(); // status read belonging to account_A remains pending
+  assert.equal(statusReplies.length, 1);
+  storageChanged({
+    accountBudgetAccountAlias: { oldValue: 'fixture_A', newValue: 'fixture_B' }
+  }, 'local');
+  assert.equal(statusReplies.length, 1, 'new account must not share valid evidence of the prior account');
+  statusReplies.shift()({ ok: true, snapshot: initial }); // stale account_A reply
+  await flush();
+  await flush();
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+  assert.equal(consumes, 0,
+    'a valid-looking but stale account_A snapshot must not debit account_B');
+  button.click();
+  assert.equal(clicks, 0, 'stale response must never authorize a send');
+  interval(); // a distinct fresh status query may safely recover account_B
+  assert.equal(statusReplies.length, 1);
+  statusReplies.shift()({ ok: true, snapshot: initial });
+  await flush();
+  await flush();
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), false);
+  await flush();
+  await flush();
+  assert.equal(w.ChatGPTAutopilotCore.canSend(button), true);
+  button.click();
+  button.click();
+  assert.equal(clicks, 1, 'fresh account evidence allows exactly one fake click');
+  assert.equal(consumes, 1, 'at most one debit after fresh status');
+  assert.equal(statuses, 2, 'stale and fresh status calls are separate');
+  w.close();
+}
+
 (async () => {
   await refreshRevocationScenario('status-denied');
   await refreshRevocationScenario('transport-error');
@@ -442,6 +517,7 @@ async function refreshRevocationScenario(mode) {
   await refreshRevocationScenario('invalid-snapshot');
   await refreshRevocationScenario('late-consume');
   await refreshRevocationScenario('toggle-account');
+  await staleRefreshAfterAccountSwitchScenario();
   console.log('AF161-RACES-FAIL-CLOSED');
   await refreshRevocationScenario('healthy');
   console.log('AF161-HEALTHY');

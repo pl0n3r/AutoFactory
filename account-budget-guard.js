@@ -105,8 +105,11 @@
 
   async function refreshStatus() {
     if (refreshInFlight) return refreshInFlight;
+    const requestEpoch = authorizationEpoch;
     refreshInFlight = runtimeMessage({ type: 'autopilot:budget-status' })
       .then(response => {
+        // Never accept an old account's status after its authorization was revoked.
+        if (authorizationEpoch !== requestEpoch) return false;
         if (!response?.ok || !applySnapshot(response.snapshot)) {
           invalidateBudgetEvidence();
           return false;
