@@ -1,0 +1,146 @@
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.ChatGPTAutopilotFactoryKillSwitch = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  // Offline coordination contract only: consumers must supply fakes or trusted
+  // adapters and enforce a separate activation/legal gate. Never opens a bridge.
+  function createFactoryControlKillSwitch({
+    executeCommand, stopBridge, revokePairing, restoreSafeState, now = Date.now,
+    rollbackTimeoutMs = 10000
+  } = {}) {
+    if ([executeCommand, stopBridge, revokePairing, restoreSafeState, now]
+      .some(value => typeof value !== 'function')) {
+      throw new TypeError('Kill switch dependencies are required');
+    }
+    // A hung adapter must never leave the public rollback result pending forever.
+    if (!Number.isSafeInteger(rollbackTimeoutMs) ||
+        rollbackTimeoutMs < 1 || rollbackTimeoutMs > 60000) {
+      throw new TypeError('Kill switch rollback timeout must be 1-60000 ms');
+    }
+    let stopped = false;
+    let stopPromise = null;
+    const inflight = new Set();
+    let publicEvidence = null;
+
+    function response(ok, code) {
+      return Object.freeze({ ok, code });
+    }
+
+    async function dispatch(command) {
+      if (stopped) return response(false, 'stopped');
+      const controller = new AbortController();
+      inflight.add(controller);
+      let onAbort;
+      try {
+        // Invoke synchronously: adapters may install abort listeners before kill().
+        // Race only the public receipt, not any external effect. A non-cooperative
+        // adapter may still mutate state after this function returns 'stopped'.
+        const work = executeCommand(command, { signal: controller.signal });
+        const aborted = new Promise(resolve => {
+          onAbort = () => resolve({ aborted: true });
+          if (controller.signal.aborted) onAbort();
+          else controller.signal.addEventListener('abort', onAbort, { once: true });
+        });
+        const result = await Promise.race([
+          Promise.resolve(work).then(value => ({ value }), () => ({ failed: true })),
+          aborted
+        ]);
+        if (stopped || controller.signal.aborted || result.aborted) {
+          return response(false, 'stopped');
+        }
+        return !result.failed && result.value === true
+          ? response(true, 'handled') : response(false, 'failed');
+      } catch {
+        // Intentionally suppress: adapter exceptions can contain raw prompts,
+        // pairing tokens or chat data. Logging/rethrowing them leaks secrets.
+        // Convert any synchronous failure into fixed, non-sensitive evidence.
+        return response(false, stopped ? 'stopped' : 'failed');
+      } finally {
+        if (onAbort) controller.signal.removeEventListener('abort', onAbort);
+        inflight.delete(controller);
+      }
+    }
+
+    function kill() {
+      if (stopPromise) return stopPromise;
+      // Synchronous terminal fence comes BEFORE abort callbacks or adapters.
+      stopped = true;
+      // Install a stable promise before abort listeners can re-enter kill().
+      let resolveStop;
+      stopPromise = new Promise(resolve => { resolveStop = resolve; });
+      const controllers = [...inflight];
+      for (const controller of controllers) controller.abort();
+      const abortedCount = controllers.length;
+
+      // Once terminal, late adapters can never replace the fail-closed result.
+      let settled = false;
+      let deadline;
+      let stopConfirmed = false;
+      let restorationStarted = false;
+      function settle(bridgeStopped, pairingRevoked, restored, at) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        // Never attempt restoration before a confirmed stop: it could restart a
+        // still-running bridge. On timeout keep the reason explicit and redacted.
+        const reason = !stopConfirmed && !restorationStarted
+          ? 'rollback_not_attempted_due_to_unconfirmed_stop' : null;
+        publicEvidence = Object.freeze({
+          ...(reason ? { reason } : {}),
+          // Abort requests are advisory: active effects need external reconciliation.
+          // Never certify safe while a command was in flight at the kill boundary.
+          status: bridgeStopped && pairingRevoked && restored && at !== null &&
+            abortedCount === 0 ? 'safe' : 'rollback_failed',
+          bridgeStopped, pairingRevoked, restored,
+          abortedCommands: abortedCount, observedAt: at
+        });
+        resolveStop(publicEvidence);
+      }
+      // An unresponsive adapter is UNKNOWN, never proof of successful rollback.
+      deadline = setTimeout(() => settle(false, false, false, null), rollbackTimeoutMs);
+      // Call both independently: stop failures do not skip revocation.
+      function invoke(adapter) {
+        try { return Promise.resolve(adapter()).then(value => value === true, () => false); }
+        catch (_error) { return Promise.resolve(false); }
+      }
+      const stop = invoke(stopBridge).then(value => {
+        stopConfirmed = value;
+        return value;
+      });
+      const revoke = invoke(revokePairing);
+      Promise.all([stop, revoke]).then(async ([bridgeStopped, pairingRevoked]) => {
+        if (settled) return;
+        if (!bridgeStopped) {
+          // Fail closed: restoring before the bridge actually stops is unsafe.
+          settle(false, pairingRevoked, false, null);
+          return;
+        }
+        restorationStarted = true;
+        const restored = await invoke(restoreSafeState);
+        if (settled) return;
+        let at = null;
+        try {
+          const timestamp = now();
+          if (Number.isSafeInteger(timestamp) && timestamp >= 0) at = timestamp;
+        } catch (_error) { /* Keep evidence static; never echo adapter messages. */ }
+        settle(bridgeStopped, pairingRevoked, restored, at);
+      }).catch(() => {
+        // Never echo exception payloads from a hostile adapter.
+        settle(false, false, false, null);
+      });
+      return stopPromise;
+    }
+
+    function status() {
+      return Object.freeze({ stopped, code: !stopped ? 'not_triggered' :
+        (publicEvidence?.status ?? 'stopping') });
+    }
+
+    return Object.freeze({ dispatch, kill, status });
+  }
+
+  return Object.freeze({ createFactoryControlKillSwitch });
+});
