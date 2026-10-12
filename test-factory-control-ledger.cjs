@@ -580,6 +580,106 @@ const memory = () => {
   console.log('Factory Control ledger AC-03: ambiguous result stays pending across restart');
 
   console.log('Factory Control ledger: concurrent duplicates, restart, failure isolation, pending, capacity and corruption pass');
+
+  // AC-01: false ACK or silent no-op must never execute a V2 command.
+  {
+    let effects = 0;
+    for (const [id, acknowledgement] of [['v2-false-save', false], ['v2-silent-save', undefined]]) {
+      const ledger = createInstanceLedger({
+        instanceId: INSTANCE_ID, load: async () => [],
+        save: async () => acknowledgement
+      });
+      await assert.rejects(ledger.execute(instanceCommand({ id }), async () => {
+        effects += 1;
+        return { ok: true, code: 'ok', enabled: false, appliedTabs: [] };
+      }), /V2 receipt persistence not confirmed/);
+    }
+    assert.equal(effects, 0);
+  }
+  console.log('AC-V2-01: false and silent saves deny effects');
+
+  // AC-02: after a real effect, failed done persistence retains pending forever.
+  {
+    let persisted = [], effects = 0;
+    const adapter = {
+      load: async () => structuredClone(persisted),
+      save: async rows => {
+        if (rows.at(-1)?.state === 'done') return false;
+        persisted = structuredClone(rows);
+      }
+    };
+    const input = instanceCommand({ id: 'v2-done-storage-failure' });
+    const first = await createInstanceLedger({ instanceId: INSTANCE_ID, ...adapter })
+      .execute(input, async () => {
+        effects += 1;
+        return { ok: true, code: 'ok', enabled: false, appliedTabs: [7] };
+      });
+    assert.equal(first.code, 'not_ready');
+    assert.equal(persisted.at(-1).state, 'pending');
+    const replay = await createInstanceLedger({ instanceId: INSTANCE_ID, ...adapter })
+      .execute(input, async () => {
+        effects += 1;
+        return { ok: true, code: 'ok', enabled: true, appliedTabs: [] };
+      });
+    assert.equal(replay.code, 'not_ready');
+    assert.equal(effects, 1);
+  }
+  console.log('AC-V2-02: done failure keeps pending and blocks replay');
+
+  // AC-03: shared save-function identity serializes independent V2 ledgers in
+  // one JS realm. Cross-process atomicity is NOT guaranteed by this fallback.
+  {
+    const adapter = memory();
+    const first = createInstanceLedger({ instanceId: INSTANCE_ID, ...adapter });
+    const second = createInstanceLedger({ instanceId: INSTANCE_ID, ...adapter });
+    const input = instanceCommand({ id: 'v2-same-realm-concurrency' });
+    let effects = 0;
+    const responses = await Promise.all([
+      first.execute(input, async () => {
+        effects += 1;
+        await Promise.resolve();
+        return { ok: true, code: 'ok', enabled: false, appliedTabs: [7] };
+      }),
+      second.execute(input, async () => {
+        effects += 1;
+        return { ok: true, code: 'ok', enabled: true, appliedTabs: [7] };
+      })
+    ]);
+    assert.equal(effects, 1);
+    assert.deepEqual(responses.map(r => r.code), ['ok', 'ok']);
+    const again = await createInstanceLedger({ instanceId: INSTANCE_ID, ...adapter })
+      .execute(input, async () => { effects += 1; });
+    assert.equal(again.code, 'ok');
+    assert.equal(effects, 1);
+  }
+  console.log('AC-V2-03: same-adapter concurrency serialized with documented boundary');
+
+  // AC-04: mirror is byte-identical, and backend errors never echo private details.
+  {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    assert.equal(
+      fs.readFileSync(path.join(__dirname,
+        'safari/ChatGPT Autopilot Local Extension/Resources/factory-control-ledger.js'), 'utf8'),
+      fs.readFileSync(path.join(__dirname, 'factory-control-ledger.js'), 'utf8')
+    );
+    const input = instanceCommand({ id: 'v2-private-storage-error' });
+    const bad = createInstanceLedger({
+      instanceId: INSTANCE_ID, load: async () => [],
+      save: async () => { throw Error('private chat and secret'); }
+    });
+    await assert.rejects(bad.execute(input, async () => ({})),
+      err => err.message === 'V2 receipt persistence not confirmed');
+    const badRead = createInstanceLedger({
+      instanceId: INSTANCE_ID,
+      load: async () => { throw Error('private cookie'); },
+      save: async () => true
+    });
+    await assert.rejects(badRead.execute(input, async () => ({})),
+      err => err.message === 'V2 receipt read unavailable');
+  }
+  console.log('AC-V2-04: Safari mirror and sanitized adapter errors');
+
   console.log('Factory Control v2 authorization and ledger: instance-scoped, expiring and idempotent');
 })().catch(error => { console.error(error); process.exitCode = 1; });
 require('./test-factory-control-authorization.cjs');
