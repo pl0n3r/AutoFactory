@@ -25,6 +25,7 @@ ASSETS = (
     "content.js",
     "factory-control-authorization.js",
     "factory-control-instance-transport.js",
+    "factory-control-local-commands.js",
     "factory-control-local-publisher.js",
     "factory-control-instance.js",
     "factory-control-ledger.js",
@@ -114,7 +115,8 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
 
         self._mirror(
             "popup.html",
-            '<html><script src="popup.js"></script>'
+            '<html><script src="factory-control-local-commands.js"></script>'
+            '<script src="popup.js"></script>'
             '<script src="popup-budget.js"></script></html>',
         )
         self._mirror(
@@ -164,6 +166,7 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
         self.assertEqual(result["commit_sha"], SHA)
         self.assertEqual(result["release_version"], VERSION)
         self.assertEqual(result["digest_algorithm"], "sha256")
+        self.assertIn("factory-control-local-commands.js", [row["path"] for row in result["assets"]])
         self.assertEqual(
             [row["path"] for row in result["assets"]],
             sorted(ASSETS),
