@@ -50,12 +50,29 @@ async function ac05() {
   assert.equal(executed,1);
 }
 async function ac06() {
-  let acks=0;
-  const p=api.createCommandProcessor({enabled:async()=>true,allowedToStart:async()=>true,
-    seen:async()=>false,apply:async()=>{throw new Error('SENSITIVE')},
-    mark:async()=>true,ack:async()=>{acks++;return true}});
-  assert.equal(await p.process({id:3,chat_id:null,want:'stop'}),false);
-  assert.equal(acks,0);
+  let writes=0,actions=0,acks=0;
+  const record=new Set();
+  const failedStore=api.createCommandProcessor({
+    enabled:async()=>true,allowedToStart:async()=>true,
+    seen:async id=>record.has(id),
+    mark:async()=>{writes++;return false;},
+    apply:async()=>{actions++;return true;},
+    ack:async()=>{acks++;return true;}
+  });
+  assert.equal(await failedStore.process({id:3,chat_id:null,want:'stop'}),false);
+  assert.equal(writes,1);assert.equal(actions,0);assert.equal(acks,0);
+
+  const failedApply=api.createCommandProcessor({
+    enabled:async()=>true,allowedToStart:async()=>true,
+    seen:async id=>record.has(id),
+    mark:async id=>{record.add(id);return true;},
+    apply:async()=>{actions++;throw new Error('SENSITIVE');},
+    ack:async()=>{acks++;return true;}
+  });
+  assert.equal(await failedApply.process({id:4,chat_id:null,want:'stop'}),false);
+  assert.equal(record.has(4),true);
+  assert.equal(await failedApply.process({id:4,chat_id:null,want:'stop'}),false);
+  assert.equal(actions,1);assert.equal(acks,0);
 }
 const cases={ac01,ac02,ac03,ac04,ac05,ac06};
 (async()=>{for(const key of process.argv[2]?[process.argv[2]]:Object.keys(cases)){

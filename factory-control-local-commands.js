@@ -72,9 +72,14 @@
         if (await seen(command.id)) return false;
         if (command.want === 'start' && await allowedToStart() !== true) return false;
         // Recheck opt-in immediately before applying an instruction.
+        // Durable at-most-once: persist a pending receipt BEFORE side effects.
+        // If execution/ACK is ambiguous, the ID stays claimed for operator
+        // reconciliation. Never replay an unacknowledged global command.
+        if (await enabled() !== true) return false;
+        if (await mark(command.id) !== true) return false;
         if (await enabled() !== true) return false;
         if (await apply(command.want) !== true) return false;
-        if (await mark(command.id) !== true) return false;
+        if (await enabled() !== true) return false;
         return await ack(command.id) === true;
       } catch (_error) {
         // Fail closed, no logs with secrets or chat data.
