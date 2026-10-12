@@ -56,5 +56,34 @@ class FactoryControlPairingAuditContractTests(unittest.TestCase):
                         explicit_revoke.index("const result = checkedPairingResult(await pairing.revoke(input))"))
 
 
+    # Factory #154: Node scenarios execute the real JavaScript with synthetic
+    # issuing/revoking adapters, not static mocks of the policy.
+    def test_postissue_invalid_metadata_compensates_opaque_credential(self):
+        output = run_pairing_fake()
+        self.assertIn("pairing-postissue AC-01..04: ok", output)
+        self.assertIn("compensatePostIssue", SOURCE.read_text(encoding="utf-8"))
+
+    def test_postissue_clock_or_unverifiable_handle_fails_closed(self):
+        output = run_pairing_fake()
+        self.assertIn("pairing-postissue AC-01..04: ok", output)
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("Invalid post-issue clock", source)
+        self.assertIn("outcome = 'unknown'", source)
+
+    def test_compensation_audit_is_correlated_sanitized_and_bounded(self):
+        output = run_pairing_fake()
+        self.assertIn("pairing-postissue AC-01..04: ok", output)
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("internalPostIssueAudit", source)
+        self.assertIn("event: 'pairing_compensation'", source)
+        self.assertIn("phase, auditId", source)
+
+    def test_existing_pairing_replay_persistence_and_revocation_regressions(self):
+        output = run_pairing_fake()
+        self.assertIn("pairing-audit AC-01: ok", output)
+        self.assertIn("pairing-audit AC-04: ok", output)
+        self.assertIn("factory-control pairing contract: ok", output)
+
+
 if __name__ == "__main__":
     unittest.main()
