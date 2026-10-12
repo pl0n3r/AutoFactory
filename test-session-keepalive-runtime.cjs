@@ -133,6 +133,18 @@ test('AC-04 no runtime send or private output', async () => {
       ['reason', 'status']);
     assert.doesNotMatch(JSON.stringify(result), /private|token|secret|https|prompt|account_id/);
   }));
+  // Reject array accessors without calling them, including valid-looking values.
+  let accessorCalls = 0;
+  const hostileRetries = [1];
+  Object.defineProperty(hostileRetries, '0', {
+    enumerable: true, configurable: true,
+    get() { accessorCalls++; return 1; }
+  });
+  const payload = good();
+  payload.snapshot.history.retries_s = hostileRetries;
+  assert.equal((await guard(snapshots(payload)).assess()).status, 'denied');
+  assert.equal(accessorCalls, 0, 'untrusted array getters must never run');
+
   const fs = require('node:fs');
   const code = fs.readFileSync(require('node:path').join(__dirname, 'session-keepalive-runtime.js'), 'utf8');
   for (const re of [/\bfetch\s*\(/, /XMLHttpRequest/, /\bWebSocket\b/, /\bdocument\./,
