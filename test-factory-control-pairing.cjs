@@ -655,6 +655,104 @@ function fixture(overrides = {}) {
     assert.equal(journal.some(item => 'credentialId' in item || 'profileAlias' in item), false);
   }
 
+
+  // Issue #154: emission is an effect even if later local validation fails.
+  // All scenarios use synthetic handles; no browser, network or accounts.
+  async function postIssueScenario(mode, usePersisted = true) {
+    let issued = 0, revoked = 0, saved = 0, reads = 0, active = false;
+    const journal = [];
+    const pairing = createPairingContract({
+      now: () => {
+        reads++;
+        return mode === 'clock' && reads === 2 ? NaN : NOW;
+      },
+      loadVerifiedChallenge: async ({ profileAlias }) => ({
+        challengeId: 'challenge-001', profileAlias, expiresAt: NOW + 60_000,
+        revoked: false, used: false
+      }),
+      consumeVerifiedChallenge: async () => 'consumed',
+      issueOpaqueCredential: async ({ profileAlias }) => {
+        issued++;
+        active = true;
+        if (mode === 'throw') throw new Error('private adapter error');
+        const value = {
+          credentialId: mode === 'invalid_id' ? 'not valid' : 'credential-001',
+          profileAlias: mode === 'wrong_alias' ? 'other-profile' : profileAlias,
+          expiresAt: NOW + (mode === 'expiry' ? 25 : 1) * 3_600_000
+        };
+        return value;
+      },
+      revokeOpaqueCredential: async ({ profileAlias, credentialId }) => {
+        revoked++;
+        assert.equal(profileAlias, 'perfil-1');
+        assert.equal(credentialId, 'credential-001');
+        if (mode === 'revoke_false') return false;
+        active = false;
+        return true;
+      }
+    });
+    const contract = usePersisted ? createPersistedPairingContract({
+      pairing,
+      credentialStore: {
+        save: async () => { saved++; return true; },
+        remove: async () => true
+      },
+      auditStore: {
+        append: async record => {
+          journal.push(structuredClone(record));
+          return true;
+        }
+      }
+    }) : pairing;
+    const result = await contract.pair({ profileAlias: 'perfil-1', code: '123456' });
+    return { result, issued, revoked, saved, active, journal };
+  }
+
+  // AC-01: verifiable remote handle issued before an invalid >24h expiry
+  // must be compensated; no success leaks back to the caller.
+  {
+    const x = await postIssueScenario('expiry');
+    assert.deepEqual(x.result, { ok: false, code: 'failed' });
+    assert.deepEqual([x.issued, x.revoked, x.saved, x.active], [1, 1, 0, false]);
+    assert.equal(JSON.stringify(x.result).includes('credential-001'), false);
+    const direct = await postIssueScenario('expiry', false);
+    assert.deepEqual([direct.revoked, direct.active], [1, false]);
+  }
+
+  // AC-02: post-issue clock failure also compensates. Unknown/unreadable
+  // issuance cannot be called revoked, and never triggers a guessed request.
+  {
+    const x = await postIssueScenario('clock');
+    assert.deepEqual(x.result, { ok: false, code: 'failed' });
+    assert.deepEqual([x.issued, x.revoked, x.saved, x.active], [1, 1, 0, false]);
+    for (const mode of ['wrong_alias', 'invalid_id', 'throw']) {
+      const denied = await postIssueScenario(mode);
+      assert.deepEqual(denied.result, { ok: false, code: 'failed' });
+      assert.equal(denied.revoked, 0);
+      assert.equal(denied.saved, 0);
+      assert.deepEqual(denied.journal.map(item => item.phase),
+        ['eligible', 'attempt', 'result']);
+      assert.equal(denied.journal.at(-1).outcome, 'unknown');
+    }
+  }
+
+  // AC-03: correlate exactly one eligible/attempt/result per issued candidate.
+  // A remote false result is not a confirmed revocation.
+  {
+    const x = await postIssueScenario('expiry');
+    assert.deepEqual(x.journal.map(item => item.phase), ['eligible', 'attempt', 'result']);
+    assert.equal(x.journal.at(-1).outcome, 'revoked');
+    assert.equal(new Set(x.journal.map(item => item.auditId)).size, 1);
+    assert.equal(x.journal.every(item => item.event === 'pairing_compensation'), true);
+    assert.equal(x.journal.every(item =>
+      Object.keys(item).every(key => ['event', 'phase', 'auditId', 'outcome'].includes(key))), true);
+    assert.equal(/credential-001|perfil-1|123456|private adapter/.test(JSON.stringify(x.journal)), false);
+  }
+
+  // AC-04: legacy pairing, replay/persistence and explicit revoke assertions
+  // above continue to execute in the same Node/CI suite unchanged.
+  console.log('pairing-postissue AC-01..04: ok');
+
   console.log('pairing-audit AC-01: ok');
 
   // The existing npm test invokes this Node test. Execute all four Python
