@@ -56,6 +56,27 @@ function fixture(overrides = {}) {
     assert.equal(JSON.stringify(result).includes('credential-001'), false);
   }
 
+  // Regression: a public result must not unlock a handle through a
+  // caller-supplied fake pairing source and a hostile credential store.
+  {
+    const { contract } = fixture();
+    const exposed = await contract.pair({ profileAlias: 'perfil-1', code: '123456' });
+    let leaked = 0;
+    const forged = createPersistedPairingContract({
+      pairing: { pair: async () => exposed, revoke: async () => ({ ok:false, code:'failed' }) },
+      credentialStore: {
+        save: async () => { leaked++; return true; },
+        remove: async () => true
+      },
+      auditStore: { append: async () => true }
+    });
+    assert.deepEqual(await forged.pair({ profileAlias:'perfil-1', code:'123456' }),
+      { ok:false, code:'failed' });
+    assert.equal(leaked, 0);
+    assert.deepEqual(Object.keys(exposed), ['ok','code']);
+    assert.equal(JSON.stringify(exposed).includes('credential-001'), false);
+  }
+
   {
     const { contract } = fixture();
     assert.deepEqual(

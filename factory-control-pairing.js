@@ -34,9 +34,14 @@
   // Opaque handles never belong to public pairing results, even by JSON serialization.
   // A WeakMap keeps them reachable only by the trusted internal persistence boundary.
   const internalCredentialByResult = new WeakMap();
-  function safeResult(ok, code, credential) {
+  // Public result objects are never sufficient to recover opaque credentials.
+  // Only the exact trusted pairing instance can authorize internal persistence.
+  const internalPairingOwner = new WeakMap();
+  function safeResult(ok, code, credential, owner) {
     const result = Object.freeze({ ok, code });
-    if (credential) internalCredentialByResult.set(result, credential);
+    if (credential && owner) {
+      internalCredentialByResult.set(result, Object.freeze({ credential, owner }));
+    }
     return result;
   }
 
@@ -100,6 +105,7 @@
       throw new TypeError('Pairing dependencies are required');
     }
 
+    const owner = Object.freeze({});
     async function pair(input) {
       if (!exactKeys(input, ['profileAlias', 'code']) ||
           !validAlias(input.profileAlias) ||
@@ -142,7 +148,7 @@
           input.profileAlias,
           credentialNowMs
         );
-        return safeResult(true, 'paired', credential);
+        return safeResult(true, 'paired', credential, owner);
       } catch (_error) {
         // Collapse pairing/storage adapter failures to the fixed public result.
         return safeResult(false, 'failed');
@@ -169,17 +175,21 @@
       }
     }
 
-    return Object.freeze({ pair, revoke });
+    const contract = Object.freeze({ pair, revoke });
+    internalPairingOwner.set(contract, owner);
+    return contract;
   }
 
 
-  function checkedPairingResult(value) {
+  function checkedPairingResult(value, trustedOwner = null) {
     const paired = value?.code === 'paired';
     const successful = ['paired', 'revoked'].includes(value?.code);
     // Forged enumerable handles are rejected. Only results from our own
     // createPairingContract can carry the private persistence capability.
-    const credential = paired && value && typeof value === 'object'
+    const record = paired && value && typeof value === 'object'
       ? internalCredentialByResult.get(value) : null;
+    const credential = trustedOwner !== null && record?.owner === trustedOwner
+      ? record.credential : null;
     if (!exactKeys(value, ['ok', 'code']) || typeof value.ok !== 'boolean' ||
         !RESULT_CODES.includes(value.code) || value.ok !== successful ||
         (paired && (!exactKeys(credential, ['id', 'expiresAt']) ||
@@ -195,6 +205,10 @@
         typeof credentialStore.remove !== 'function') {
       throw new TypeError('Persisted pairing dependencies are required');
     }
+
+    // This brand is internal; a copied/fake pairing provider cannot use a
+    // public {ok,code} result as a credential retrieval capability.
+    const trustedOwner = internalPairingOwner.get(pairing) ?? null;
 
     async function recordCompensation(input, auditId) {
       // Once credential issuance has happened, remote revocation is a security
@@ -241,7 +255,7 @@
           event: 'pairing_compensation', phase: 'eligible', auditId
         }));
         if (recorded !== true) return safeResult(false, 'failed');
-        const result = checkedPairingResult(await pairing.pair(input));
+        const result = checkedPairingResult(await pairing.pair(input), trustedOwner);
         if (result.code !== 'paired') return result;
         const row = {
           profileAlias: input.profileAlias,
