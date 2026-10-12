@@ -659,7 +659,7 @@ function fixture(overrides = {}) {
   // Issue #154: emission is an effect even if later local validation fails.
   // All scenarios use synthetic handles; no browser, network or accounts.
   async function postIssueScenario(mode, usePersisted = true) {
-    let issued = 0, revoked = 0, saved = 0, reads = 0, active = false;
+    let issued = 0, revoked = 0, saved = 0, reads = 0, getters = 0, active = false;
     const journal = [];
     const pairing = createPairingContract({
       now: () => {
@@ -675,6 +675,14 @@ function fixture(overrides = {}) {
         issued++;
         active = true;
         if (mode === 'throw') throw new Error('private adapter error');
+        if (mode === 'getter') {
+          const value = { profileAlias, expiresAt: NOW + 3_600_000 };
+          Object.defineProperty(value, 'credentialId', {
+            enumerable: true,
+            get() { getters++; throw new Error('private getter must not execute'); }
+          });
+          return value;
+        }
         const value = {
           credentialId: mode === 'invalid_id' ? 'not valid' : 'credential-001',
           profileAlias: mode === 'wrong_alias' ? 'other-profile' : profileAlias,
@@ -705,7 +713,7 @@ function fixture(overrides = {}) {
       }
     }) : pairing;
     const result = await contract.pair({ profileAlias: 'perfil-1', code: '123456' });
-    return { result, issued, revoked, saved, active, journal };
+    return { result, issued, revoked, saved, getters, active, journal };
   }
 
   // AC-01: verifiable remote handle issued before an invalid >24h expiry
@@ -725,11 +733,12 @@ function fixture(overrides = {}) {
     const x = await postIssueScenario('clock');
     assert.deepEqual(x.result, { ok: false, code: 'failed' });
     assert.deepEqual([x.issued, x.revoked, x.saved, x.active], [1, 1, 0, false]);
-    for (const mode of ['wrong_alias', 'invalid_id', 'throw']) {
+    for (const mode of ['wrong_alias', 'invalid_id', 'throw', 'getter']) {
       const denied = await postIssueScenario(mode);
       assert.deepEqual(denied.result, { ok: false, code: 'failed' });
       assert.equal(denied.revoked, 0);
       assert.equal(denied.saved, 0);
+      assert.equal(denied.getters, 0, 'untrusted issuer getters must not execute');
       assert.deepEqual(denied.journal.map(item => item.phase),
         ['eligible', 'attempt', 'result']);
       assert.equal(denied.journal.at(-1).outcome, 'unknown');
