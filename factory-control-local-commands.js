@@ -93,5 +93,108 @@
     }
     return Object.freeze({ process });
   }
-  return Object.freeze({ privateOrigin, globalCommand, createCommandProcessor });
+
+  // A pure scheduler: the browser transport, storage, alarms and permissions
+  // are injected by the future local-only adapter. Merely importing this
+  // module NEVER starts a poll, opens a connection or reads a credential.
+  function localPollingSettings(raw) {
+    if (!isObject(raw)) return null;
+    const expected = ['host', 'agentKey', 'instanceId'];
+    const keys = Reflect.ownKeys(raw);
+    if (keys.length !== expected.length ||
+        keys.some(k => typeof k !== 'string' || !expected.includes(k))) return null;
+    const value = Object.create(null);
+    for (const key of expected) {
+      const descriptor = Object.getOwnPropertyDescriptor(raw, key);
+      if (!descriptor || !descriptor.enumerable ||
+          !Object.hasOwn(descriptor, 'value')) return null;
+      value[key] = descriptor.value;
+    }
+    try { privateOrigin(value.host); } catch (_error) { return null; }
+    if (typeof value.agentKey !== 'string' ||
+        value.agentKey.length < 12 || value.agentKey.length > 256 ||
+        !/^[\x21-\x7e]+$/.test(value.agentKey) ||
+        typeof value.instanceId !== 'string' ||
+        !/^[A-Za-z0-9_.:-]{3,64}$/.test(value.instanceId)) return null;
+    return Object.freeze(value);
+  }
+
+  function commandEnvelope(raw) {
+    if (!isObject(raw)) return null;
+    const keys = Reflect.ownKeys(raw);
+    if (keys.length !== 1 || keys[0] !== 'commands') return null;
+    const descriptor = Object.getOwnPropertyDescriptor(raw, 'commands');
+    if (!descriptor || !descriptor.enumerable ||
+        !Object.hasOwn(descriptor, 'value')) return null;
+    const commands = descriptor.value;
+    if (!Array.isArray(commands) || commands.length > 32 ||
+        Reflect.ownKeys(commands).length !== commands.length + 1) return null;
+    const values = [];
+    for (let i = 0; i < commands.length; i++) {
+      const item = Object.getOwnPropertyDescriptor(commands, String(i));
+      if (!item || !Object.hasOwn(item, 'value') ||
+          !item.enumerable) return null;
+      values.push(item.value);
+    }
+    return values;
+  }
+
+  function createCommandPoller({ enabled, permission, configuration,
+    fetchPending, process, now } = {}) {
+    if (![enabled, permission, configuration, fetchPending, process, now]
+      .every(fn => typeof fn === 'function')) {
+      throw new TypeError('local command poller ports required');
+    }
+    const INTERVAL_MS = 8000;
+    let running = false, stopped = false, failures = 0, nextAllowed = 0;
+    async function tick() {
+      if (stopped) return 'stopped';
+      if (running) return 'busy';
+      running = true;
+      let started = 0;
+      try {
+        started = now();
+        if (!Number.isSafeInteger(started) || started < 0) return 'unavailable';
+        if (started < nextAllowed) return 'throttled';
+        if (await enabled() !== true) return 'disabled';
+        const local = localPollingSettings(await configuration());
+        if (!local || await permission(local.host) !== true) return 'disabled';
+        // Establish the minimum interval before any async network attempt.
+        nextAllowed = started + INTERVAL_MS;
+        const response = await fetchPending({
+          origin:local.host, instanceId:local.instanceId, agentKey:local.agentKey
+        });
+        const commands = commandEnvelope(response);
+        if (!commands) throw new TypeError('invalid local commands envelope');
+        const result = await commands.reduce(async (prior, raw) => {
+          const state = await prior;
+          if (state.revoked) return state;
+          const command = globalCommand(raw);
+          if (!command) return state; // Per-chat commands MUST NOT be acked.
+          const fresh = localPollingSettings(await configuration());
+          if (stopped || await enabled() !== true || !fresh ||
+              fresh.host !== local.host || fresh.agentKey !== local.agentKey ||
+              fresh.instanceId !== local.instanceId ||
+              await permission(local.host) !== true) {
+            return { revoked:true, processed:state.processed };
+          }
+          const applied = await process(command);
+          return { revoked:false, processed:state.processed + (applied === true ? 1 : 0) };
+        }, Promise.resolve({revoked:false,processed:0}));
+        if (result.revoked) return 'revoked';
+        failures = 0;
+        return result.processed ? 'handled' : 'empty';
+      } catch (_error) {
+        // Never log tokens, endpoints, account data or remote error bodies.
+        failures = Math.min(failures + 1, 6);
+        nextAllowed = Math.min(Number.MAX_SAFE_INTEGER,
+          started + Math.min(300000, INTERVAL_MS * (2 ** failures)));
+        return 'unavailable';
+      } finally { running = false; }
+    }
+    function stop() { stopped = true; }
+    return Object.freeze({tick,stop});
+  }
+  return Object.freeze({ privateOrigin, globalCommand, createCommandProcessor,
+    localPollingSettings, commandEnvelope, createCommandPoller });
 });

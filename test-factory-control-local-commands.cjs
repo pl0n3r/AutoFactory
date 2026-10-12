@@ -90,7 +90,88 @@ async function ac06() {
   assert.equal(await failedApply.process({id:4,chat_id:null,want:'stop'}),false);
   assert.equal(actions,1);assert.equal(acks,0);
 }
-const cases={ac01,ac02,ac03,ac04,ac05,ac06};
+
+async function ac07() {
+  const key='local-agent-secret-012345';
+  const settings={host:lan('192.168.1.12:8777'),agentKey:key,instanceId:'af-agent-1'};
+  let active=false, permitted=true, time=100000;
+  let network=0, applied=0, exposed=[];
+  const poller=api.createCommandPoller({
+    enabled:async()=>active,permission:async()=>permitted,
+    configuration:async()=>settings,now:()=>time,
+    fetchPending:async params=>{
+      network++;exposed.push(params);
+      return {commands:[{id:1,chat_id:44,want:'stop'},
+        {id:2,chat_id:null,want:'stop'}]};
+    },
+    process:async item=>{applied++;assert.deepEqual(item,{id:2,want:'stop'});return true}
+  });
+  assert.equal(await poller.tick(),'disabled');
+  assert.equal(network,0);
+  active=true;
+  assert.equal(await poller.tick(),'handled');
+  assert.equal(applied,1);
+  assert.equal(network,1);
+  assert.equal(exposed[0].agentKey,key);
+  assert.equal(Object.hasOwn(exposed[0],'chat_text'),false);
+  assert.equal(await poller.tick(),'throttled');
+  time+=8000;
+  permitted=false;
+  assert.equal(await poller.tick(),'disabled');
+  assert.equal(network,1);
+  poller.stop();
+  assert.equal(await poller.tick(),'stopped');
+
+  const noGetters=Object.defineProperties({},{
+    host:{enumerable:true,value:settings.host},
+    instanceId:{enumerable:true,value:settings.instanceId},
+    agentKey:{enumerable:true,get(){throw new Error('secret getter');}}
+  });
+  assert.equal(api.localPollingSettings(noGetters),null);
+  assert.equal(api.commandEnvelope({commands:[,]}),null);
+  assert.equal(api.commandEnvelope({commands:[]}).length,0);
+  assert.equal(api.commandEnvelope({commands:[{id:5,chat_id:null,want:'start'}]}).length,1);
+}
+async function ac08() {
+  let time=100000, calls=0, apply=0, authorized=true;
+  const settings={host:lan('10.0.0.4:8777'),
+    agentKey:'local-agent-secret-012345',instanceId:'agent-4'};
+  const poller=api.createCommandPoller({
+    enabled:async()=>authorized,permission:async()=>true,
+    configuration:async()=>settings,now:()=>time,
+    fetchPending:async()=>{
+      calls++;
+      if(calls===1)throw new Error('private-token-must-not-leak');
+      return {commands:[{id:7,chat_id:null,want:'start'}]};
+    },
+    process:async()=>{apply++;return true}
+  });
+  assert.equal(await poller.tick(),'unavailable');
+  time+=8000;
+  assert.equal(await poller.tick(),'throttled');
+  assert.equal(calls,1);
+  time+=8000;
+  assert.equal(await poller.tick(),'handled');
+  assert.equal(calls,2);
+  assert.equal(apply,1);
+  // Revoke opt-in while GET is in flight; never execute the result.
+  let release;
+  const pending=api.createCommandPoller({
+    enabled:async()=>authorized,permission:async()=>true,
+    configuration:async()=>settings,now:()=>time,
+    fetchPending:async()=>new Promise(resolve=>{release=resolve}),
+    process:async()=>{apply++;return true}
+  });
+  const waiting=pending.tick();
+  // Promise scheduling: allow mock GET to be reached without any real timer.
+  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  assert.equal(typeof release,'function');
+  authorized=false;
+  release({commands:[{id:8,chat_id:null,want:'start'}]});
+  assert.equal(await waiting,'revoked');
+  assert.equal(apply,1);
+}
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
