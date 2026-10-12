@@ -218,7 +218,7 @@ async function refreshLocalControl() {
       await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
         { [LOCAL_CONTROL_FLAG]: false });
     }
-  } catch (_error) {
+  } catch (_error) { // NOSONAR: Fail closed when permissions or storage fail; do not expose browser errors.
     localControlToggle.checked = false;
     localControlStatus.textContent = 'APAGADO · permisos no disponibles';
   }
@@ -240,9 +240,9 @@ localControlToggle.addEventListener('change', async () => {
       await apiCall(extensionApi.permissions.remove.bind(extensionApi.permissions),
         { origins: [LOCAL_CONTROL_HOST] });
     }
-  } catch (_error) {
+  } catch (_error) { // NOSONAR: Denied or unavailable permission must silently disable publishing.
     await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
-      { [LOCAL_CONTROL_FLAG]: false }).catch(() => {});
+      { [LOCAL_CONTROL_FLAG]: false }).catch(() => { /* NOSONAR: Fail closed if storage unavailable. */ });
   } finally {
     localControlToggle.disabled = false;
     void refreshLocalControl();

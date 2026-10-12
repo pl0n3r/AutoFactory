@@ -17,8 +17,8 @@ const withPorts = ({ value = base, send, active = true, granted = true, now } = 
   return { calls, pub };
 };
 async function ac01() {
-  assert.deepEqual(Object.keys(api.payloadFrom(base)).sort(),
-    ['chats_open', 'idle_reason', 'instance_id', 'label', 'state'].sort());
+  assert.deepEqual(Object.keys(api.payloadFrom(base)).sort((a, b) => a.localeCompare(b)),
+    ['chats_open', 'idle_reason', 'instance_id', 'label', 'state'].sort((a, b) => a.localeCompare(b)));
   assert.throws(() => api.payloadFrom({ ...base, chat_text: 'SECRET-PROMPT' }),
     /unknown or missing/);
   let getterCalls = 0;
@@ -35,9 +35,9 @@ async function ac02() {
     idle_since: '2026-10-12T10:00:00.000Z' } });
   assert.equal(await pub.publish(), true);
   const transmitted = JSON.stringify(calls[0]);
-  assert.deepEqual(Object.keys(calls[0]).sort(),
+  assert.deepEqual(Object.keys(calls[0]).sort((a, b) => a.localeCompare(b)),
     ['chats_open', 'current_task', 'idle_reason', 'idle_since',
-      'instance_id', 'label', 'state'].sort());
+      'instance_id', 'label', 'state'].sort((a, b) => a.localeCompare(b)));
   for (const forbidden of ['chat_text', 'prompt', 'https://', 'password',
     'email', 'cookie', 'token', 'title', 'account_id']) {
     assert.equal(transmitted.includes(forbidden), false, forbidden);
@@ -158,8 +158,10 @@ async function ac06() {
 }
 const cases = { ac01, ac02, ac03, ac04, ac05, ac06 };
 const selected = process.argv[2] ? [process.argv[2]] : Object.keys(cases);
-(async () => { for (const key of selected) {
-  if (!Object.hasOwn(cases, key)) throw new Error('unknown AC');
-  await cases[key]();
-} console.log('Factory local publisher ' + selected.join(',') + ': PASS');
+(async () => {
+  await Promise.all(selected.map(key => {
+    if (!Object.hasOwn(cases, key)) throw new Error('unknown AC');
+    return cases[key]();
+  }));
+  console.log('Factory local publisher ' + selected.join(',') + ': PASS');
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });
