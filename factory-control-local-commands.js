@@ -78,6 +78,9 @@
         if (await enabled() !== true) return false;
         if (await mark(command.id) !== true) return false;
         if (await enabled() !== true) return false;
+        // Account/session state can change while the receipt is persisted.
+        // Do not resume on a stale pre-mark authorization.
+        if (command.want === 'start' && await allowedToStart() !== true) return false;
         if (await apply(command.want) !== true) return false;
         if (await enabled() !== true) return false;
         return await ack(command.id) === true;

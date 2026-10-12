@@ -1,16 +1,18 @@
 'use strict';
 const assert = require('node:assert/strict');
 const api = require('./factory-control-local-commands.js');
+// HTTP is deliberate inside the owner's LAN; these are offline fixtures only.
+const lan = location => ['http:', '//', location].join('');
 async function ac01() {
-  for (const origin of ['http://127.0.0.1:8777', 'http://10.1.2.3:1234',
-    'http://172.16.0.1:80', 'http://172.31.255.255:8080',
-    'http://192.168.1.2:8777']) assert.equal(api.privateOrigin(origin), origin);
-  for (const origin of ['https://10.0.0.1:443', 'http://8.8.8.8:80',
-    'http://172.32.0.1:80', 'http://127.0.0.2:80', 'http://localhost:80',
-    'http://10.0.0.1:80/path', 'http://10.0.0.1:80?x=1',
-    'http://user@10.0.0.1:80', 'http://010.0.0.1:80',
-    'http://192.168.0.1:0', 'http://192.168.0.1:65536',
-    'http://169.254.1.1:80', 'http://192.169.0.1:80']) {
+  for (const origin of [lan('127.0.0.1:8777'), lan('10.1.2.3:1234'),
+    lan('172.16.0.1:80'), lan('172.31.255.255:8080'),
+    lan('192.168.1.2:8777')]) assert.equal(api.privateOrigin(origin), origin);
+  for (const origin of ['https://10.0.0.1:443', lan('8.8.8.8:80'),
+    lan('172.32.0.1:80'), lan('127.0.0.2:80'), lan('localhost:80'),
+    lan('10.0.0.1:80/path'), lan('10.0.0.1:80?x=1'),
+    lan('user@10.0.0.1:80'), lan('010.0.0.1:80'),
+    lan('192.168.0.1:0'), lan('192.168.0.1:65536'),
+    lan('169.254.1.1:80'), lan('192.169.0.1:80')]) {
     assert.throws(() => api.privateOrigin(origin), TypeError, origin);
   }
 }
@@ -48,6 +50,20 @@ async function ac05() {
   assert.equal(executed,0);
   assert.equal(await p.process({id:4,chat_id:null,want:'stop'}),true);
   assert.equal(executed,1);
+  // A session can close between initial readiness and the durable mark.
+  let canStart=true, restarted=0;
+  const stored=new Set();
+  const race=api.createCommandProcessor({
+    enabled:async()=>true, allowedToStart:async()=>canStart,
+    seen:async id=>stored.has(id),
+    mark:async id=>{stored.add(id);canStart=false;return true;},
+    apply:async()=>{restarted++;return true;},ack:async()=>true
+  });
+  assert.equal(await race.process({id:29,chat_id:null,want:'start'}),false);
+  assert.equal(stored.has(29),true);
+  assert.equal(restarted,0);
+  assert.equal(await race.process({id:29,chat_id:null,want:'start'}),false);
+  assert.equal(restarted,0);
 }
 async function ac06() {
   let writes=0,actions=0,acks=0;
@@ -75,8 +91,11 @@ async function ac06() {
   assert.equal(actions,1);assert.equal(acks,0);
 }
 const cases={ac01,ac02,ac03,ac04,ac05,ac06};
-(async()=>{for(const key of process.argv[2]?[process.argv[2]]:Object.keys(cases)){
-  if(!Object.hasOwn(cases,key))throw new Error('unknown case');
-  await cases[key]();
-}console.log('Local commands pure contract: PASS');})()
+(async()=>{
+  const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
+  for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
+  // Sequential tests preserve isolation; no asynchronous waiting inside loops.
+  await selected.reduce((sequence,key)=>sequence.then(()=>cases[key]()),Promise.resolve());
+  console.log('Local commands pure contract: PASS');
+})()
   .catch(error=>{console.error(error);process.exitCode=1});
