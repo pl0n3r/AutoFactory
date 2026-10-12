@@ -44,6 +44,73 @@ async function ac02() {
   }
   assert.equal(calls[0].current_task, 'Factory#562');
 }
+async function testServiceWorkerGate() {
+  let signalChanged;
+  let alarmListener;
+  let enabled = false;
+  let allowed = false;
+  let installedAlarms = 0;
+  const posts = [];
+  const stored = { factoryControlLocalPublishingEnabled: false };
+  const storage = {
+    get(defaults, callback) { callback({ ...defaults, ...stored }); },
+    set(values, callback) { Object.assign(stored, values); callback?.(); }
+  };
+  const root = {
+    crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111' },
+    async fetch(url, options) {
+      posts.push({ url, body: JSON.parse(options.body), options });
+      return { ok: true };
+    },
+    chrome: {
+      storage: { local: storage, onChanged: { addListener(fn) { signalChanged = fn; } } },
+      permissions: { contains(_details, callback) { callback(allowed); },
+        onRemoved: { addListener() {} } },
+      tabs: {
+        query(_filter, callback) { callback([{ id: 1 }]); },
+        sendMessage(_id, _message, callback) { callback({ enabled: true,
+          sensitive_chat_text: 'NEVER-TRANSMIT' }); }
+      },
+      alarms: {
+        create(_name, options) {
+          assert.equal(options.periodInMinutes, 0.5);
+          installedAlarms++;
+          // Chrome MV3 intentionally does not call a callback.
+        },
+        clear(_name, callback) { callback?.(true); },
+        onAlarm: { addListener(fn) { alarmListener = fn; } }
+      },
+      runtime: {
+        onStartup: { addListener() {} }, onInstalled: { addListener() {} }
+      }
+    }
+  };
+  assert.equal(api.installBackground(root), true);
+  await new Promise(setImmediate);
+  assert.equal(installedAlarms, 0);
+  assert.equal(posts.length, 0);
+  // A storage flag without optional host permission still cannot send.
+  enabled = true;
+  stored.factoryControlLocalPublishingEnabled = enabled;
+  signalChanged({ factoryControlLocalPublishingEnabled: { newValue: true } }, 'local');
+  await new Promise(setImmediate);
+  assert.equal(posts.length, 0);
+  assert.equal(installedAlarms, 0);
+  allowed = true;
+  signalChanged({ factoryControlLocalPublishingEnabled: { newValue: true } }, 'local');
+  await new Promise(setImmediate);
+  assert.equal(installedAlarms, 1);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].url, api.ENDPOINT);
+  assert.equal(posts[0].body.state, 'activo');
+  assert.equal(posts[0].body.chats_open, 1);
+  assert.equal(JSON.stringify(posts).includes('NEVER-TRANSMIT'), false);
+  assert.equal(posts[0].options.credentials, 'omit');
+  alarmListener({ name: 'other-alarm' });
+  await new Promise(setImmediate);
+  assert.equal(posts.length, 1);
+}
+
 async function ac03() {
   const { calls, pub } = withPorts({ active: false });
   assert.equal(await pub.publish(), false);
@@ -51,6 +118,7 @@ async function ac03() {
   const denied = withPorts({ granted: false });
   assert.equal(await denied.pub.publish(), false);
   assert.equal(denied.calls.length, 0);
+  await testServiceWorkerGate();
 }
 async function ac04() {
   let tick = 120_000, attempts = 0, unrelated = 0;

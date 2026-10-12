@@ -168,7 +168,9 @@
     async function reconcile() {
       try {
         if (await enabled() && await permission()) {
-          await call(extension.alarms, 'create', ALARM, { periodInMinutes: 0.5 });
+          // Chrome MV3 alarms.create is Promise/void, with no callback parameter.
+          const created = extension.alarms.create(ALARM, { periodInMinutes: 0.5 });
+          if (created?.then) await created;
           void publisher.publish();
         } else {
           await call(extension.alarms, 'clear', ALARM);
