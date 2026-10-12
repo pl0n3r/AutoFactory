@@ -182,21 +182,33 @@
 
 
   function checkedPairingResult(value, trustedOwner = null) {
-    const paired = value?.code === 'paired';
-    const successful = ['paired', 'revoked'].includes(value?.code);
+    // Never evaluate accessors on an untrusted pairing provider result.
+    // Values are taken only from ordinary enumerable own data descriptors.
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Reflect.ownKeys(value).length !== 2) {
+      throw new TypeError('Invalid pairing result');
+    }
+    const okField = Object.getOwnPropertyDescriptor(value, 'ok');
+    const codeField = Object.getOwnPropertyDescriptor(value, 'code');
+    if (!okField?.enumerable || !Object.hasOwn(okField, 'value') ||
+        !codeField?.enumerable || !Object.hasOwn(codeField, 'value')) {
+      throw new TypeError('Invalid pairing result');
+    }
+    const ok = okField.value, code = codeField.value;
+    const paired = code === 'paired';
+    const successful = code === 'paired' || code === 'revoked';
     // Forged enumerable handles are rejected. Only results from our own
     // createPairingContract can carry the private persistence capability.
-    const record = paired && value && typeof value === 'object'
-      ? internalCredentialByResult.get(value) : null;
+    const record = paired ? internalCredentialByResult.get(value) : null;
     const credential = trustedOwner !== null && record?.owner === trustedOwner
       ? record.credential : null;
-    if (!exactKeys(value, ['ok', 'code']) || typeof value.ok !== 'boolean' ||
-        !RESULT_CODES.includes(value.code) || value.ok !== successful ||
+    if (typeof ok !== 'boolean' || !RESULT_CODES.includes(code) ||
+        ok !== successful ||
         (paired && (!exactKeys(credential, ['id', 'expiresAt']) ||
           !validId(credential.id) || !Number.isSafeInteger(credential.expiresAt)))) {
       throw new TypeError('Invalid pairing result');
     }
-    return paired ? Object.freeze({ ok: value.ok, code: value.code, credential }) : value;
+    return paired ? Object.freeze({ ok, code, credential }) : value;
   }
 
   function createPersistedPairingContract({ pairing, credentialStore, auditStore } = {}) {

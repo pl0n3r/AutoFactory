@@ -318,6 +318,36 @@ function fixture(overrides = {}) {
   }
 
 
+  // A malicious fake provider must never execute accessors when its result
+  // reaches the persisted pairing trust boundary.
+  {
+    let getterCalls = 0, storeCalls = 0;
+    const forged = Object.defineProperties({}, {
+      ok: { enumerable: true, value: true },
+      code: { enumerable: true, get() {
+        getterCalls++;
+        throw new Error('private getter side effect');
+      }}
+    });
+    const persisted = createPersistedPairingContract({
+      pairing: {
+        pair: async () => forged,
+        revoke: async () => ({ ok: false, code: 'failed' })
+      },
+      credentialStore: {
+        save: async () => { storeCalls++; return true; },
+        remove: async () => true
+      },
+      auditStore: { append: async () => true }
+    });
+    assert.deepEqual(
+      await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'failed' }
+    );
+    assert.equal(getterCalls, 0);
+    assert.equal(storeCalls, 0);
+  }
+
   // A resolved but unacknowledged save must never issue a 'paired' result.
   // Compensation is attempted under the pre-issuance audit evidence.
   {
