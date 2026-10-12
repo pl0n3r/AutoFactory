@@ -37,6 +37,8 @@
   // Public result objects are never sufficient to recover opaque credentials.
   // Only the exact trusted pairing instance can authorize internal persistence.
   const internalPairingOwner = new WeakMap();
+  // Private one-operation audit bridge, never exposed via a public result.
+  const internalPostIssueAudit = new WeakMap();
   function safeResult(ok, code, credential, owner) {
     const result = Object.freeze({ ok, code });
     if (credential && owner) {
@@ -106,13 +108,54 @@
     }
 
     const owner = Object.freeze({});
-    async function pair(input) {
+
+    async function compensatePostIssue(value, profileAlias, context) {
+      // A remote issue may have succeeded before local metadata validation.
+      // Never execute untrusted credential getters or revoke another profile.
+      let credentialId = null;
+      try {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const id = Object.getOwnPropertyDescriptor(value, 'credentialId');
+          const alias = Object.getOwnPropertyDescriptor(value, 'profileAlias');
+          if (id && alias && Object.hasOwn(id, 'value') &&
+              Object.hasOwn(alias, 'value') &&
+              validId(id.value) && alias.value === profileAlias) {
+            credentialId = id.value;
+          }
+        }
+      } catch (_error) {
+        // Unverifiable identity: keep the outcome unknown, never guess.
+      }
+      const report = internalPostIssueAudit.get(context);
+      async function journal(phase, outcome) {
+        if (typeof report !== 'function') return;
+        try { await report(phase, outcome); } catch (_error) {
+          // Audit already has the pre-issuance eligible intent.
+        }
+      }
+      await journal('attempt');
+      let outcome = 'unknown';
+      if (credentialId !== null) {
+        try {
+          const revoked = await revokeOpaqueCredential({ profileAlias, credentialId });
+          if (revoked === true) outcome = 'revoked';
+          else if (revoked === false) outcome = 'not_found';
+        } catch (_error) {
+          // Remote compensation may be ambiguous; never report revoked.
+        }
+      }
+      await journal('result', outcome);
+    }
+
+    async function pair(input, auditContext = null) {
       if (!exactKeys(input, ['profileAlias', 'code']) ||
           !validAlias(input.profileAlias) ||
           !validCode(input.code)) {
         return safeResult(false, 'invalid');
       }
 
+      let issuanceAttempted = false;
+      let issuedValue = null;
       try {
         const nowMs = now();
         if (!Number.isSafeInteger(nowMs)) return safeResult(false, 'failed');
@@ -137,20 +180,24 @@
         }
         if (consumed !== 'consumed') return safeResult(false, consumed);
 
-        const credentialValue = await issueOpaqueCredential({
+        issuanceAttempted = true;
+        issuedValue = await issueOpaqueCredential({
           challengeId: challenge.challengeId,
           profileAlias: input.profileAlias
         });
         const credentialNowMs = now();
-        if (!Number.isSafeInteger(credentialNowMs)) return safeResult(false, 'failed');
+        if (!Number.isSafeInteger(credentialNowMs)) throw new TypeError('Invalid post-issue clock');
         const credential = checkedCredential(
-          credentialValue,
+          issuedValue,
           input.profileAlias,
           credentialNowMs
         );
         return safeResult(true, 'paired', credential, owner);
       } catch (_error) {
-        // Collapse pairing/storage adapter failures to the fixed public result.
+        if (issuanceAttempted) {
+          await compensatePostIssue(issuedValue, input.profileAlias, auditContext);
+        }
+        // Never expose an issued handle, clock value or adapter exception.
         return safeResult(false, 'failed');
       }
     }
@@ -269,7 +316,23 @@
           event: 'pairing_compensation', phase: 'eligible', auditId
         }));
         if (recorded !== true) return safeResult(false, 'failed');
-        const result = checkedPairingResult(await pairing.pair(input), trustedOwner);
+        let result;
+        if (trustedOwner !== null) {
+          const context = Object.freeze({});
+          internalPostIssueAudit.set(context, async (phase, outcome) =>
+            auditStore.append(Object.freeze({
+              event: 'pairing_compensation', phase, auditId,
+              ...(phase === 'result' ? { outcome } : {})
+            }))
+          );
+          try {
+            result = checkedPairingResult(await pairing.pair(input, context), trustedOwner);
+          } finally {
+            internalPostIssueAudit.delete(context);
+          }
+        } else {
+          result = checkedPairingResult(await pairing.pair(input), trustedOwner);
+        }
         if (result.code !== 'paired') return result;
         const row = {
           profileAlias: input.profileAlias,
