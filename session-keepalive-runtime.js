@@ -46,6 +46,25 @@
     }
     return result;
   }
+  function safeRetries(value) {
+    if (!Array.isArray(value) || value.length > 100) return null;
+    // Reading an array through iteration would execute user-defined getters.
+    // Consume only own data descriptors, dense indices and the native length.
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const length = descriptors.length;
+    if (!length || !Object.hasOwn(length, 'value') ||
+        !safeInteger(length.value) || keys.length !== length.value + 1 ||
+        keys.some(key => typeof key !== 'string')) return null;
+    const copy = [];
+    for (let index = 0; index < length.value; index++) {
+      const item = descriptors[String(index)];
+      if (!item || !Object.hasOwn(item, 'value') ||
+          item.enumerable !== true || !safeInteger(item.value)) return null;
+      copy.push(item.value);
+    }
+    return copy;
+  }
   function copySnapshot(value) {
     const outer = copyRecord(value, Object.keys(SHAPE), Object.keys(SHAPE));
     if (!outer) return null;
@@ -56,9 +75,9 @@
       if (!item) return null;
       for (const [field, val] of Object.entries(item)) {
         if (name === 'history' && field === 'retries_s') {
-          if (!Array.isArray(val) || val.length > 100 ||
-              Object.keys(val).length !== val.length || !val.every(safeInteger)) return null;
-          item[field] = [...val];
+          const retries = safeRetries(val);
+          if (retries === null) return null;
+          item[field] = retries;
         } else if (field === 'state') {
           if (!['activo', 'inactivo', 'cerrado'].includes(val)) return null;
         } else if (['reservation_active', 'reply_complete', 'enabled', 'manual_pause',
