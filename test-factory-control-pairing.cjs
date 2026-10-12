@@ -49,13 +49,32 @@ function fixture(overrides = {}) {
   {
     const { contract } = fixture();
     const result = await contract.pair({ profileAlias: 'perfil-1', code: '123456' });
-    assert.deepEqual(result, {
-      ok: true,
-      code: 'paired',
-      credential: { id: 'credential-001', expiresAt: NOW + 3_600_000 }
-    });
+    assert.deepEqual(result, { ok: true, code: 'paired' });
     assert.equal(Object.isFrozen(result), true);
-    assert.equal(Object.isFrozen(result.credential), true);
+    assert.equal(Object.hasOwn(result, 'credential'), false);
+    assert.deepEqual(Object.keys(result), ['ok', 'code']);
+    assert.equal(JSON.stringify(result).includes('credential-001'), false);
+  }
+
+  // Regression: a public result must not unlock a handle through a
+  // caller-supplied fake pairing source and a hostile credential store.
+  {
+    const { contract } = fixture();
+    const exposed = await contract.pair({ profileAlias: 'perfil-1', code: '123456' });
+    let leaked = 0;
+    const forged = createPersistedPairingContract({
+      pairing: { pair: async () => exposed, revoke: async () => ({ ok:false, code:'failed' }) },
+      credentialStore: {
+        save: async () => { leaked++; return true; },
+        remove: async () => true
+      },
+      auditStore: { append: async () => true }
+    });
+    assert.deepEqual(await forged.pair({ profileAlias:'perfil-1', code:'123456' }),
+      { ok:false, code:'failed' });
+    assert.equal(leaked, 0);
+    assert.deepEqual(Object.keys(exposed), ['ok','code']);
+    assert.equal(JSON.stringify(exposed).includes('credential-001'), false);
   }
 
   {
@@ -197,8 +216,10 @@ function fixture(overrides = {}) {
     });
     assert.deepEqual(
       await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
-      { ok: true, code: 'paired', credential: { id: 'credential-001', expiresAt: NOW + 3_600_000 } }
+      { ok: true, code: 'paired' }
     );
+    // Only the trusted store receives the revocable handle, never callers.
+    assert.equal(JSON.stringify(await persisted.pair({ profileAlias: 'perfil-1', code: '12x456' })).includes('credential-001'), false);
     assert.deepEqual(stored, [{
       profileAlias: 'perfil-1',
       id: 'credential-001',
@@ -296,6 +317,72 @@ function fixture(overrides = {}) {
     );
   }
 
+
+  // A malicious fake provider must never execute accessors when its result
+  // reaches the persisted pairing trust boundary.
+  {
+    let getterCalls = 0, storeCalls = 0;
+    const forged = Object.defineProperties({}, {
+      ok: { enumerable: true, value: true },
+      code: { enumerable: true, get() {
+        getterCalls++;
+        throw new Error('private getter side effect');
+      }}
+    });
+    const persisted = createPersistedPairingContract({
+      pairing: {
+        pair: async () => forged,
+        revoke: async () => ({ ok: false, code: 'failed' })
+      },
+      credentialStore: {
+        save: async () => { storeCalls++; return true; },
+        remove: async () => true
+      },
+      auditStore: { append: async () => true }
+    });
+    assert.deepEqual(
+      await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: false, code: 'failed' }
+    );
+    assert.equal(getterCalls, 0);
+    assert.equal(storeCalls, 0);
+  }
+
+  // A malicious provider can supply two safe own data fields and still
+  // attach an inherited toJSON capable of exfiltrating a private token.
+  // Public API outputs must be new allowlisted objects, not adapter references.
+  {
+    let serializations = 0;
+    const hostile = (ok, code) => Object.assign(
+      Object.create({ toJSON() {
+        serializations++;
+        return { leaked: 'synthetic-private-credential' };
+      }}),
+      { ok, code }
+    );
+    const input = { profileAlias: 'perfil-1', code: '123456' };
+    const persisted = createPersistedPairingContract({
+      pairing: {
+        pair: async () => hostile(false, 'invalid'),
+        revoke: async () => hostile(true, 'revoked')
+      },
+      credentialStore: {
+        save: async () => { throw new Error('must not store invalid pairing'); },
+        remove: async () => true
+      },
+      auditStore: { append: async () => true }
+    });
+    const failure = await persisted.pair(input);
+    const revoked = await persisted.revoke({
+      profileAlias: 'perfil-1', credentialId: 'credential-001'
+    });
+    assert.deepEqual(failure, { ok: false, code: 'invalid' });
+    assert.deepEqual(revoked, { ok: true, code: 'revoked' });
+    assert.equal(Object.getPrototypeOf(failure), Object.prototype);
+    assert.equal(Object.getPrototypeOf(revoked), Object.prototype);
+    assert.equal(JSON.stringify({ failure, revoked }).includes('synthetic-private-credential'), false);
+    assert.equal(serializations, 0);
+  }
 
   // A resolved but unacknowledged save must never issue a 'paired' result.
   // Compensation is attempted under the pre-issuance audit evidence.
@@ -577,7 +664,7 @@ function fixture(overrides = {}) {
     const { spawnSync } = require('node:child_process');
     const run = spawnSync('python3', [
       '-m', 'unittest', 'discover',
-      '-s', 'tests', '-p', 'test_factory_control_pairing_audit_contract.py'
+      '-s', 'tests', '-p', 'test_factory_control_pairing_*.py'
     ], {
       cwd: __dirname,
       // Never forward caller-controlled PATH, secrets or executable overrides.
@@ -587,10 +674,11 @@ function fixture(overrides = {}) {
       encoding: 'utf8',
       timeout: 30000
     });
-    assert.equal(run.status, 0, 'pairing Python AC-01..04 failed');
+    assert.equal(run.status, 0, 'pairing Python acceptance failed');
     console.log('pairing-audit Python AC-01..04: ok');
   }
 
+  console.log('pairing-public AC-01..04: ok');
   console.log('factory-control pairing contract: ok');
 })().catch(error => {
   console.error(error);

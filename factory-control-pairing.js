@@ -31,10 +31,18 @@
     return typeof value === 'string' && /^\d{6}$/.test(value);
   }
 
-  function safeResult(ok, code, credential) {
-    const result = { ok, code };
-    if (credential) result.credential = credential;
-    return Object.freeze(result);
+  // Opaque handles never belong to public pairing results, even by JSON serialization.
+  // A WeakMap keeps them reachable only by the trusted internal persistence boundary.
+  const internalCredentialByResult = new WeakMap();
+  // Public result objects are never sufficient to recover opaque credentials.
+  // Only the exact trusted pairing instance can authorize internal persistence.
+  const internalPairingOwner = new WeakMap();
+  function safeResult(ok, code, credential, owner) {
+    const result = Object.freeze({ ok, code });
+    if (credential && owner) {
+      internalCredentialByResult.set(result, Object.freeze({ credential, owner }));
+    }
+    return result;
   }
 
   // A random audit reference correlates concurrent operations without deriving
@@ -97,6 +105,7 @@
       throw new TypeError('Pairing dependencies are required');
     }
 
+    const owner = Object.freeze({});
     async function pair(input) {
       if (!exactKeys(input, ['profileAlias', 'code']) ||
           !validAlias(input.profileAlias) ||
@@ -139,7 +148,7 @@
           input.profileAlias,
           credentialNowMs
         );
-        return safeResult(true, 'paired', credential);
+        return safeResult(true, 'paired', credential, owner);
       } catch (_error) {
         // Collapse pairing/storage adapter failures to the fixed public result.
         return safeResult(false, 'failed');
@@ -166,21 +175,42 @@
       }
     }
 
-    return Object.freeze({ pair, revoke });
+    const contract = Object.freeze({ pair, revoke });
+    internalPairingOwner.set(contract, owner);
+    return contract;
   }
 
 
-  function checkedPairingResult(value) {
-    const paired = value?.code === 'paired';
-    const successful = ['paired', 'revoked'].includes(value?.code);
-    const fields = paired ? ['ok', 'code', 'credential'] : ['ok', 'code'];
-    if (!exactKeys(value, fields) || typeof value.ok !== 'boolean' ||
-        !RESULT_CODES.includes(value.code) || value.ok !== successful ||
-        (paired && (!exactKeys(value.credential, ['id', 'expiresAt']) ||
-          !validId(value.credential.id) || !Number.isSafeInteger(value.credential.expiresAt)))) {
+  function checkedPairingResult(value, trustedOwner = null) {
+    // Never evaluate accessors on an untrusted pairing provider result.
+    // Values are taken only from ordinary enumerable own data descriptors.
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Reflect.ownKeys(value).length !== 2) {
       throw new TypeError('Invalid pairing result');
     }
-    return value;
+    const okField = Object.getOwnPropertyDescriptor(value, 'ok');
+    const codeField = Object.getOwnPropertyDescriptor(value, 'code');
+    if (!okField?.enumerable || !Object.hasOwn(okField, 'value') ||
+        !codeField?.enumerable || !Object.hasOwn(codeField, 'value')) {
+      throw new TypeError('Invalid pairing result');
+    }
+    const ok = okField.value, code = codeField.value;
+    const paired = code === 'paired';
+    const successful = code === 'paired' || code === 'revoked';
+    // Forged enumerable handles are rejected. Only results from our own
+    // createPairingContract can carry the private persistence capability.
+    const record = paired ? internalCredentialByResult.get(value) : null;
+    const credential = trustedOwner !== null && record?.owner === trustedOwner
+      ? record.credential : null;
+    if (typeof ok !== 'boolean' || !RESULT_CODES.includes(code) ||
+        ok !== successful ||
+        (paired && (!exactKeys(credential, ['id', 'expiresAt']) ||
+          !validId(credential.id) || !Number.isSafeInteger(credential.expiresAt)))) {
+      throw new TypeError('Invalid pairing result');
+    }
+    // Never return an adapter-owned object to public callers: it can have an
+    // inherited toJSON/proxy surface even when its own data keys are minimal.
+    return paired ? Object.freeze({ ok, code, credential }) : Object.freeze({ ok, code });
   }
 
   function createPersistedPairingContract({ pairing, credentialStore, auditStore } = {}) {
@@ -189,6 +219,10 @@
         typeof credentialStore.remove !== 'function') {
       throw new TypeError('Persisted pairing dependencies are required');
     }
+
+    // This brand is internal; a copied/fake pairing provider cannot use a
+    // public {ok,code} result as a credential retrieval capability.
+    const trustedOwner = internalPairingOwner.get(pairing) ?? null;
 
     async function recordCompensation(input, auditId) {
       // Once credential issuance has happened, remote revocation is a security
@@ -235,7 +269,7 @@
           event: 'pairing_compensation', phase: 'eligible', auditId
         }));
         if (recorded !== true) return safeResult(false, 'failed');
-        const result = checkedPairingResult(await pairing.pair(input));
+        const result = checkedPairingResult(await pairing.pair(input), trustedOwner);
         if (result.code !== 'paired') return result;
         const row = {
           profileAlias: input.profileAlias,
@@ -257,7 +291,7 @@
           }, auditId);
           return safeResult(false, 'failed');
         }
-        return result;
+        return safeResult(true, 'paired');
       } catch (_error) { // NOSONAR: adapter details are intentionally collapsed to fixed public result codes.
         // Deliberately discard adapter exception details; the public contract exposes only fixed result codes.
         return safeResult(false, 'failed');
