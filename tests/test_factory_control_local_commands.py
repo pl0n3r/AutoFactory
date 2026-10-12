@@ -41,6 +41,12 @@ class FactoryControlLocalCommandsTests(unittest.TestCase):
     def test_ac06_fail_closed_backoff_and_autopilot_isolation(self):
         self.case("ac06")
 
+    def test_ac07_local_poller_permission_and_isolation(self):
+        self.case("ac07")
+
+    def test_ac08_local_poller_revocation_and_backoff(self):
+        self.case("ac08")
+
 
 if __name__ == "__main__":
     unittest.main()
