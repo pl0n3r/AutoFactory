@@ -57,16 +57,30 @@
     return effects;
   }
 
-  function createCommandExecutor({ ledger, authorizer, effects } = {}) {
+  function createCommandExecutor({ ledger, authorizer, effects, auditStore } = {}) {
     if (!ledger || typeof ledger.execute !== 'function' ||
-        !authorizer || typeof authorizer.authorize !== 'function') {
-      throw new TypeError('Ledger and command authorizer are required');
+        typeof ledger.deferOutcome !== 'function' ||
+        !authorizer || typeof authorizer.authorize !== 'function' ||
+        !auditStore || typeof auditStore.append !== 'function') {
+      throw new TypeError('Ledger, authorizer and audit adapter are required');
     }
     const handlers = checkedEffects(effects);
 
+    async function record(phase, outcome) {
+      // Never record IDs, targets, aliases, command payloads or adapter errors.
+      const event = Object.freeze({
+        event: 'command_execution', phase, outcome
+      });
+      try {
+        return await auditStore.append(event) === true;
+      } catch (_error) {
+        return false;
+      }
+    }
+
     async function execute(input, context) {
       return ledger.execute(input, async command => {
-        let approved;
+        let approved = null;
         try {
           approved = await authorizer.authorize({
             id: command.id,
@@ -75,16 +89,34 @@
             payload: command.payload === null ? null : { ...command.payload }
           }, context);
         } catch (_error) {
-          // Persist unauthorized as a terminal receipt so the same command ID
-          // cannot become executable later merely because a grant changes.
+          // Errors are denials. Never expose grant or adapter details.
+        }
+
+        const authorized = sameCommand(command, approved);
+        if (!await record('decision', authorized ? 'authorized' : 'unauthorized')) {
+          // No audit of the decision: no external effect.
+          return { ok: false, code: 'failed' };
+        }
+        if (!authorized) {
+          if (!await record('result', 'unauthorized')) return ledger.deferOutcome();
           return { ok: false, code: 'unauthorized' };
         }
-        if (!sameCommand(command, approved)) {
-          return { ok: false, code: 'unauthorized' };
+
+        let result;
+        try {
+          // This is the only place where a command can cause an effect.
+          result = await handlers[command.action](effectCommand(command));
+        } catch (_error) {
+          result = { ok: false, code: 'failed' };
         }
-        // Effects receive a frozen copy. They cannot mutate the ledger command,
-        // and arbitrary adapter exceptions are collapsed by the ledger to failed.
-        return handlers[command.action](effectCommand(command));
+        const outcome = result?.ok === true && result?.code === 'ok'
+          ? 'ok' : 'failed';
+        if (!await record('result', outcome)) {
+          // Effect may have happened. The ledger retains pending and rejects
+          // a replay even when the fake audit adapter is recreated.
+          return ledger.deferOutcome();
+        }
+        return result;
       });
     }
 
