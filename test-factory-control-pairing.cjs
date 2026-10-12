@@ -686,7 +686,7 @@ function fixture(overrides = {}) {
         const value = {
           credentialId: mode === 'invalid_id' ? 'not valid' : 'credential-001',
           profileAlias: mode === 'wrong_alias' ? 'other-profile' : profileAlias,
-          expiresAt: NOW + (mode === 'expiry' ? 25 : 1) * 3_600_000
+          expiresAt: NOW + (['expiry', 'revoke_false'].includes(mode) ? 25 : 1) * 3_600_000
         };
         return value;
       },
@@ -733,8 +733,10 @@ function fixture(overrides = {}) {
     const x = await postIssueScenario('clock');
     assert.deepEqual(x.result, { ok: false, code: 'failed' });
     assert.deepEqual([x.issued, x.revoked, x.saved, x.active], [1, 1, 0, false]);
-    for (const mode of ['wrong_alias', 'invalid_id', 'throw', 'getter']) {
-      const denied = await postIssueScenario(mode);
+    const unknownResults = await Promise.all(
+      ['wrong_alias', 'invalid_id', 'throw', 'getter'].map(postIssueScenario)
+    );
+    for (const denied of unknownResults) {
       assert.deepEqual(denied.result, { ok: false, code: 'failed' });
       assert.equal(denied.revoked, 0);
       assert.equal(denied.saved, 0);
@@ -756,6 +758,12 @@ function fixture(overrides = {}) {
     assert.equal(x.journal.every(item =>
       Object.keys(item).every(key => ['event', 'phase', 'auditId', 'outcome'].includes(key))), true);
     assert.equal(/credential-001|perfil-1|123456|private adapter/.test(JSON.stringify(x.journal)), false);
+    const noConfirmation = await postIssueScenario('revoke_false');
+    assert.deepEqual(noConfirmation.result, { ok: false, code: 'failed' });
+    assert.deepEqual([noConfirmation.revoked, noConfirmation.active, noConfirmation.saved],
+      [1, true, 0]);
+    assert.equal(noConfirmation.journal.at(-1).outcome, 'not_found');
+    assert.equal(JSON.stringify(noConfirmation.journal).includes('credential-001'), false);
   }
 
   // AC-04: legacy pairing, replay/persistence and explicit revoke assertions
