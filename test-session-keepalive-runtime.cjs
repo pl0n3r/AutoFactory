@@ -19,8 +19,8 @@ function good() {
     }
   };
 }
-function guard(readEvidence, now = () => NOW) {
-  return createAdmissionGuard({ policy, readEvidence, now });
+function guard(readEvidence, now = () => NOW, claimCandidate = () => true) {
+  return createAdmissionGuard({ policy, readEvidence, now, claimCandidate });
 }
 function snapshots(first, second = first) {
   let calls = 0;
@@ -30,7 +30,7 @@ function snapshots(first, second = first) {
 test('AC-01 default disabled and revocation', async () => {
   const valid = good();
   assert.equal((await guard(snapshots(valid)).assess()).status, 'eligible');
-  for (const change of [
+  await Promise.all([
     x => { x.enabled = false; },
     x => { x.snapshot.controls.enabled = false; },
     x => { x.snapshot.controls.manual_pause = true; },
@@ -40,16 +40,16 @@ test('AC-01 default disabled and revocation', async () => {
     x => { x.reservation_valid = false; },
     x => { x.account_open = false; },
     x => { x.same_chat = false; }
-  ]) {
+  ].map(async change => {
     const item = good(); change(item);
     assert.equal((await guard(snapshots(item)).assess()).status, 'denied');
-  }
+  }));
   const absent = good(); delete absent.enabled;
   assert.equal((await guard(snapshots(absent)).assess()).status, 'denied');
 });
 
 test('AC-02 two-phase stale evidence blocks', async () => {
-  for (const change of [
+  await Promise.all([
     x => { x.lease_epoch += 1; },
     x => { x.account_epoch += 1; },
     x => { x.ui_epoch += 1; },
@@ -57,27 +57,30 @@ test('AC-02 two-phase stale evidence blocks', async () => {
     x => { x.snapshot.chat.reservation_active = false; },
     x => { x.snapshot.account.msgs_hour = 9; },
     x => { x.snapshot.controls.manual_pause = true; }
-  ]) {
+  ].map(async change => {
     const first = good(), second = good(); change(second);
     assert.equal((await guard(snapshots(first, second)).assess()).status, 'denied');
-  }
+  }));
   let t = NOW;
   assert.equal((await guard(snapshots(good()), () => t++).assess()).status, 'denied');
   assert.equal((await guard(async () => { throw new Error('private token'); }).assess()).status, 'denied');
 });
 
 test('AC-03 concurrent candidates fail closed', async () => {
-  let release;
+  let enterSecondRead, release;
+  const secondReadEntered = new Promise(resolve => { enterSecondRead = resolve; });
+  const secondReadHeld = new Promise(resolve => { release = resolve; });
   let calls = 0;
   const g = guard(async () => {
     calls++;
-    if (calls === 2) await new Promise(resolve => { release = resolve; });
+    if (calls === 2) {
+      enterSecondRead();
+      await secondReadHeld;
+    }
     return good();
   });
   const p1 = g.assess();
-  // Let the first call reach its second asynchronous read.
-  for (let i = 0; i < 4 && !release; i++) await Promise.resolve();
-  assert.equal(typeof release, 'function');
+  await secondReadEntered;
   const p2 = g.assess();
   release();
   const results = await Promise.all([p1, p2]);
@@ -89,6 +92,27 @@ test('AC-03 concurrent candidates fail closed', async () => {
   const fail = guard(async () => { throw new Error('ambiguous claim'); });
   assert.equal((await fail.assess()).status, 'denied');
   assert.equal((await fail.assess()).status, 'denied');
+
+  // Two independent guards share one injected atomic claim store. Their
+  // individual latches are NOT sufficient to arbitrate a shared account.
+  let claimed = false;
+  const atomicClaim = () => {
+    if (claimed) return false;
+    claimed = true;
+    return true;
+  };
+  const firstGuard = guard(snapshots(good()), () => NOW, atomicClaim);
+  const secondGuard = guard(snapshots(good()), () => NOW, atomicClaim);
+  const sharedResults = await Promise.all([firstGuard.assess(), secondGuard.assess()]);
+  assert.deepEqual(sharedResults.map(x => x.status).sort((a, b) => a.localeCompare(b)),
+    ['denied', 'eligible']);
+  assert.equal(claimed, true);
+
+  // Missing or non-atomic claim confirmation is never promoted to eligibility.
+  const unsafe = [() => Promise.resolve(true), () => ({ ok: true }), () => false];
+  const unsafeResults = await Promise.all(unsafe.map(
+    async claim => (await guard(snapshots(good()), () => NOW, claim).assess()).status));
+  assert.deepEqual(unsafeResults, ['denied', 'denied', 'denied']);
 });
 
 test('AC-04 no runtime send or private output', async () => {
@@ -101,13 +125,14 @@ test('AC-04 no runtime send or private output', async () => {
     x => { x.snapshot.history.retries_s = [1, , 2]; },
     x => { x.snapshot.history.retries_s = [1, -1]; }
   ];
-  for (const change of hostile) {
+  await Promise.all(hostile.map(async change => {
     const x = good(); change(x);
     const result = await guard(snapshots(x)).assess();
     assert.equal(result.status, 'denied');
-    assert.deepEqual(Object.keys(result).sort(), ['reason', 'status']);
+    assert.deepEqual(Object.keys(result).sort((a, b) => a.localeCompare(b)),
+      ['reason', 'status']);
     assert.doesNotMatch(JSON.stringify(result), /private|token|secret|https|prompt|account_id/);
-  }
+  }));
   const fs = require('node:fs');
   const code = fs.readFileSync(require('node:path').join(__dirname, 'session-keepalive-runtime.js'), 'utf8');
   for (const re of [/\bfetch\s*\(/, /XMLHttpRequest/, /\bWebSocket\b/, /\bdocument\./,
