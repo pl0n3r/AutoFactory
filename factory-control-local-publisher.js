@@ -87,6 +87,9 @@
           return false;
         }
         const payload = payloadFrom(await snapshot());
+        // Opt-in may be revoked while gathering the snapshot. Never transmit
+        // from a stale permission/flag read, even on an in-flight alarm tick.
+        if (!(await enabled()) || !(await permission())) return false;
         const result = await post(payload);
         if (result !== true) throw new TypeError('local receiver unavailable');
         failures = 0;

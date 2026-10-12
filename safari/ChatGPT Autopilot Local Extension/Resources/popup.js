@@ -214,7 +214,7 @@ function localPermission(method) {
     try {
       const answer = api[method](...args, done);
       if (answer?.then) answer.then(done, () => done(false));
-    } catch (_error) {
+    } catch (_error) { // NOSONAR: Safari Promise-only API, retry without callback; deny on failure.
       // Safari Promise-only APIs reject callback options. Keep denial fail-closed.
       try {
         const answer = api[method](...args);

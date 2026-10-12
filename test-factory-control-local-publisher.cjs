@@ -167,7 +167,32 @@ async function ac03() {
   await testServiceWorkerGate();
   await testSafariPromiseOnlyApis();
 }
+async function testRevokedConsentBeforePost() {
+  let active = true;
+  let granted = true;
+  let posts = 0;
+  const publisher = api.createPublisher({
+    now: () => 150_000,
+    enabled: async () => active,
+    permission: async () => granted,
+    snapshot: async () => { active = false; return base; },
+    post: async () => { posts++; return true; }
+  });
+  assert.equal(await publisher.publish(), false);
+  assert.equal(posts, 0);
+  const revoked = api.createPublisher({
+    now: () => 150_000,
+    enabled: async () => true,
+    permission: async () => granted,
+    snapshot: async () => { granted = false; return base; },
+    post: async () => { posts++; return true; }
+  });
+  assert.equal(await revoked.publish(), false);
+  assert.equal(posts, 0);
+}
+
 async function ac04() {
+  await testRevokedConsentBeforePost();
   let tick = 120_000, attempts = 0, unrelated = 0;
   const { pub } = withPorts({ now: () => tick, send: () => {
     attempts++; throw new Error('SECRET-private-http-failure');
