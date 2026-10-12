@@ -19,6 +19,8 @@
   // Only coordinates ledgers sharing the same save function in this JS realm.
   // A cross-context/production sender still requires a durable atomic claim.
   const V1_SHARED_QUEUES = new WeakMap();
+  // Same-realm V2 serialization only; independent processes need atomic storage authority.
+  const V2_SHARED_QUEUES = new WeakMap();
 
   function createLedger({ load, save, maxEntries = 256 } = {}) {
     if (!protocol || typeof protocol.command !== 'function' ||
@@ -142,7 +144,7 @@
         !Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 4096) {
       throw new TypeError('A v2 instance, storage adapter and bounded capacity are required');
     }
-    let queue = Promise.resolve();
+    // V2 reads/writes are serialized by the identity of the save adapter.
 
     function checked(receipts) {
       if (!Array.isArray(receipts) || receipts.length > maxEntries) {
@@ -216,6 +218,30 @@
       });
     }
 
+    async function readReceipts() {
+      try {
+        return checked(await load());
+      } catch (_error) {
+        throw new Error('V2 receipt read unavailable');
+      }
+    }
+
+    async function persistAndVerify(expectedReceipts) {
+      try {
+        const expected = checked(expectedReceipts);
+        const acknowledged = await save(expectedReceipts);
+        if (acknowledged === false) throw new Error('Unconfirmed save');
+        // A void/undefined adapter response is never evidence of durability.
+        const stored = checked(await load());
+        if (JSON.stringify(stored) !== JSON.stringify(expected)) {
+          throw new Error('Unconfirmed stored receipt');
+        }
+      } catch (_error) {
+        // Adapter exceptions can contain private account/chat data.
+        throw new Error('V2 receipt persistence not confirmed');
+      }
+    }
+
     async function execute(input, handler) {
       const command = protocol.commandV2(input);
       if (command.instanceId !== instanceId) {
@@ -224,8 +250,9 @@
       if (typeof handler !== 'function') throw new TypeError('Command handler required');
       const key = commandKey(command);
 
-      const task = queue.then(async () => {
-        const receipts = checked(await load());
+      const priorTask = V2_SHARED_QUEUES.get(save) || Promise.resolve();
+      const task = priorTask.then(async () => {
+        const receipts = await readReceipts();
         const prior = receipts.find(receipt => receipt.id === command.id);
         if (prior) {
           if (prior.instanceId !== command.instanceId || prior.commandKey !== key) {
@@ -247,7 +274,7 @@
           enabled: false,
           appliedTabs: []
         };
-        await save([...receipts, pendingReceipt]);
+        await persistAndVerify([...receipts, pendingReceipt]); // before any effect
 
         let ack;
         try {
@@ -284,11 +311,19 @@
           enabled: ack.enabled,
           appliedTabs: ack.appliedTabs
         };
-        await save([...receipts, doneReceipt]);
-        return ack;
+        try {
+          await persistAndVerify([...receipts, doneReceipt]);
+          return ack;
+        } catch (_error) {
+          // The effect may have happened. Keep pending and deny replay until reconciled.
+          return protocol.acknowledgementV2({
+            version: 2, kind: 'ack', id: command.id, instanceId: command.instanceId,
+            ok: false, code: 'not_ready', enabled: false, appliedTabs: []
+          });
+        }
       });
 
-      queue = task.then(() => undefined, () => undefined);
+      V2_SHARED_QUEUES.set(save, task.then(() => undefined, () => undefined));
       return task;
     }
 
