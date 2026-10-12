@@ -93,8 +93,9 @@
     return !!action && Object.hasOwn(action, 'value') && action.value === 'reenganchar';
   }
 
-  function createAdmissionGuard({ policy, readEvidence, now } = {}) {
+  function createAdmissionGuard({ policy, readEvidence, now, claimCandidate } = {}) {
     if (typeof readEvidence !== 'function' || typeof now !== 'function' ||
+        typeof claimCandidate !== 'function' ||
         !policy || typeof policy.evaluate !== 'function') {
       throw new TypeError('Injected offline policy, evidence reader and clock are required');
     }
@@ -120,6 +121,10 @@
         if (!safeInteger(secondTime) || firstTime !== secondTime ||
             first.fingerprint !== second.fingerprint || collision) return deny('stale');
         if (!policyAllows(policy, second.snapshot, secondTime) || collision) return deny('policy');
+        // The caller injects a shared, atomic, durable compare-and-set port.
+        // No async response is accepted: Promise/truthy/unknown never grants a
+        // candidate. This is not a send-time debit or click authorization.
+        if (claimCandidate() !== true || collision) return deny('claim_conflict');
         return ELIGIBLE;
       } catch (_error) {
         return deny('invalid_evidence');
