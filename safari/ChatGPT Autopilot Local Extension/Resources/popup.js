@@ -203,13 +203,32 @@ const localControlToggle = $('factory-control-local-toggle');
 const localControlStatus = $('factory-control-local-status');
 const LOCAL_CONTROL_HOST = 'http://127.0.0.1:8777/*';
 const LOCAL_CONTROL_FLAG = 'factoryControlLocalPublishingEnabled';
+// Restrict fallback to local permission operations; never alter autopilot messaging.
+function localPermission(method) {
+  const api = extensionApi.permissions;
+  if (!api || typeof api[method] !== 'function') return Promise.resolve(false);
+  return new Promise(resolve => {
+    let settled = false;
+    const done = value => { if (!settled) { settled = true; resolve(value === true); } };
+    const args = [{ origins: [LOCAL_CONTROL_HOST] }];
+    try {
+      const answer = api[method](...args, done);
+      if (answer?.then) answer.then(done, () => done(false));
+    } catch (_error) {
+      // Safari Promise-only APIs reject callback options. Keep denial fail-closed.
+      try {
+        const answer = api[method](...args);
+        if (answer?.then) answer.then(done, () => done(false));
+        else done(false);
+      } catch (_again) { done(false); } // NOSONAR: No permission means no publish.
+    }
+  });
+}
 async function refreshLocalControl() {
   try {
     const value = await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),
       { [LOCAL_CONTROL_FLAG]: false });
-    const allowed = extensionApi.permissions?.contains
-      ? await apiCall(extensionApi.permissions.contains.bind(extensionApi.permissions),
-        { origins: [LOCAL_CONTROL_HOST] }) : false;
+    const allowed = await localPermission('contains');
     const enabled = value?.[LOCAL_CONTROL_FLAG] === true && allowed === true;
     localControlToggle.checked = enabled;
     localControlStatus.textContent = enabled ? 'ACTIVO · solo 127.0.0.1' :
@@ -230,15 +249,13 @@ localControlToggle.addEventListener('change', async () => {
     if (requested) {
       if (!extensionApi.permissions?.request) throw new Error('permissions_unavailable');
       // Request in the user-triggered change handler; no permission at install.
-      const granted = await apiCall(extensionApi.permissions.request.bind(extensionApi.permissions),
-        { origins: [LOCAL_CONTROL_HOST] });
+      const granted = await localPermission('request');
       if (granted !== true) throw new Error('permission_denied');
     }
     await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
       { [LOCAL_CONTROL_FLAG]: requested });
     if (!requested && extensionApi.permissions?.remove) {
-      await apiCall(extensionApi.permissions.remove.bind(extensionApi.permissions),
-        { origins: [LOCAL_CONTROL_HOST] });
+      await localPermission('remove');
     }
   } catch (_error) { // NOSONAR: Denied or unavailable permission must silently disable publishing.
     await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),

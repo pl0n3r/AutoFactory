@@ -111,6 +111,52 @@ async function testServiceWorkerGate() {
   assert.equal(posts.length, 1);
 }
 
+async function testSafariPromiseOnlyApis() {
+  const stored = { factoryControlLocalPublishingEnabled: true };
+  const posts = [];
+  let alarmsCreated = 0;
+  const expecting = (args, size) => { if (args.length !== size) throw new TypeError('No callbacks'); };
+  const root = {
+    crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111' },
+    async fetch(url, options) {
+      posts.push({ url, body: JSON.parse(options.body) });
+      return { ok: true };
+    },
+    browser: {
+      storage: {
+        local: {
+          get(...args) { expecting(args, 1); return Promise.resolve({ ...args[0], ...stored }); },
+          set(...args) { expecting(args, 1); Object.assign(stored, args[0]); return Promise.resolve(); }
+        },
+        onChanged: { addListener() {} }
+      },
+      permissions: {
+        contains(...args) { expecting(args, 1); return Promise.resolve(true); },
+        onRemoved: { addListener() {} }
+      },
+      tabs: {
+        query(...args) { expecting(args, 1); return Promise.resolve([{ id: 5 }]); },
+        sendMessage(...args) {
+          expecting(args, 2); return Promise.resolve({ enabled: false, private: 'SECRET' });
+        }
+      },
+      alarms: {
+        create(name, options) { assert.equal(options.periodInMinutes, 0.5);
+          alarmsCreated++; return Promise.resolve(); },
+        clear(...args) { expecting(args, 1); return Promise.resolve(true); },
+        onAlarm: { addListener() {} }
+      },
+      runtime: { onStartup: { addListener() {} }, onInstalled: { addListener() {} } }
+    }
+  };
+  assert.equal(api.installBackground(root), true);
+  await new Promise(setImmediate);
+  assert.equal(alarmsCreated, 1);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].body.state, 'inactivo');
+  assert.equal(JSON.stringify(posts).includes('SECRET'), false);
+}
+
 async function ac03() {
   const { calls, pub } = withPorts({ active: false });
   assert.equal(await pub.publish(), false);
@@ -119,6 +165,7 @@ async function ac03() {
   assert.equal(await denied.pub.publish(), false);
   assert.equal(denied.calls.length, 0);
   await testServiceWorkerGate();
+  await testSafariPromiseOnlyApis();
 }
 async function ac04() {
   let tick = 120_000, attempts = 0, unrelated = 0;

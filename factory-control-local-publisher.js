@@ -121,7 +121,14 @@
         try {
           const result = target[method](...args, done);
           if (result?.then) result.then(done, () => done(null));
-        } catch (_error) { done(null); }
+        } catch (_error) {
+          // Promise-only Safari APIs reject an extra callback argument.
+          try {
+            const result = target[method](...args);
+            if (result?.then) result.then(done, () => done(null));
+            else done(null);
+          } catch (_again) { done(null); } // NOSONAR: Unavailable API fails closed.
+        }
       });
     }
     const enabled = async () => {
