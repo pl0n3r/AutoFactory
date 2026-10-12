@@ -668,3 +668,13 @@ El resultado nunca contiene `alertText`, email, token, texto de chat ni errores.
 Este reader aún no está conectado a `content.js`, background, manifest, storage o
 transporte. No cambia `datos.yml`: sigue siendo una frontera puramente local y
 efímera. D-061 continúa bloqueando red, pairing real, permisos y go-live.
+
+## Publicación de estado al orquestador local (AutoFactory #156)
+
+Excepción **exclusivamente local** al puente HTTPS descrito arriba. Solo con un opt-in explícito en el popup y el permiso opcional exacto `http://127.0.0.1:8777/*`, el service worker Chrome/Safari puede enviar `POST http://127.0.0.1:8777/api/af`, de forma periódica por `chrome.alarms` (30 segundos) mientras el popup está cerrado. Sin flag, permiso, receptor o capacidad de obtener un ID opaco local, **no se transmite nada**; toda falla se suprime, con backoff acotado, sin impedir el piloto automático. No se crean permisos de host remotos ni se activa ControlBot en Hostinger.
+
+Se serializan exclusivamente `instance_id` (UUID generado en storage local, no identificador de cuenta), `label` (constante no personal), `state`, `chats_open`, `idle_reason` y opcionales `current_task`, `limit_resets_at`, `idle_since` tras validación estricta. `state=activo` se usa solo si un content script confirma `enabled=true`; en ausencia de respuesta o señal fresca se usa `desconocido`. No se deduce un Issue reservado desde pestañas ni se inventa un reset; si no existe una señal verificable, los campos opcionales se omiten. Los datos de telemetría granulares por chat pertenecen al Issue #168 y no se envían aquí.
+
+Nunca transmitir: chats, prompts, respuestas, títulos, URLs, cookies, tokens, correos o ID de cuenta. El servicio local debe seguir validando Origen, tipo JSON, límite de bytes, forma exacta, consumo autorizado y loopback. La extensión conserva el flag apagado por defecto; el usuario puede apagarlo desde el popup, lo que cancela el alarm y elimina el permiso opcional. Si Safari no implementa `permissions.request`, la activación falla cerrada. No hay empaquetado instalable, publicación ni despliegue en este Issue.
+
+**QA offline:** `node test-factory-control-local-publisher.cjs`; `python3 -m unittest tests.test_factory_control_local_publisher`; `node test-extension-integrity.cjs`; `python3 -m unittest tests.test_release_artifact_attestation`; `npm test`. Antes de fusionar: CI y aceptación exact-SHA, revisión, V3 y protecciones vigentes; live/instalación quedan fuera de alcance.

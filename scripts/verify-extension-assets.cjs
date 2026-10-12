@@ -8,6 +8,7 @@ const SAFARI_RESOURCES = [
 ];
 const EXPECTED_PERMISSIONS = ['activeTab', 'alarms', 'storage', 'tabs'];
 const EXPECTED_HOSTS = ['https://chatgpt.com/*'];
+const EXPECTED_OPTIONAL_HOSTS = ['http://127.0.0.1:8777/*'];
 
 function fail(reason) {
   throw new TypeError('Extension preflight: ' + reason);
@@ -164,7 +165,7 @@ function validateExtensionTree(root, io = fs) {
     fail('Chrome/package/lock version mismatch');
   }
   if (manifest.optional_permissions !== undefined ||
-      manifest.optional_host_permissions !== undefined ||
+      !validStringList(manifest.optional_host_permissions, EXPECTED_OPTIONAL_HOSTS) ||
       !validStringList(manifest.permissions, EXPECTED_PERMISSIONS) ||
       !validStringList(manifest.host_permissions, EXPECTED_HOSTS)) {
     fail('unexpected permission or host before legal go-live');

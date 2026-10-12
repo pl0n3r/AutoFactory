@@ -197,3 +197,72 @@ extensionApi.storage.onChanged.addListener((changes, area) => {
 });
 setInterval(refreshLearning, 5000);
 setInterval(refreshSharedLearning, 15000);
+
+
+const localControlToggle = $('factory-control-local-toggle');
+const localControlStatus = $('factory-control-local-status');
+const LOCAL_CONTROL_HOST = 'http://127.0.0.1:8777/*';
+const LOCAL_CONTROL_FLAG = 'factoryControlLocalPublishingEnabled';
+// Restrict fallback to local permission operations; never alter autopilot messaging.
+function localPermission(method) {
+  const api = extensionApi.permissions;
+  if (!api || typeof api[method] !== 'function') return Promise.resolve(false);
+  return new Promise(resolve => {
+    let settled = false;
+    const done = value => { if (!settled) { settled = true; resolve(value === true); } };
+    const args = [{ origins: [LOCAL_CONTROL_HOST] }];
+    try {
+      const answer = api[method](...args, done);
+      if (answer?.then) answer.then(done, () => done(false));
+    } catch (_error) { // NOSONAR: Safari Promise-only API, retry without callback; deny on failure.
+      // Safari Promise-only APIs reject callback options. Keep denial fail-closed.
+      try {
+        const answer = api[method](...args);
+        if (answer?.then) answer.then(done, () => done(false));
+        else done(false);
+      } catch (_again) { done(false); } // NOSONAR: No permission means no publish.
+    }
+  });
+}
+async function refreshLocalControl() {
+  try {
+    const value = await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),
+      { [LOCAL_CONTROL_FLAG]: false });
+    const allowed = await localPermission('contains');
+    const enabled = value?.[LOCAL_CONTROL_FLAG] === true && allowed === true;
+    localControlToggle.checked = enabled;
+    localControlStatus.textContent = enabled ? 'ACTIVO · solo 127.0.0.1' :
+      'APAGADO · no envía datos';
+    if (!allowed && value?.[LOCAL_CONTROL_FLAG] === true) {
+      await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+        { [LOCAL_CONTROL_FLAG]: false });
+    }
+  } catch (_error) { // NOSONAR: Fail closed when permissions or storage fail; do not expose browser errors.
+    localControlToggle.checked = false;
+    localControlStatus.textContent = 'APAGADO · permisos no disponibles';
+  }
+}
+localControlToggle.addEventListener('change', async () => {
+  const requested = localControlToggle.checked;
+  localControlToggle.disabled = true;
+  try {
+    if (requested) {
+      if (!extensionApi.permissions?.request) throw new Error('permissions_unavailable');
+      // Request in the user-triggered change handler; no permission at install.
+      const granted = await localPermission('request');
+      if (granted !== true) throw new Error('permission_denied');
+    }
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+      { [LOCAL_CONTROL_FLAG]: requested });
+    if (!requested && extensionApi.permissions?.remove) {
+      await localPermission('remove');
+    }
+  } catch (_error) { // NOSONAR: Denied or unavailable permission must silently disable publishing.
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+      { [LOCAL_CONTROL_FLAG]: false }).catch(() => { /* NOSONAR: Fail closed if storage unavailable. */ });
+  } finally {
+    localControlToggle.disabled = false;
+    void refreshLocalControl();
+  }
+});
+void refreshLocalControl();

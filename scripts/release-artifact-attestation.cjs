@@ -24,6 +24,7 @@ const EXPECTED_RUNTIME_ASSETS = Object.freeze([
   'content.js',
   'factory-control-authorization.js',
   'factory-control-instance-transport.js',
+  'factory-control-local-publisher.js',
   'factory-control-instance.js',
   'factory-control-ledger.js',
   'factory-control-protocol.js',
