@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ChatGPT Autopilot Local",
   "version": "1.7.0",
-  "description": "Contin\u00faa chats usando el campo y bot\u00f3n reales del HTML, sin coordenadas de pantalla.",
+  "description": "Continúa chats usando el campo y botón reales del HTML, sin coordenadas de pantalla.",
   "permissions": [
     "activeTab",
     "storage",
@@ -43,5 +43,8 @@
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
     "128": "icons/icon-128.png"
-  }
+  },
+  "optional_host_permissions": [
+    "http://127.0.0.1:8777/*"
+  ]
 }

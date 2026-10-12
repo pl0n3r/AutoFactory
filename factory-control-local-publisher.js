@@ -107,7 +107,86 @@
     return Object.freeze({ publish, payloadFrom });
   }
 
-  // Browser worker integration is installed by background-entry.js after V3 renewal.
+  function installBackground(root = globalThis) {
+    const extension = root.chrome || root.browser;
+    if (!extension?.storage?.local || !extension?.alarms ||
+        !extension?.permissions || !extension?.tabs || typeof root.fetch !== 'function') {
+      return false; // Missing permission or runtime capability never enables traffic.
+    }
+    // Both callback-based Chrome and Promise-based Safari APIs are supported.
+    function call(target, method, ...args) {
+      return new Promise(resolve => {
+        let settled = false;
+        const done = value => { if (!settled) { settled = true; resolve(value); } };
+        try {
+          const result = target[method](...args, done);
+          if (result?.then) result.then(done, () => done(null));
+        } catch (_error) { done(null); }
+      });
+    }
+    const enabled = async () => {
+      const stored = await call(extension.storage.local, 'get', { [FLAG]: false });
+      return stored?.[FLAG] === true;
+    };
+    const permission = async () =>
+      await call(extension.permissions, 'contains', { origins: [HOST] }) === true;
+    async function snapshot() {
+      const stored = await call(extension.storage.local, 'get', { [INSTANCE]: null });
+      let instance_id = stored?.[INSTANCE];
+      if (!id(instance_id)) {
+        instance_id = root.crypto?.randomUUID?.();
+        if (!id(instance_id)) throw new TypeError('missing opaque instance ID');
+        await call(extension.storage.local, 'set', { [INSTANCE]: instance_id });
+      }
+      const found = await call(extension.tabs, 'query', { url: ['https://chatgpt.com/*'] });
+      if (!Array.isArray(found)) throw new TypeError('tab snapshot unavailable');
+      const tabs = found.filter(t => Number.isSafeInteger(t?.id) && t.id >= 0).slice(0, 99);
+      const observed = await Promise.all(tabs.map(async tab => {
+        const signal = await call(extension.tabs, 'sendMessage',
+          tab.id, { type: 'autopilot:get-status' });
+        // No free text, URLs or account details from content scripts are read.
+        return typeof signal?.enabled === 'boolean' ? signal.enabled : null;
+      }));
+      const complete = observed.length === tabs.length && observed.every(x => x !== null);
+      const active = observed.some(x => x === true);
+      const state = active ? 'activo' :
+        complete ? 'inactivo' : 'desconocido';
+      return {
+        instance_id, label: 'AutoFactory', state, chats_open: tabs.length,
+        idle_reason: active ? 'activo' : 'desconocido'
+      };
+    }
+    const post = async payload => {
+      const response = await root.fetch(ENDPOINT, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'omit', mode: 'cors', redirect: 'error', cache: 'no-store',
+        referrerPolicy: 'no-referrer', body: JSON.stringify(payload)
+      });
+      return response?.ok === true;
+    };
+    const publisher = createPublisher({ now: Date.now, enabled, permission, snapshot, post });
+    async function reconcile() {
+      try {
+        if (await enabled() && await permission()) {
+          await call(extension.alarms, 'create', ALARM, { periodInMinutes: 0.5 });
+          void publisher.publish();
+        } else {
+          await call(extension.alarms, 'clear', ALARM);
+        }
+      } catch (_ignored) { /* No impact on autopilot. */ }
+    }
+    extension.alarms.onAlarm?.addListener(alarm => {
+      if (alarm?.name === ALARM) void publisher.publish();
+    });
+    extension.storage.onChanged?.addListener((changes, area) => {
+      if (area === 'local' && Object.hasOwn(changes, FLAG)) void reconcile();
+    });
+    extension.permissions.onRemoved?.addListener(() => { void reconcile(); });
+    extension.runtime?.onStartup?.addListener(() => { void reconcile(); });
+    extension.runtime?.onInstalled?.addListener(() => { void reconcile(); });
+    void reconcile();
+    return true;
+  }
   return Object.freeze({ HOST, ENDPOINT, FLAG, INSTANCE, ALARM,
-    STATES, REASONS, payloadFrom, createPublisher });
+    STATES, REASONS, payloadFrom, createPublisher, installBackground });
 });

@@ -197,3 +197,55 @@ extensionApi.storage.onChanged.addListener((changes, area) => {
 });
 setInterval(refreshLearning, 5000);
 setInterval(refreshSharedLearning, 15000);
+
+
+const localControlToggle = $('factory-control-local-toggle');
+const localControlStatus = $('factory-control-local-status');
+const LOCAL_CONTROL_HOST = 'http://127.0.0.1:8777/*';
+const LOCAL_CONTROL_FLAG = 'factoryControlLocalPublishingEnabled';
+async function refreshLocalControl() {
+  try {
+    const value = await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),
+      { [LOCAL_CONTROL_FLAG]: false });
+    const allowed = extensionApi.permissions?.contains
+      ? await apiCall(extensionApi.permissions.contains.bind(extensionApi.permissions),
+        { origins: [LOCAL_CONTROL_HOST] }) : false;
+    const enabled = value?.[LOCAL_CONTROL_FLAG] === true && allowed === true;
+    localControlToggle.checked = enabled;
+    localControlStatus.textContent = enabled ? 'ACTIVO · solo 127.0.0.1' :
+      'APAGADO · no envía datos';
+    if (!allowed && value?.[LOCAL_CONTROL_FLAG] === true) {
+      await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+        { [LOCAL_CONTROL_FLAG]: false });
+    }
+  } catch (_error) {
+    localControlToggle.checked = false;
+    localControlStatus.textContent = 'APAGADO · permisos no disponibles';
+  }
+}
+localControlToggle.addEventListener('change', async () => {
+  const requested = localControlToggle.checked;
+  localControlToggle.disabled = true;
+  try {
+    if (requested) {
+      if (!extensionApi.permissions?.request) throw new Error('permissions_unavailable');
+      // Request in the user-triggered change handler; no permission at install.
+      const granted = await apiCall(extensionApi.permissions.request.bind(extensionApi.permissions),
+        { origins: [LOCAL_CONTROL_HOST] });
+      if (granted !== true) throw new Error('permission_denied');
+    }
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+      { [LOCAL_CONTROL_FLAG]: requested });
+    if (!requested && extensionApi.permissions?.remove) {
+      await apiCall(extensionApi.permissions.remove.bind(extensionApi.permissions),
+        { origins: [LOCAL_CONTROL_HOST] });
+    }
+  } catch (_error) {
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+      { [LOCAL_CONTROL_FLAG]: false }).catch(() => {});
+  } finally {
+    localControlToggle.disabled = false;
+    void refreshLocalControl();
+  }
+});
+void refreshLocalControl();
