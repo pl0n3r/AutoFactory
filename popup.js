@@ -266,3 +266,73 @@ localControlToggle.addEventListener('change', async () => {
   }
 });
 void refreshLocalControl();
+
+
+// This panel is configuration-only. It installs no network or command handlers.
+const lanHost = $('factory-control-lan-host');
+const lanKey = $('factory-control-lan-key');
+const lanSave = $('factory-control-lan-save');
+const lanClear = $('factory-control-lan-clear');
+const lanToggle = $('factory-control-lan-toggle');
+const lanStatus = $('factory-control-lan-status');
+const LAN_HOST = 'factoryControlLanOriginV1';
+const LAN_KEY = 'factoryControlLanAgentKeyV1';
+const LAN_ENABLED = 'factoryControlLanCommandsEnabled';
+const lanGuard = globalThis.ChatGPTAutopilotLocalCommands;
+lanToggle.checked = false;
+lanToggle.disabled = true;
+function lanFeedback(value) {
+  lanStatus.textContent = value;
+  lanStatus.classList.add('paused');
+  lanStatus.classList.remove('active');
+}
+async function loadLanSetup() {
+  lanToggle.checked = false;
+  lanToggle.disabled = true;
+  lanKey.value = ''; // Never reflect a saved secret into the DOM.
+  try {
+    const stored = await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),
+      { [LAN_HOST]: null, [LAN_KEY]: null, [LAN_ENABLED]: false });
+    let host = '';
+    try {
+      if (typeof stored?.[LAN_HOST] === 'string') {
+        host = lanGuard.privateOrigin(stored[LAN_HOST]);
+      }
+    } catch (_error) { /* Bad host remains unusable. */ }
+    lanHost.value = host;
+    lanFeedback(host && typeof stored?.[LAN_KEY] === 'string'
+      ? 'GUARDADO · órdenes deshabilitadas'
+      : 'DESACTIVADO · sin conexión');
+  } catch (_error) { lanFeedback('NO DISPONIBLE · almacenamiento local inaccesible'); }
+}
+lanSave.addEventListener('click', async () => {
+  lanSave.disabled = true;
+  try {
+    const origin = lanGuard.privateOrigin(lanHost.value.trim());
+    const secret = lanKey.value;
+    if (typeof secret !== 'string' || secret.length < 12 ||
+        secret.length > 256 || !/^[\x21-\x7e]+$/.test(secret)) {
+      throw new TypeError('invalid agent key');
+    }
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local), {
+      [LAN_HOST]: origin, [LAN_KEY]: secret, [LAN_ENABLED]: false
+    });
+    lanKey.value = '';
+    lanFeedback('GUARDADO · sin transporte ni permisos activos');
+  } catch (_error) { lanFeedback('NO GUARDADO · datos o almacenamiento inválidos'); }
+  finally { lanSave.disabled = false; }
+});
+lanClear.addEventListener('click', async () => {
+  lanClear.disabled = true;
+  try {
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+      { [LAN_ENABLED]: false });
+    await apiCall(extensionApi.storage.local.remove.bind(extensionApi.storage.local),
+      [LAN_HOST, LAN_KEY]);
+    lanHost.value = '';
+    lanKey.value = '';
+    lanFeedback('BORRADO · control LAN deshabilitado');
+  } catch (_error) { lanFeedback('ERROR · borrado local no confirmado'); }
+  finally { lanClear.disabled = false; }
+});
+void loadLanSetup();

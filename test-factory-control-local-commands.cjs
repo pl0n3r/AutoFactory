@@ -171,7 +171,29 @@ async function ac08() {
   assert.equal(await waiting,'revoked');
   assert.equal(apply,1);
 }
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08};
+
+async function ac09() {
+  const fs=require('node:fs'),path=require('node:path');
+  const safari=path.join(__dirname,'safari','ChatGPT Autopilot Local Extension','Resources');
+  const html=fs.readFileSync(path.join(__dirname,'popup.html'),'utf8');
+  const popup=fs.readFileSync(path.join(__dirname,'popup.js'),'utf8');
+  assert.ok(html.includes('id="factory-control-lan-host"'));
+  assert.ok(html.includes('id="factory-control-lan-key" type="password"'));
+  assert.ok(html.includes('id="factory-control-lan-toggle"'));
+  assert.ok(html.includes('factory-control-local-commands.js"></script><script src="popup.js"'));
+  const stage=popup.slice(popup.indexOf('// This panel is configuration-only.'));
+  assert.ok(stage.includes('lanToggle.disabled = true'));
+  assert.ok(stage.includes('[LAN_ENABLED]: false'));
+  assert.ok(stage.includes('lanGuard.privateOrigin(lanHost.value.trim())'));
+  assert.ok(stage.includes("lanKey.value = ''"));
+  assert.equal(stage.includes('fetch('),false);
+  assert.equal(stage.includes('permissions.request'),false);
+  for(const file of ['popup.js','popup.html','factory-control-local-commands.js']) {
+    assert.deepEqual(fs.readFileSync(path.join(__dirname,file)),
+      fs.readFileSync(path.join(safari,file)));
+  }
+}
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
