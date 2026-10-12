@@ -208,7 +208,9 @@
           !validId(credential.id) || !Number.isSafeInteger(credential.expiresAt)))) {
       throw new TypeError('Invalid pairing result');
     }
-    return paired ? Object.freeze({ ok, code, credential }) : value;
+    // Never return an adapter-owned object to public callers: it can have an
+    // inherited toJSON/proxy surface even when its own data keys are minimal.
+    return paired ? Object.freeze({ ok, code, credential }) : Object.freeze({ ok, code });
   }
 
   function createPersistedPairingContract({ pairing, credentialStore, auditStore } = {}) {

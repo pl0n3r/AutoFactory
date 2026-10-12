@@ -348,6 +348,42 @@ function fixture(overrides = {}) {
     assert.equal(storeCalls, 0);
   }
 
+  // A malicious provider can supply two safe own data fields and still
+  // attach an inherited toJSON capable of exfiltrating a private token.
+  // Public API outputs must be new allowlisted objects, not adapter references.
+  {
+    let serializations = 0;
+    const hostile = (ok, code) => Object.assign(
+      Object.create({ toJSON() {
+        serializations++;
+        return { leaked: 'synthetic-private-credential' };
+      }}),
+      { ok, code }
+    );
+    const input = { profileAlias: 'perfil-1', code: '123456' };
+    const persisted = createPersistedPairingContract({
+      pairing: {
+        pair: async () => hostile(false, 'invalid'),
+        revoke: async () => hostile(true, 'revoked')
+      },
+      credentialStore: {
+        save: async () => { throw new Error('must not store invalid pairing'); },
+        remove: async () => true
+      },
+      auditStore: { append: async () => true }
+    });
+    const failure = await persisted.pair(input);
+    const revoked = await persisted.revoke({
+      profileAlias: 'perfil-1', credentialId: 'credential-001'
+    });
+    assert.deepEqual(failure, { ok: false, code: 'invalid' });
+    assert.deepEqual(revoked, { ok: true, code: 'revoked' });
+    assert.equal(Object.getPrototypeOf(failure), Object.prototype);
+    assert.equal(Object.getPrototypeOf(revoked), Object.prototype);
+    assert.equal(JSON.stringify({ failure, revoked }).includes('synthetic-private-credential'), false);
+    assert.equal(serializations, 0);
+  }
+
   // A resolved but unacknowledged save must never issue a 'paired' result.
   // Compensation is attempted under the pre-issuance audit evidence.
   {
