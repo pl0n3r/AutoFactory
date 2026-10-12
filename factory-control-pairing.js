@@ -77,19 +77,27 @@
   }
 
   function checkedCredential(value, profileAlias, nowMs) {
+    // Issuer metadata is untrusted. Direct property access would execute
+    // accessor getters after a remote credential may already exist.
     const fields = ['credentialId', 'profileAlias', 'expiresAt'];
-    if (!exactKeys(value, fields) ||
-        !validId(value.credentialId) ||
-        value.profileAlias !== profileAlias ||
-        !Number.isSafeInteger(value.expiresAt) ||
-        value.expiresAt <= nowMs ||
-        value.expiresAt > nowMs + MAX_CREDENTIAL_FUTURE_MS) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Reflect.ownKeys(value).length !== fields.length) {
       throw new TypeError('Invalid opaque credential');
     }
-    return Object.freeze({
-      id: value.credentialId,
-      expiresAt: value.expiresAt
-    });
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (!fields.every(field => Object.hasOwn(descriptors, field) &&
+        descriptors[field].enumerable && Object.hasOwn(descriptors[field], 'value'))) {
+      throw new TypeError('Invalid opaque credential');
+    }
+    const id = descriptors.credentialId.value;
+    const alias = descriptors.profileAlias.value;
+    const expiry = descriptors.expiresAt.value;
+    if (!validId(id) || alias !== profileAlias ||
+        !Number.isSafeInteger(expiry) || expiry <= nowMs ||
+        expiry > nowMs + MAX_CREDENTIAL_FUTURE_MS) {
+      throw new TypeError('Invalid opaque credential');
+    }
+    return Object.freeze({ id, expiresAt: expiry });
   }
 
   function createPairingContract({
