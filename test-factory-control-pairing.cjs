@@ -734,7 +734,7 @@ function fixture(overrides = {}) {
     assert.deepEqual(x.result, { ok: false, code: 'failed' });
     assert.deepEqual([x.issued, x.revoked, x.saved, x.active], [1, 1, 0, false]);
     const unknownResults = await Promise.all(
-      ['wrong_alias', 'invalid_id', 'throw', 'getter'].map(postIssueScenario)
+      ['wrong_alias', 'invalid_id', 'throw', 'getter'].map(mode => postIssueScenario(mode))
     );
     for (const denied of unknownResults) {
       assert.deepEqual(denied.result, { ok: false, code: 'failed' });
