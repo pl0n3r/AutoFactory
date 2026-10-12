@@ -25,6 +25,7 @@ ASSETS = (
     "content.js",
     "factory-control-authorization.js",
     "factory-control-instance-transport.js",
+    "factory-control-local-publisher.js",
     "factory-control-instance.js",
     "factory-control-ledger.js",
     "factory-control-protocol.js",
@@ -61,6 +62,7 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
             "version": VERSION,
             "permissions": ["activeTab", "storage", "tabs", "alarms"],
             "host_permissions": ["https://chatgpt.com/*"],
+            "optional_host_permissions": ["http://127.0.0.1:8777/*"],
             "action": {
                 "default_popup": "popup.html",
                 "default_icon": {
@@ -122,7 +124,7 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
             "'factory-control-instance.js','factory-control-runtime.js',"
             "'factory-control-instance-transport.js','shared-learning-protocol.js',"
             "'shared-learning-sync.js','recovery-incident.js','background.js',"
-            "'account-budget-background.js');",
+            "'account-budget-background.js', 'factory-control-local-publisher.js');",
         )
 
         for relative in ASSETS:
