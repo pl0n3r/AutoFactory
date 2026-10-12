@@ -49,13 +49,11 @@ function fixture(overrides = {}) {
   {
     const { contract } = fixture();
     const result = await contract.pair({ profileAlias: 'perfil-1', code: '123456' });
-    assert.deepEqual(result, {
-      ok: true,
-      code: 'paired',
-      credential: { id: 'credential-001', expiresAt: NOW + 3_600_000 }
-    });
+    assert.deepEqual(result, { ok: true, code: 'paired' });
     assert.equal(Object.isFrozen(result), true);
-    assert.equal(Object.isFrozen(result.credential), true);
+    assert.equal(Object.hasOwn(result, 'credential'), false);
+    assert.deepEqual(Object.keys(result), ['ok', 'code']);
+    assert.equal(JSON.stringify(result).includes('credential-001'), false);
   }
 
   {
@@ -197,8 +195,10 @@ function fixture(overrides = {}) {
     });
     assert.deepEqual(
       await persisted.pair({ profileAlias: 'perfil-1', code: '123456' }),
-      { ok: true, code: 'paired', credential: { id: 'credential-001', expiresAt: NOW + 3_600_000 } }
+      { ok: true, code: 'paired' }
     );
+    // Only the trusted store receives the revocable handle, never callers.
+    assert.equal(JSON.stringify(await persisted.pair({ profileAlias: 'perfil-1', code: '12x456' })).includes('credential-001'), false);
     assert.deepEqual(stored, [{
       profileAlias: 'perfil-1',
       id: 'credential-001',
@@ -577,7 +577,7 @@ function fixture(overrides = {}) {
     const { spawnSync } = require('node:child_process');
     const run = spawnSync('python3', [
       '-m', 'unittest', 'discover',
-      '-s', 'tests', '-p', 'test_factory_control_pairing_audit_contract.py'
+      '-s', 'tests', '-p', 'test_factory_control_pairing_*.py'
     ], {
       cwd: __dirname,
       // Never forward caller-controlled PATH, secrets or executable overrides.
@@ -587,10 +587,11 @@ function fixture(overrides = {}) {
       encoding: 'utf8',
       timeout: 30000
     });
-    assert.equal(run.status, 0, 'pairing Python AC-01..04 failed');
+    assert.equal(run.status, 0, 'pairing Python acceptance failed');
     console.log('pairing-audit Python AC-01..04: ok');
   }
 
+  console.log('pairing-public AC-01..04: ok');
   console.log('factory-control pairing contract: ok');
 })().catch(error => {
   console.error(error);

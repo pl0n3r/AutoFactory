@@ -31,10 +31,13 @@
     return typeof value === 'string' && /^\d{6}$/.test(value);
   }
 
+  // Opaque handles never belong to public pairing results, even by JSON serialization.
+  // A WeakMap keeps them reachable only by the trusted internal persistence boundary.
+  const internalCredentialByResult = new WeakMap();
   function safeResult(ok, code, credential) {
-    const result = { ok, code };
-    if (credential) result.credential = credential;
-    return Object.freeze(result);
+    const result = Object.freeze({ ok, code });
+    if (credential) internalCredentialByResult.set(result, credential);
+    return result;
   }
 
   // A random audit reference correlates concurrent operations without deriving
@@ -173,14 +176,17 @@
   function checkedPairingResult(value) {
     const paired = value?.code === 'paired';
     const successful = ['paired', 'revoked'].includes(value?.code);
-    const fields = paired ? ['ok', 'code', 'credential'] : ['ok', 'code'];
-    if (!exactKeys(value, fields) || typeof value.ok !== 'boolean' ||
+    // Forged enumerable handles are rejected. Only results from our own
+    // createPairingContract can carry the private persistence capability.
+    const credential = paired && value && typeof value === 'object'
+      ? internalCredentialByResult.get(value) : null;
+    if (!exactKeys(value, ['ok', 'code']) || typeof value.ok !== 'boolean' ||
         !RESULT_CODES.includes(value.code) || value.ok !== successful ||
-        (paired && (!exactKeys(value.credential, ['id', 'expiresAt']) ||
-          !validId(value.credential.id) || !Number.isSafeInteger(value.credential.expiresAt)))) {
+        (paired && (!exactKeys(credential, ['id', 'expiresAt']) ||
+          !validId(credential.id) || !Number.isSafeInteger(credential.expiresAt)))) {
       throw new TypeError('Invalid pairing result');
     }
-    return value;
+    return paired ? Object.freeze({ ok: value.ok, code: value.code, credential }) : value;
   }
 
   function createPersistedPairingContract({ pairing, credentialStore, auditStore } = {}) {
@@ -257,7 +263,7 @@
           }, auditId);
           return safeResult(false, 'failed');
         }
-        return result;
+        return safeResult(true, 'paired');
       } catch (_error) { // NOSONAR: adapter details are intentionally collapsed to fixed public result codes.
         // Deliberately discard adapter exception details; the public contract exposes only fixed result codes.
         return safeResult(false, 'failed');
