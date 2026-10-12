@@ -444,7 +444,7 @@ const memory = () => {
       preEffectCalls += 1;
       return { ok: true, code: 'ok', enabled: false, appliedTabs: [] };
     }),
-    /storage unavailable/
+    /V2 receipt persistence not confirmed/
   );
   assert.equal(preEffectCalls, 0);
 
