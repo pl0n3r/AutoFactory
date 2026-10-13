@@ -1,0 +1,36 @@
+version: 2
+# Actualizaciones agrupadas y semanales: pocos PRs, para no cargar GitHub ni a los agentes.
+# Los majors se planifican explícitamente y no abren PRs automáticos.
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    groups:
+      npm-minor:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - "tipo: mejora"
+      - "prioridad: media"
+      - "estado: en revisión"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    groups:
+      github-actions-minor:
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - "tipo: mejora"
+      - "prioridad: media"
+      - "estado: en revisión"
