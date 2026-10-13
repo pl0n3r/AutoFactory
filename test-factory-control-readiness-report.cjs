@@ -145,7 +145,13 @@ function ac03() {
 const tests = { 'AC-01': ac01, 'AC-02': ac02, 'AC-03': ac03 };
 if (require.main === module) {
   const name = process.argv[2];
-  if (!Object.hasOwn(tests, name)) {
+  if (name === undefined) {
+    // Sin argumento (npm test) se ejecutan todos los criterios; con argumento, uno solo.
+    for (const [id, run] of Object.entries(tests)) {
+      run();
+      process.stdout.write(id + ' PASS\n');
+    }
+  } else if (!Object.hasOwn(tests, name)) {
     process.stderr.write('unknown acceptance criterion\n');
     process.exitCode = 2;
   } else {
