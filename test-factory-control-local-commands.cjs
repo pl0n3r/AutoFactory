@@ -425,7 +425,43 @@ async function ac13() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13};
+
+async function ac14() {
+  // Legacy receipts keyed solely by a numeric ID must remain deny-on-replay
+  // after the per-origin migration. Neither server may replay an old STOP.
+  const a=lan('10.0.0.4:8777'),b=lan('10.0.0.5:8777');
+  const flag='factoryControlLanCommandsEnabled',
+    host='factoryControlLanOriginV1',key='factoryControlLanAgentKeyV1',
+    instance='factoryControlLocalInstanceId',ledger='factoryControlLanReceiptsV1';
+  const data={[flag]:true,[host]:a,[key]:'local-secret-012345',
+    [instance]:'agent-a',[ledger]:{'701':true},masterEnabled:true};
+  let stamp=100000,posts=0,applied=0;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      async get(defaults){return {...defaults,...data};},
+      async set(v){Object.assign(data,v);if(Object.hasOwn(v,'masterEnabled'))applied++;}
+    },
+    permissions:{contains:async()=>true},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>stamp,
+    fetch:async(_url,options)=>{
+      if(options.method==='POST'){posts++;return {ok:true};}
+      return {ok:true,headers:{get:name=>name==='content-type'?'application/json':null},
+        text:async()=>JSON.stringify({commands:[{id:701,chat_id:null,want:'stop'}]})};
+    }
+  });
+  assert.equal(await runtime.tick(),'empty');
+  assert.equal(data.masterEnabled,true);
+  data[host]=b;data[instance]='agent-b';stamp+=8000;
+  assert.equal(await runtime.tick(),'empty');
+  assert.equal(data.masterEnabled,true);
+  assert.equal(applied,0);
+  assert.equal(posts,0);
+  assert.deepEqual(data[ledger],{'701':true});
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
