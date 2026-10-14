@@ -384,7 +384,48 @@ async function ac12() {
   }
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12};
+
+async function ac13() {
+  // Command IDs are allocated by each coordinator independently. A receipt
+  // for server A must not poison the same numeric ID on another server B.
+  const first=lan('10.0.0.4:8777'),second=lan('10.0.0.5:8777');
+  const flag='factoryControlLanCommandsEnabled',host='factoryControlLanOriginV1';
+  const instance='factoryControlLocalInstanceId',key='factoryControlLanAgentKeyV1';
+  const state={[flag]:true,[host]:first,[key]:'stable-agent-key-001',
+    [instance]:'agent-a',masterEnabled:true};
+  let now=100000;
+  const posts=[],changes=[];
+  const storage={
+    async get(d){return {...d,...state};},
+    async set(v){Object.assign(state,v);if(Object.hasOwn(v,'masterEnabled'))changes.push(v.masterEnabled);}
+  };
+  const runtime=api.createBrowserCommandRuntime({
+    storage,permissions:{contains:async()=>true},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>now,
+    fetch:async (url,opts)=>{
+      if(opts.method==='GET') {
+        assert.equal(url,state[host]+'/api/af/commands?instance_id='+state[instance]);
+        return {ok:true,headers:{get:k=>k==='content-type'?'application/json':null},
+          text:async()=>JSON.stringify({commands:[{id:501,chat_id:null,want:'stop'}]})};
+      }
+      posts.push({url,body:JSON.parse(opts.body)});
+      return {ok:true};
+    }
+  });
+  assert.equal(await runtime.tick(),'handled');
+  assert.equal(state.masterEnabled,false);
+  assert.equal(posts.length,1);
+  state[host]=second;state[instance]='agent-b';state.masterEnabled=true;
+  now+=8000;
+  assert.equal(await runtime.tick(),'handled', 'same id from second coordinator must be accepted');
+  assert.equal(state.masterEnabled,false);
+  assert.equal(changes.length,2);
+  assert.deepEqual(posts.map(x=>x.url),[first+'/api/af/ack',second+'/api/af/ack']);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
