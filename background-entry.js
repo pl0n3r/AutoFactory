@@ -12,7 +12,9 @@ importScripts(
   'recovery-incident.js',
   'background.js',
   'account-budget-background.js',
-  'factory-control-local-publisher.js'
+  'factory-control-local-publisher.js',
+  'factory-control-local-commands.js'
 );
 globalThis.ChatGPTAutopilotAccountBudgetBackground.install(globalThis.chrome || globalThis.browser);
 globalThis.ChatGPTAutopilotLocalPublisher.installBackground(globalThis);
+globalThis.ChatGPTAutopilotLocalCommands.installBackground(globalThis);
