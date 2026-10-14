@@ -461,7 +461,46 @@ async function ac14() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14};
+
+async function ac15() {
+  // Revoke opt-in between the ACK's config read and its permission check.
+  // The late asynchronous revocation must veto POST even when the permission
+  // API returns a stale true response.
+  const host=lan('10.0.0.4:8777'),key='local-ack-secret-001';
+  const keys={flag:'factoryControlLanCommandsEnabled',host:'factoryControlLanOriginV1',
+    auth:'factoryControlLanAgentKeyV1',instance:'factoryControlLocalInstanceId',
+    ledger:'factoryControlLanReceiptsV1'};
+  const state={ [keys.flag]:true,[keys.host]:host,[keys.auth]:key,
+    [keys.instance]:'agent-a',masterEnabled:true };
+  let permissionReads=0,posts=0;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async defaults=>({...defaults,...state}),
+      set:async next=>{Object.assign(state,next);}
+    },
+    permissions:{contains:async()=>{
+      permissionReads++;
+      if(permissionReads===9) state[keys.flag]=false;
+      return true;
+    }},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>100000,
+    fetch:async(_url,options)=>{
+      if(options.method==='POST'){posts++;return {ok:true};}
+      return {ok:true,headers:{get:name=>
+        name==='content-type'?'application/json':null},
+        text:async()=>JSON.stringify({commands:[{id:801,chat_id:null,want:'stop'}]})};
+    }
+  });
+  assert.equal(await runtime.tick(),'empty');
+  assert.equal(permissionReads,9);
+  assert.equal(state[keys.flag],false);
+  assert.equal(state.masterEnabled,false);
+  assert.equal(state[keys.ledger][host+'|agent-a|801'],true);
+  assert.equal(posts,0);
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
