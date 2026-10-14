@@ -373,13 +373,19 @@
       await storage.set({ masterEnabled: active });
       const found = await tabs.query({ url: ['https://chatgpt.com/*'] });
       if (!Array.isArray(found) || found.length > 99) return false;
-      for (const tab of found) {
+      // A stale/broken tab must not prevent STOP reaching other tabs.
+      // Fan out to all valid tabs, but acknowledge only a complete success.
+      const outcomes = await Promise.all(found.map(async tab => {
         if (!Number.isSafeInteger(tab?.id) || tab.id < 0) return false;
-        const result = await tabs.sendMessage(tab.id,
-          { type: 'autopilot:set-enabled', enabled: active });
-        if (result?.ok !== true || result?.enabled !== active) return false;
-      }
-      return true;
+        try {
+          const result = await tabs.sendMessage(tab.id,
+            { type: 'autopilot:set-enabled', enabled: active });
+          return result?.ok === true && result?.enabled === active;
+        } catch (_error) {
+          return false;
+        }
+      }));
+      return outcomes.every(value => value === true);
     }
     async function ack(id) {
       const expected = source;

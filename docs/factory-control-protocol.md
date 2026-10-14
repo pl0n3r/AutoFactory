@@ -744,3 +744,14 @@ Esto **no habilita** dos PC, HTTPS remoto ni producción. Requiere
 transporte cifrado verificable, consentimiento seguro y pruebas de
 integración/MV3 antes de ampliar el allowlist. El hallazgo previo de
 SonarCloud permanece trazable y no se oculta mediante exenciones.
+
+## Propagación de STOP frente a pestañas no disponibles (ac20)
+
+El adaptador de background intenta difundir STOP a todas las pestañas
+ChatGPT válidas incluso cuando una no responde o se descarga durante el
+envío. Solo devuelve éxito cuando **todas** responden con la confirmación
+esperada; ante una falla parcial conserva el recibo `pending`/consumido,
+no emite ACK y no repite el comando en sondeos posteriores. `ac20` usa
+transporte simulado: primera pestaña rechaza, las dos restantes reciben
+STOP, no hay POST ACK ni duplicación. El control LAN remoto sigue
+desactivado y no se han enviado comandos a pestañas reales.

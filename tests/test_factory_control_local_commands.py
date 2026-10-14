@@ -50,6 +50,9 @@ class FactoryControlLocalCommandsTests(unittest.TestCase):
     def test_ac19_remote_http_key_transport_denied(self):
         self.case("ac19")
 
+    def test_ac20_global_stop_fanout_is_fail_closed(self):
+        self.case("ac20")
+
 
 if __name__ == "__main__":
     unittest.main()

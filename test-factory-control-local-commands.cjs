@@ -681,7 +681,63 @@ async function ac19() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19};
+
+async function ac20() {
+  // A broken first chat tab cannot suppress STOP on healthy tabs. A partial
+  // fan-out is never acknowledged, and the durable receipt denies a replay.
+  const origin=lan('127.0.0.1:8777');
+  const state={
+    factoryControlLanCommandsEnabled:true,
+    factoryControlLanOriginV1:origin,
+    factoryControlLanAgentKeyV1:'offline-agent-secret-001',
+    factoryControlLocalInstanceId:'agent-fanout',
+    masterEnabled:true
+  };
+  let now=100000, gets=0, acks=0;
+  const delivered=[];
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async defaults=>({...defaults,...state}),
+      set:async changes=>Object.assign(state,changes)
+    },
+    permissions:{contains:async()=>true},
+    tabs:{
+      query:async()=>[{id:6},{id:7},{id:8}],
+      sendMessage:async(id,message)=>{
+        delivered.push(id);
+        assert.deepEqual(message,{type:'autopilot:set-enabled',enabled:false});
+        if(id===6) throw new Error('tab unloaded');
+        return {ok:true,enabled:false};
+      }
+    },
+    now:()=>now,
+    fetch:async(url,options)=>{
+      if(options.method==='POST'){acks++;return {ok:true};}
+      assert.equal(url,origin+'/api/af/commands?instance_id=agent-fanout');
+      gets++;
+      return {
+        ok:true,headers:{get:k=>k==='content-type'?'application/json':null},
+        text:async()=>JSON.stringify({
+          commands:[{id:905,chat_id:null,want:'stop'}]
+        })
+      };
+    }
+  });
+  assert.equal(await runtime.tick(),'empty');
+  assert.equal(state.masterEnabled,false);
+  assert.deepEqual(delivered,[6,7,8]);
+  assert.equal(acks,0);
+  assert.equal(gets,1);
+  assert.equal(state.factoryControlLanReceiptsV1[origin+'|agent-fanout|905'],true);
+  now+=8000;
+  assert.equal(await runtime.tick(),'empty');
+  assert.deepEqual(delivered,[6,7,8]);
+  assert.equal(gets,2);
+  assert.equal(acks,0);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
