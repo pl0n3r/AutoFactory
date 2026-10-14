@@ -271,6 +271,19 @@
       source = Object.freeze({ origin, instanceId, agentKey });
       return parsed;
     }
+    // Receipt IDs belong to the coordinator that originated each GET.
+    // Numeric-only receipts from the old format still deny replay (fail closed)
+    // until an operator safely reconciles them; never silently discard them.
+    function receiptKey(id) {
+      if (!source || !Number.isSafeInteger(id) || id < 1) return null;
+      return source.origin + '|' + source.instanceId + '|' + id;
+    }
+    function validReceiptKey(key) {
+      if (/^[1-9]\d{0,15}$/.test(key)) return Number.isSafeInteger(Number(key));
+      const match = /^(http:\/\/[0-9.]+:[0-9]+)\|([A-Za-z0-9_.:-]{3,64})\|([1-9]\d{0,15})$/.exec(key);
+      if (!match || !Number.isSafeInteger(Number(match[3]))) return false;
+      try { privateOrigin(match[1]); return true; } catch (_error) { return false; }
+    }
     async function receipts() {
       const stored = await storage.get({ [RECEIPTS]: null });
       const record = stored?.[RECEIPTS];
@@ -278,19 +291,32 @@
       if (!isObject(record) || Reflect.ownKeys(record).length > 512) {
         throw new TypeError('untrusted receipt ledger');
       }
-      for (const [id, value] of Object.entries(record)) {
-        if (!/^[1-9]\d{0,15}$/.test(id) || value !== true) {
+      for (const key of Reflect.ownKeys(record)) {
+        const descriptor = Object.getOwnPropertyDescriptor(record, key);
+        if (typeof key !== 'string' || !validReceiptKey(key) ||
+            !descriptor || !descriptor.enumerable ||
+            !Object.hasOwn(descriptor, 'value') ||
+            descriptor.value !== true) {
           throw new TypeError('untrusted receipt');
         }
       }
       return record;
     }
+    async function seenReceipt(id) {
+      const key = receiptKey(id);
+      if (!key) return true;
+      const record = await receipts();
+      return record[key] === true || record[String(id)] === true;
+    }
     async function mark(id) {
+      const key = receiptKey(id);
+      if (!key) return false;
       const prev = await receipts();
-      if (Object.keys(prev).length >= 512 || prev[String(id)] === true) return false;
-      const next = Object.assign(Object.create(null), prev, { [String(id)]: true });
+      if (Object.keys(prev).length >= 512 ||
+          prev[key] === true || prev[String(id)] === true) return false;
+      const next = Object.assign(Object.create(null), prev, { [key]: true });
       await storage.set({ [RECEIPTS]: next });
-      return (await receipts())[String(id)] === true;
+      return (await receipts())[key] === true;
     }
     async function apply(want) {
       if (want !== 'stop' && want !== 'start') return false;
@@ -321,7 +347,7 @@
     }
     const processor = createCommandProcessor({
       enabled, allowedToStart, apply,
-      seen: async id => (await receipts())[String(id)] === true,
+      seen: seenReceipt,
       mark, ack
     });
     const poller = createCommandPoller({
