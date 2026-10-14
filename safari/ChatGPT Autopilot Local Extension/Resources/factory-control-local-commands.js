@@ -419,6 +419,13 @@
       if (!current || current.host !== expected.origin ||
           current.instanceId !== expected.instanceId ||
           current.agentKey !== expected.agentKey) return false;
+      // A host grant can disappear during the last storage read. Check it
+      // again, then refresh consent/settings before any POST side effect.
+      if (await permitted(expected.origin) !== true) return false;
+      const final = await configuration();
+      if (!final || final.host !== expected.origin ||
+          final.instanceId !== expected.instanceId ||
+          final.agentKey !== expected.agentKey) return false;
       await request(expected.origin + '/api/af/ack', expected.agentKey, 'POST',
         { id, instance_id: expected.instanceId });
       return true;

@@ -790,7 +790,49 @@ async function ac21() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20,ac21};
+
+async function ac22() {
+  // The browser host grant disappears just after the initial ACK permission
+  // check succeeds. Do not POST merely because storage remains unchanged.
+  const host=lan('127.0.0.1:8777'),key='offline-agent-secret-001';
+  const state={
+    factoryControlLanCommandsEnabled:true,
+    factoryControlLanOriginV1:host,
+    factoryControlLanAgentKeyV1:key,
+    factoryControlLocalInstanceId:'agent-permission-revoke',
+    masterEnabled:true
+  };
+  let grant=true,reads=0,posts=0;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async defaults=>({...defaults,...state}),
+      set:async changes=>Object.assign(state,changes)
+    },
+    permissions:{contains:async()=>{
+      reads++;
+      if(reads===9){grant=false;return true;}
+      return grant;
+    }},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>100000,
+    fetch:async (_url,options)=>{
+      if(options.method==='POST'){posts++;return {ok:true};}
+      return {ok:true,headers:{get:name=>
+        name==='content-type'?'application/json':null},
+        text:async()=>JSON.stringify({commands:[
+          {id:907,chat_id:null,want:'stop'}]})};
+    }
+  });
+  assert.equal(await runtime.tick(),'empty');
+  assert.equal(reads,10);
+  assert.equal(posts,0);
+  assert.equal(state.masterEnabled,false);
+  assert.equal(state.factoryControlLanReceiptsV1[
+    host+'|agent-permission-revoke|907'],true);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20,ac21,ac22};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');

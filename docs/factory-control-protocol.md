@@ -765,3 +765,14 @@ el resto recibe STOP; no se emite ACK y el recibo ya persistido impide
 repetir silenciosamente la orden ambigua. `ac21` reproduce un mensaje
 que nunca resuelve con aborto sintético, sin tráfico real.
 El timeout no prueba la cadencia real de Chrome MV3 ni desbloquea LAN.
+
+## Revocación del permiso de host durante ACK (ac22)
+
+Una respuesta afirmativa de `permissions.contains` puede quedar obsoleta
+mientras se vuelve a leer el consentimiento almacenado. Antes de enviar
+`POST /api/af/ack`, se revalida de nuevo el permiso exacto y luego
+se releen host, clave, instancia y opt-in. `ac22` inyecta la pérdida
+del permiso inmediatamente después de la primera verificación de ACK:
+el STOP se aplica y conserva recibo, pero nunca se emite POST.
+Esto reduce la ventana de carrera sin ofrecer atomicidad transaccional
+entre APIs del navegador. No autoriza red LAN remota ni go-live.

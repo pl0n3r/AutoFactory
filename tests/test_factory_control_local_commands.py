@@ -56,6 +56,9 @@ class FactoryControlLocalCommandsTests(unittest.TestCase):
     def test_ac21_hung_tab_has_bounded_ack_wait(self):
         self.case("ac21")
 
+    def test_ac22_host_grant_revocation_blocks_ack(self):
+        self.case("ac22")
+
 
 if __name__ == "__main__":
     unittest.main()
