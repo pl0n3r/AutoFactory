@@ -347,7 +347,10 @@ async function ac12() {
       state[INSTANCE]='agent-B';}},
     {name:'revoke-opt-in',mutate:state=>{state[FLAG]=false;}}
   ];
-  for (const variant of variants) {
+  // Keep the five independent async races strictly sequential without
+  // an await embedded in a for-loop (Sonar S2310).
+  await variants.reduce(async (previous, variant) => {
+    await previous;
     const data={ [FLAG]:true,[HOST]:a,[KEY]:firstKey,
       [INSTANCE]:'agent-A',masterEnabled:true };
     const calls=[];
@@ -381,7 +384,7 @@ async function ac12() {
       url:a+'/api/af/commands?instance_id=agent-A',
       method:'GET',key:firstKey
     }],variant.name);
-  }
+  }, Promise.resolve());
 }
 
 

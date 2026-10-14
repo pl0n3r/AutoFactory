@@ -47,6 +47,9 @@ class FactoryControlLocalCommandsTests(unittest.TestCase):
     def test_ac08_local_poller_revocation_and_backoff(self):
         self.case("ac08")
 
+    def test_ac19_remote_http_key_transport_denied(self):
+        self.case("ac19")
+
 
 if __name__ == "__main__":
     unittest.main()
