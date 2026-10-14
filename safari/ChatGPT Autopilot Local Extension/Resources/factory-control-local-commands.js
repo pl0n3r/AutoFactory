@@ -322,6 +322,95 @@
     return Object.freeze({ tick: poller.tick, stop: poller.stop });
   }
 
+
+  // Chrome MV3 / Safari service worker wiring. The popup keeps this opt-in
+  // disabled by default; alarms cannot grant permission or start processing.
+  function installBackground(root = globalThis) {
+    const ext = root.chrome || root.browser;
+    if (!ext?.storage?.local || !ext?.storage?.onChanged ||
+        !ext?.permissions || !ext?.alarms?.onAlarm ||
+        !ext?.tabs || typeof root.fetch !== 'function' ||
+        typeof ext.storage.local.get !== 'function' ||
+        typeof ext.storage.local.set !== 'function' ||
+        typeof ext.permissions.contains !== 'function' ||
+        typeof ext.tabs.query !== 'function' ||
+        typeof ext.tabs.sendMessage !== 'function') return false;
+
+    // Promise Chrome/Safari APIs and callback variants. Any unsupported
+    // / ambiguous completion rejects and cannot authorize an ACK.
+    function invoke(target, method, ...args) {
+      return new Promise((resolve, reject) => {
+        let done = false;
+        const success = value => {
+          if (done) return;
+          done = true;
+          if (ext.runtime?.lastError) reject(new TypeError('browser API unavailable'));
+          else resolve(value);
+        };
+        const failed = () => {
+          if (!done) { done = true; reject(new TypeError('browser API unavailable')); }
+        };
+        try {
+          const result = target[method](...args, success);
+          if (result?.then) result.then(success, failed);
+        } catch (_error) {
+          // Safari's promise-only API may reject the callback argument.
+          try {
+            const result = target[method](...args);
+            if (result?.then) result.then(success, failed);
+            else failed();
+          } catch (_again) { failed(); }
+        }
+      });
+    }
+    const adapter = createBrowserCommandRuntime({
+      storage: {
+        get: input => invoke(ext.storage.local, 'get', input),
+        set: changes => invoke(ext.storage.local, 'set', changes)
+      },
+      permissions: { contains: input =>
+        invoke(ext.permissions, 'contains', input) },
+      tabs: {
+        query: input => invoke(ext.tabs, 'query', input),
+        sendMessage: (id, msg) => invoke(ext.tabs, 'sendMessage', id, msg)
+      },
+      fetch: (...args) => root.fetch(...args),
+      now: () => root.Date?.now?.() ?? Date.now()
+      // No trusted provider-login/usage signal currently wired. START denies.
+    });
+    const ALARM = 'factory-control-lan-commands';
+    async function reconcile() {
+      try {
+        const saved = await invoke(ext.storage.local, 'get',
+          { factoryControlLanCommandsEnabled: false });
+        if (saved?.factoryControlLanCommandsEnabled !== true) {
+          await invoke(ext.alarms, 'clear', ALARM).catch(() => {});
+          return;
+        }
+        const scheduled = ext.alarms.create(ALARM, { periodInMinutes: 0.5 });
+        if (scheduled?.then) await scheduled;
+        void adapter.tick();
+      } catch (_error) {
+        // Nothing may bypass the stored opt-in and exact host permission.
+      }
+    }
+    ext.alarms.onAlarm.addListener(alarm => {
+      if (alarm?.name === ALARM) void adapter.tick();
+    });
+    ext.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && ['factoryControlLanCommandsEnabled',
+        'factoryControlLanOriginV1', 'factoryControlLanAgentKeyV1',
+        'factoryControlLocalInstanceId'].some(key => Object.hasOwn(changes, key))) {
+        void reconcile();
+      }
+    });
+    ext.permissions.onRemoved?.addListener(() => { void reconcile(); });
+    ext.runtime?.onStartup?.addListener(() => { void reconcile(); });
+    ext.runtime?.onInstalled?.addListener(() => { void reconcile(); });
+    void reconcile();
+    return true;
+  }
+
   return Object.freeze({ privateOrigin, globalCommand, createCommandProcessor,
-    localPollingSettings, commandEnvelope, createCommandPoller, createBrowserCommandRuntime });
+    localPollingSettings, commandEnvelope, createCommandPoller, createBrowserCommandRuntime, installBackground });
 });
