@@ -200,13 +200,15 @@
   // no polling unless the caller explicitly installs and invokes tick().
   // A missing authenticated login/usage signal deliberately denies 'start'.
   function createBrowserCommandRuntime({ storage, permissions, tabs, fetch, now,
-    allowedToStart = async () => false } = {}) {
+    allowedToStart = async () => false,
+    timeoutSignal = milliseconds => AbortSignal.timeout(milliseconds) } = {}) {
     if (!storage || !permissions || !tabs ||
         typeof storage.get !== 'function' || typeof storage.set !== 'function' ||
         typeof permissions.contains !== 'function' ||
         typeof tabs.query !== 'function' || typeof tabs.sendMessage !== 'function' ||
         typeof fetch !== 'function' || typeof now !== 'function' ||
-        typeof allowedToStart !== 'function') {
+        typeof allowedToStart !== 'function' ||
+        typeof timeoutSignal !== 'function') {
       throw new TypeError('browser ports required');
     }
     const HOST = 'factoryControlLanOriginV1';
@@ -235,9 +237,15 @@
       return !!config && await permitted(config.host);
     }
     async function request(url, key, method = 'GET', body) {
+      // Abort both stalled connections and bodies. If deadlines are unavailable
+      // in this browser, fail closed before opening an unbounded request.
+      const signal = timeoutSignal(6000);
+      if (!signal || typeof signal.aborted !== 'boolean') {
+        throw new TypeError('request deadline unavailable');
+      }
       const options = {
         method, headers: { 'X-Agent-Key': key },
-        credentials: 'omit', redirect: 'error',
+        credentials: 'omit', redirect: 'error', signal,
         cache: 'no-store', referrerPolicy: 'no-referrer'
       };
       if (method === 'POST') {
