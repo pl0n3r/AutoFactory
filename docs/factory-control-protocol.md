@@ -731,3 +731,16 @@ si el navegador carece de un mecanismo de timeout, el adaptador falla
 cerrado, sin petición infinita. El poller vuelve a aplicar backoff en
 fallos de transporte; estos tests no demuestran la cadencia 5–10 s en MV3
 ni proporcionan confidencialidad para `X-Agent-Key` enviado por HTTP LAN.
+
+## Contención de confidencialidad LAN (ac19, build-ahead)
+
+Sin transporte cifrado y autenticado verificado con el Mac, el adaptador
+de background **solo permite HTTP a 127.0.0.1**. El validador puro
+continúa reconociendo RFC1918, pero un host remoto privado no solicita
+permiso ni emite GET/ACK con `X-Agent-Key`, incluso con opt-in y una
+concesión de host simulada. El transporte revalida el destino antes de
+adjuntar la cabecera. `ac19` prueba ausencia de red y mutaciones.
+Esto **no habilita** dos PC, HTTPS remoto ni producción. Requiere
+transporte cifrado verificable, consentimiento seguro y pruebas de
+integración/MV3 antes de ampliar el allowlist. El hallazgo previo de
+SonarCloud permanece trazable y no se oculta mediante exenciones.

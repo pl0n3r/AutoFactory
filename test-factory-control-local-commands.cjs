@@ -134,7 +134,7 @@ async function ac07() {
 }
 async function ac08() {
   let time=100000, calls=0, apply=0, authorized=true;
-  const settings={host:lan('10.0.0.4:8777'),
+  const settings={host:lan('127.0.0.1:8777'),
     agentKey:'local-agent-secret-012345',instanceId:'agent-4'};
   const poller=api.createCommandPoller({
     enabled:async()=>authorized,permission:async()=>true,
@@ -195,7 +195,7 @@ async function ac09() {
 }
 
 async function ac10() {
-  const origin=lan('10.0.0.4:8777'),key='local-agent-secret-012345';
+  const origin=lan('127.0.0.1:8777'),key='local-agent-secret-012345';
   const FLAG='factoryControlLanCommandsEnabled',HOST='factoryControlLanOriginV1';
   const KEY='factoryControlLanAgentKeyV1',INSTANCE='factoryControlLocalInstanceId';
   const REC='factoryControlLanReceiptsV1';
@@ -208,7 +208,7 @@ async function ac10() {
   };
   const permissions={
     async contains({origins}){
-      assert.deepEqual(origins,['http://10.0.0.4/*']);
+      assert.deepEqual(origins,['http://127.0.0.1/*']);
       return permitted;
     }
   };
@@ -334,7 +334,7 @@ async function ac12() {
   // A command fetched from server A must never be acknowledged to a
   // different origin, key or agent identity. Revoke/rotation races must
   // retain the pending local receipt and leave the ACK unsent.
-  const a=lan('10.0.0.4:8777'),b=lan('10.0.0.5:8777');
+  const a=lan('127.0.0.1:8777'),b=lan('127.0.0.1:8778');
   const FLAG='factoryControlLanCommandsEnabled',HOST='factoryControlLanOriginV1',
     KEY='factoryControlLanAgentKeyV1',INSTANCE='factoryControlLocalInstanceId',
     REC='factoryControlLanReceiptsV1';
@@ -388,7 +388,7 @@ async function ac12() {
 async function ac13() {
   // Command IDs are allocated by each coordinator independently. A receipt
   // for server A must not poison the same numeric ID on another server B.
-  const first=lan('10.0.0.4:8777'),second=lan('10.0.0.5:8777');
+  const first=lan('127.0.0.1:8777'),second=lan('127.0.0.1:8778');
   const flag='factoryControlLanCommandsEnabled',host='factoryControlLanOriginV1';
   const instance='factoryControlLocalInstanceId',key='factoryControlLanAgentKeyV1';
   const state={[flag]:true,[host]:first,[key]:'stable-agent-key-001',
@@ -429,7 +429,7 @@ async function ac13() {
 async function ac14() {
   // Legacy receipts keyed solely by a numeric ID must remain deny-on-replay
   // after the per-origin migration. Neither server may replay an old STOP.
-  const a=lan('10.0.0.4:8777'),b=lan('10.0.0.5:8777');
+  const a=lan('127.0.0.1:8777'),b=lan('127.0.0.1:8778');
   const flag='factoryControlLanCommandsEnabled',
     host='factoryControlLanOriginV1',key='factoryControlLanAgentKeyV1',
     instance='factoryControlLocalInstanceId',ledger='factoryControlLanReceiptsV1';
@@ -466,7 +466,7 @@ async function ac15() {
   // Revoke opt-in between the ACK's config read and its permission check.
   // The late asynchronous revocation must veto POST even when the permission
   // API returns a stale true response.
-  const host=lan('10.0.0.4:8777'),key='local-ack-secret-001';
+  const host=lan('127.0.0.1:8777'),key='local-ack-secret-001';
   const keys={flag:'factoryControlLanCommandsEnabled',host:'factoryControlLanOriginV1',
     auth:'factoryControlLanAgentKeyV1',instance:'factoryControlLocalInstanceId',
     ledger:'factoryControlLanReceiptsV1'};
@@ -504,7 +504,7 @@ async function ac15() {
 async function ac16() {
   // A LAN server that never returns bytes must not keep the poller busy forever.
   // A pre-aborted deadline makes the regression deterministic and network-free.
-  const host=lan('10.0.0.4:8777');
+  const host=lan('127.0.0.1:8777');
   const state={factoryControlLanCommandsEnabled:true,
     factoryControlLanOriginV1:host,
     factoryControlLanAgentKeyV1:'offline-agent-secret-001',
@@ -548,7 +548,7 @@ async function ac16() {
 async function ac17() {
   // Content-Length can be missing or false. Do not materialize a multi-MB
   // response body before enforcing the 32-KiB command-envelope limit.
-  const host=lan('10.0.0.4:8777');
+  const host=lan('127.0.0.1:8777');
   const state={
     factoryControlLanCommandsEnabled:true,
     factoryControlLanOriginV1:host,
@@ -594,7 +594,7 @@ async function ac17() {
 async function ac18() {
   // Valid fragmented Fetch streams must still parse commands and acknowledge
   // STOP without falling back to an unbounded response.text().
-  const host=lan('10.0.0.4:8777');
+  const host=lan('127.0.0.1:8777');
   const state={factoryControlLanCommandsEnabled:true,
     factoryControlLanOriginV1:host,
     factoryControlLanAgentKeyV1:'offline-agent-secret-001',
@@ -648,7 +648,37 @@ async function ac18() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18};
+
+async function ac19() {
+  // Even with opt-in and a permissive mock grant, remote cleartext HTTP
+  // must not carry X-Agent-Key or apply any command.
+  const state={
+    factoryControlLanCommandsEnabled:true,
+    factoryControlLanOriginV1:lan('10.0.0.44:8777'),
+    factoryControlLanAgentKeyV1:'offline-agent-secret-001',
+    factoryControlLocalInstanceId:'agent-private',
+    masterEnabled:true
+  };
+  let grants=0, network=0, writes=0;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async defaults=>({...defaults,...state}),
+      set:async value=>{writes++;Object.assign(state,value);}
+    },
+    permissions:{contains:async()=>{grants++;return true;}},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>100000,
+    fetch:async()=>{network++;throw new Error('LAN leak');}
+  });
+  assert.equal(await runtime.tick(),'disabled');
+  assert.equal(grants,0);
+  assert.equal(network,0);
+  assert.equal(writes,0);
+  assert.equal(state.masterEnabled,true);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');

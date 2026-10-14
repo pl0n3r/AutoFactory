@@ -220,6 +220,9 @@
       [FLAG]: false, [INSTANCE]: null });
     const originPattern = host => {
       privateOrigin(host);
+      // A token over HTTP can leave the machine only after the transport
+      // has been secured independently. Loopback alone is allowed today.
+      if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(host)) return null;
       return 'http://' + new URL(host).hostname + '/*';
     };
     async function configuration() {
@@ -230,13 +233,20 @@
       });
     }
     async function permitted(host) {
-      return await permissions.contains({ origins: [originPattern(host)] }) === true;
+      const pattern = originPattern(host);
+      return pattern !== null &&
+        await permissions.contains({ origins: [pattern] }) === true;
     }
     async function enabled() {
       const config = await configuration();
       return !!config && await permitted(config.host);
     }
     async function request(url, key, method = 'GET', body) {
+      // Defense in depth: never attach X-Agent-Key to cleartext LAN traffic.
+      const target = new URL(url);
+      if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1') {
+        throw new TypeError('cleartext remote LAN transport forbidden');
+      }
       // Abort both stalled connections and bodies. If deadlines are unavailable
       // in this browser, fail closed before opening an unbounded request.
       const signal = timeoutSignal(6000);
