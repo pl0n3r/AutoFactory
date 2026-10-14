@@ -700,10 +700,13 @@ resultado ambiguo. Las órdenes por chat no son interpretadas. Un comando START
 **no** se ejecuta por defecto: requiere la inyección de una verificación
 autenticada de login/uso; en ausencia de esa evidencia se veta sin ACK.
 
-**Limitación de integración:** este cambio solo prepara el adaptador;
-`background-entry.js` todavía no lo instala, el popup mantiene
-el interruptor bloqueado y el manifest no concede destinos LAN. Por lo tanto,
-no hay tráfico LAN real habilitado ni promesa de sondeo a 8 segundos.
+**Limitación de integración:** `background-entry.js` de Chrome y Safari
+ahora instala el adaptador y registra listeners de `alarms`/storage, pero el
+popup mantiene el interruptor bloqueado y el manifest no concede destinos
+LAN diferentes del loopback. El módulo importado no activa por sí solo red;
+la instalación exige el flag local y el permiso exacto. Con el flujo normal
+actual el flag permanece `false`, por lo que no hay tráfico LAN habilitado
+ni garantía de sondeo cada 8 segundos.
 Chrome MV3 puede suspender el service worker y sus alarmas tienen un mínimo
 de 30 segundos; el requisito de 5–10 s requiere una estrategia compatible
 verificada antes de activar producto. Además HTTP en LAN **no cifra**
