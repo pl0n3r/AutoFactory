@@ -500,7 +500,51 @@ async function ac15() {
   assert.equal(posts,0);
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15};
+
+async function ac16() {
+  // A LAN server that never returns bytes must not keep the poller busy forever.
+  // A pre-aborted deadline makes the regression deterministic and network-free.
+  const host=lan('10.0.0.4:8777');
+  const state={factoryControlLanCommandsEnabled:true,
+    factoryControlLanOriginV1:host,
+    factoryControlLanAgentKeyV1:'offline-agent-secret-001',
+    factoryControlLocalInstanceId:'agent-timeout',
+    masterEnabled:true};
+  let requests=0, deadlineCalls=0, stamp=100000;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async defaults=>({...defaults,...state}),
+      set:async value=>Object.assign(state,value)
+    },
+    permissions:{contains:async()=>true},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>stamp,
+    timeoutSignal:milliseconds=>{
+      assert.equal(milliseconds,6000);
+      deadlineCalls++;
+      return AbortSignal.abort();
+    },
+    fetch:async(_url,options)=>{
+      requests++;
+      if(options.signal?.aborted) throw new TypeError('aborted by deadline');
+      // This call never resolves until an AbortSignal is installed.
+      return new Promise(()=>{});
+    }
+  });
+  const outcome=await Promise.race([
+    runtime.tick(),
+    new Promise(resolve=>setTimeout(()=>resolve('hung'),100))
+  ]);
+  assert.equal(outcome,'unavailable','a nonresponding coordinator must time out');
+  assert.equal(deadlineCalls,1);
+  assert.equal(requests,1);
+  assert.equal(state.masterEnabled,true);
+  stamp+=8000;
+  assert.equal(await runtime.tick(),'throttled','timeout must enter backoff');
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
