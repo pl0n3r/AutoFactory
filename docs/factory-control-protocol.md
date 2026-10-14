@@ -717,9 +717,15 @@ Chrome/Safari y validación del contrato ACK del servidor. Nada de lo anterior
 habilita Internet, ControlBot, live, release ni tokens reales.
 
 **QA build-ahead:** `node test-factory-control-local-commands.cjs`
-(casos `ac10`–`ac16`: opt-in, STOP/ACK, bloqueo de START, carreras de
+(casos `ac10`–`ac18`: opt-in, STOP/ACK, bloqueo de START, carreras de
 revocación, recibos aislados por origen e instancia, migración de recibos
-legacy y vencimiento de conexiones que no responden). GET y POST usan
+legacy, vencimiento de conexiones que no responden, rechazo de streams
+excesivos sin `Content-Length` y procesamiento normal de streams fragmentados).
+El body real de Fetch se procesa en bloques y se rechaza al superar
+**32 768 bytes**, antes de materializar el JSON completo; se cancela el
+reader ante el exceso. La prueba offline incluye un body falso que
+ofrece texto pequeño pero un stream de más de 32 KiB para evitar
+regresiones del límite. GET y POST usan
 `AbortSignal.timeout(6000)` mediante una dependencia inyectable en tests;
 si el navegador carece de un mecanismo de timeout, el adaptador falla
 cerrado, sin petición infinita. El poller vuelve a aplicar backoff en
