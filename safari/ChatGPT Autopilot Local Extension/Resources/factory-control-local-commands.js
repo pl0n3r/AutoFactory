@@ -195,6 +195,133 @@
     function stop() { stopped = true; }
     return Object.freeze({tick,stop});
   }
+
+  // Browser-port adapter for the LAN transport. No side effects on import and
+  // no polling unless the caller explicitly installs and invokes tick().
+  // A missing authenticated login/usage signal deliberately denies 'start'.
+  function createBrowserCommandRuntime({ storage, permissions, tabs, fetch, now,
+    allowedToStart = async () => false } = {}) {
+    if (!storage || !permissions || !tabs ||
+        typeof storage.get !== 'function' || typeof storage.set !== 'function' ||
+        typeof permissions.contains !== 'function' ||
+        typeof tabs.query !== 'function' || typeof tabs.sendMessage !== 'function' ||
+        typeof fetch !== 'function' || typeof now !== 'function' ||
+        typeof allowedToStart !== 'function') {
+      throw new TypeError('browser ports required');
+    }
+    const HOST = 'factoryControlLanOriginV1';
+    const KEY = 'factoryControlLanAgentKeyV1';
+    const FLAG = 'factoryControlLanCommandsEnabled';
+    const INSTANCE = 'factoryControlLocalInstanceId';
+    const RECEIPTS = 'factoryControlLanReceiptsV1';
+    const memory = Object.freeze({ [HOST]: null, [KEY]: null,
+      [FLAG]: false, [INSTANCE]: null });
+    const originPattern = host => {
+      privateOrigin(host);
+      return 'http://' + new URL(host).hostname + '/*';
+    };
+    async function configuration() {
+      const stored = await storage.get(memory);
+      if (!stored || stored[FLAG] !== true) return null;
+      return localPollingSettings({
+        host: stored[HOST], agentKey: stored[KEY], instanceId: stored[INSTANCE]
+      });
+    }
+    async function permitted(host) {
+      return await permissions.contains({ origins: [originPattern(host)] }) === true;
+    }
+    async function enabled() {
+      const config = await configuration();
+      return !!config && await permitted(config.host);
+    }
+    async function request(url, key, method = 'GET', body) {
+      const options = {
+        method, headers: { 'X-Agent-Key': key },
+        credentials: 'omit', redirect: 'error',
+        cache: 'no-store', referrerPolicy: 'no-referrer'
+      };
+      if (method === 'POST') {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+      const response = await fetch(url, options);
+      if (!response || response.ok !== true) throw new TypeError('transport unavailable');
+      return response;
+    }
+    async function fetchPending({ origin, instanceId, agentKey }) {
+      privateOrigin(origin);
+      const url = origin + '/api/af/commands?instance_id=' +
+        encodeURIComponent(instanceId);
+      const response = await request(url, agentKey);
+      const type = response.headers?.get?.('content-type');
+      if (typeof type !== 'string' || !/^application\/json(?:\s*;|$)/i.test(type)) {
+        throw new TypeError('non-JSON response');
+      }
+      const size = Number(response.headers?.get?.('content-length'));
+      if (Number.isFinite(size) && size > 32768) throw new TypeError('oversize');
+      const text = await response.text();
+      if (typeof text !== 'string' || text.length > 32768) {
+        throw new TypeError('oversize');
+      }
+      return JSON.parse(text);
+    }
+    async function receipts() {
+      const stored = await storage.get({ [RECEIPTS]: null });
+      const record = stored?.[RECEIPTS];
+      if (record === null || record === undefined) return Object.create(null);
+      if (!isObject(record) || Reflect.ownKeys(record).length > 512) {
+        throw new TypeError('untrusted receipt ledger');
+      }
+      for (const [id, value] of Object.entries(record)) {
+        if (!/^[1-9]\d{0,15}$/.test(id) || value !== true) {
+          throw new TypeError('untrusted receipt');
+        }
+      }
+      return record;
+    }
+    async function mark(id) {
+      const prev = await receipts();
+      if (Object.keys(prev).length >= 512 || prev[String(id)] === true) return false;
+      const next = Object.assign(Object.create(null), prev, { [String(id)]: true });
+      await storage.set({ [RECEIPTS]: next });
+      return (await receipts())[String(id)] === true;
+    }
+    async function apply(want) {
+      if (want !== 'stop' && want !== 'start') return false;
+      if (want === 'start' && await allowedToStart() !== true) return false;
+      const active = want === 'start';
+      await storage.set({ masterEnabled: active });
+      const found = await tabs.query({ url: ['https://chatgpt.com/*'] });
+      if (!Array.isArray(found) || found.length > 99) return false;
+      for (const tab of found) {
+        if (!Number.isSafeInteger(tab?.id) || tab.id < 0) return false;
+        const result = await tabs.sendMessage(tab.id,
+          { type: 'autopilot:set-enabled', enabled: active });
+        if (result?.ok !== true || result?.enabled !== active) return false;
+      }
+      return true;
+    }
+    async function ack(id) {
+      const local = await configuration();
+      if (!local || await enabled() !== true) return false;
+      await request(local.host + '/api/af/ack', local.agentKey, 'POST',
+        { id, instance_id: local.instanceId });
+      return true;
+    }
+    const processor = createCommandProcessor({
+      enabled, allowedToStart, apply,
+      seen: async id => (await receipts())[String(id)] === true,
+      mark, ack
+    });
+    const poller = createCommandPoller({
+      enabled, permission: permitted, configuration, fetchPending,
+      process: async command => processor.process({
+        id: command.id, chat_id: null, want: command.want
+      }), now
+    });
+    return Object.freeze({ tick: poller.tick, stop: poller.stop });
+  }
+
   return Object.freeze({ privateOrigin, globalCommand, createCommandProcessor,
-    localPollingSettings, commandEnvelope, createCommandPoller });
+    localPollingSettings, commandEnvelope, createCommandPoller, createBrowserCommandRuntime });
 });
