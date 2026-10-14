@@ -341,6 +341,12 @@
           local.instanceId !== expected.instanceId ||
           local.agentKey !== expected.agentKey ||
           await permitted(expected.origin) !== true) return false;
+      // Permission checks are asynchronous: opt-in or credentials may change
+      // while awaiting the browser API. Refresh immediately before POST.
+      const current = await configuration();
+      if (!current || current.host !== expected.origin ||
+          current.instanceId !== expected.instanceId ||
+          current.agentKey !== expected.agentKey) return false;
       await request(expected.origin + '/api/af/ack', expected.agentKey, 'POST',
         { id, instance_id: expected.instanceId });
       return true;
