@@ -737,7 +737,60 @@ async function ac20() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20};
+
+async function ac21() {
+  // One tab never answers. The abort signal terminates the fan-out locally;
+  // the other tab still receives STOP, but a partial application has no ACK.
+  const origin=lan('127.0.0.1:8777');
+  const aborter=new AbortController();
+  const state={
+    factoryControlLanCommandsEnabled:true,
+    factoryControlLanOriginV1:origin,
+    factoryControlLanAgentKeyV1:'offline-agent-secret-001',
+    factoryControlLocalInstanceId:'agent-stalled-tab',
+    masterEnabled:true
+  };
+  const sent=[];
+  let acks=0,requests=0;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async defaults=>({...defaults,...state}),
+      set:async changes=>Object.assign(state,changes)
+    },
+    permissions:{contains:async()=>true},
+    tabs:{
+      query:async()=>[{id:31},{id:32}],
+      sendMessage:(id,message)=>{
+        sent.push(id);
+        assert.deepEqual(message,{type:'autopilot:set-enabled',enabled:false});
+        if(id===31){
+          setImmediate(()=>aborter.abort());
+          return new Promise(()=>{});
+        }
+        return Promise.resolve({ok:true,enabled:false});
+      }
+    },
+    now:()=>100000,
+    timeoutSignal:()=>aborter.signal,
+    fetch:async(url,options)=>{
+      requests++;
+      if(options.method==='POST'){acks++;return {ok:true};}
+      assert.equal(url,origin+'/api/af/commands?instance_id=agent-stalled-tab');
+      return {ok:true,headers:{get:k=>k==='content-type'?'application/json':null},
+        text:async()=>JSON.stringify({commands:[
+          {id:906,chat_id:null,want:'stop'}]})};
+    }
+  });
+  assert.equal(await runtime.tick(),'empty');
+  assert.deepEqual(sent,[31,32]);
+  assert.equal(acks,0);
+  assert.equal(requests,1);
+  assert.equal(state.masterEnabled,false);
+  assert.equal(state.factoryControlLanReceiptsV1[origin+'|agent-stalled-tab|906'],true);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20,ac21};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');

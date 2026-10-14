@@ -755,3 +755,13 @@ no emite ACK y no repite el comando en sondeos posteriores. `ac20` usa
 transporte simulado: primera pestaña rechaza, las dos restantes reciben
 STOP, no hay POST ACK ni duplicación. El control LAN remoto sigue
 desactivado y no se han enviado comandos a pestañas reales.
+
+## Timeout de pestañas suspendidas (ac21)
+
+El fan-out de STOP acota cada `tabs.sendMessage` a seis segundos con una
+`AbortSignal` del adaptador, elimina los listeners al concluir y trata
+cada timeout como fracaso parcial. Incluso si una pestaña nunca responde,
+el resto recibe STOP; no se emite ACK y el recibo ya persistido impide
+repetir silenciosamente la orden ambigua. `ac21` reproduce un mensaje
+que nunca resuelve con aborto sintético, sin tráfico real.
+El timeout no prueba la cadencia real de Chrome MV3 ni desbloquea LAN.

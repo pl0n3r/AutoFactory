@@ -377,13 +377,31 @@
       // Fan out to all valid tabs, but acknowledge only a complete success.
       const outcomes = await Promise.all(found.map(async tab => {
         if (!Number.isSafeInteger(tab?.id) || tab.id < 0) return false;
-        try {
-          const result = await tabs.sendMessage(tab.id,
-            { type: 'autopilot:set-enabled', enabled: active });
-          return result?.ok === true && result?.enabled === active;
-        } catch (_error) {
-          return false;
-        }
+        // A tab may never settle (e.g. a suspended content script). Bound each
+        // response, so the overall STOP can finish without an unsafe ACK.
+        const signal = timeoutSignal(6000);
+        if (!signal || typeof signal.aborted !== 'boolean' ||
+            typeof signal.addEventListener !== 'function' ||
+            typeof signal.removeEventListener !== 'function') return false;
+        return await new Promise(resolve => {
+          let settled = false;
+          const onAbort = () => finish(false);
+          const finish = ok => {
+            if (settled) return;
+            settled = true;
+            signal.removeEventListener('abort', onAbort);
+            resolve(ok);
+          };
+          signal.addEventListener('abort', onAbort, { once: true });
+          if (signal.aborted) { finish(false); return; }
+          try {
+            Promise.resolve(tabs.sendMessage(tab.id,
+              { type: 'autopilot:set-enabled', enabled: active }))
+              .then(result => finish(
+                result?.ok === true && result?.enabled === active),
+              () => finish(false));
+          } catch (_error) { finish(false); }
+        });
       }));
       return outcomes.every(value => value === true);
     }

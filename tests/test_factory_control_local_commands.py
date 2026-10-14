@@ -53,6 +53,9 @@ class FactoryControlLocalCommandsTests(unittest.TestCase):
     def test_ac20_global_stop_fanout_is_fail_closed(self):
         self.case("ac20")
 
+    def test_ac21_hung_tab_has_bounded_ack_wait(self):
+        self.case("ac21")
+
 
 if __name__ == "__main__":
     unittest.main()
