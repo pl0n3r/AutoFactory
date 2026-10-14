@@ -193,7 +193,87 @@ async function ac09() {
       fs.readFileSync(path.join(safari,file)));
   }
 }
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09};
+
+async function ac10() {
+  const origin=lan('10.0.0.4:8777'),key='local-agent-secret-012345';
+  const FLAG='factoryControlLanCommandsEnabled',HOST='factoryControlLanOriginV1';
+  const KEY='factoryControlLanAgentKeyV1',INSTANCE='factoryControlLocalInstanceId';
+  const REC='factoryControlLanReceiptsV1';
+  let stamp=100000, permitted=true, requests=[],deliveries=[],commandId=101;
+  const state={ [FLAG]:false,[HOST]:origin,[KEY]:key,[INSTANCE]:'agent-local-1',
+    masterEnabled:true };
+  const storage={
+    async get(defaults){ return {...defaults,...state}; },
+    async set(changes){ Object.assign(state,changes); }
+  };
+  const permissions={
+    async contains({origins}){
+      assert.deepEqual(origins,['http://10.0.0.4/*']);
+      return permitted;
+    }
+  };
+  const tabs={
+    async query(query){ assert.deepEqual(query,{url:['https://chatgpt.com/*']});return [{id:6}]; },
+    async sendMessage(id,msg){
+      assert.equal(id,6);
+      deliveries.push(msg);
+      return {ok:true,enabled:msg.enabled};
+    }
+  };
+  async function fetch(url,options){
+    assert.equal(options.credentials,'omit');
+    assert.equal(options.redirect,'error');
+    assert.equal(options.cache,'no-store');
+    assert.equal(options.headers['X-Agent-Key'],key);
+    requests.push({url,method:options.method,body:options.body});
+    if(url===origin+'/api/af/commands?instance_id=agent-local-1') {
+      assert.equal(options.method,'GET');
+      const payload={commands:[{id:commandId,chat_id:null,
+        want:commandId===101?'stop':'start'}]};
+      return {ok:true,headers:{get:name=>
+        name==='content-type'?'application/json':null},
+        text:async()=>JSON.stringify(payload)};
+    }
+    assert.equal(url,origin+'/api/af/ack');
+    assert.equal(options.method,'POST');
+    assert.deepEqual(JSON.parse(options.body),{id:101,instance_id:'agent-local-1'});
+    assert.equal(options.body.includes(key),false);
+    return {ok:true};
+  }
+  const runtime=api.createBrowserCommandRuntime({
+    storage,permissions,tabs,fetch,now:()=>stamp
+  });
+  assert.equal(await runtime.tick(),'disabled');
+  assert.equal(requests.length,0);
+  state[FLAG]=true; // Explicit fake opt-in, never set by module import.
+  assert.equal(await runtime.tick(),'handled');
+  assert.equal(requests.length,2);
+  assert.equal(state.masterEnabled,false);
+  assert.deepEqual(deliveries,[{type:'autopilot:set-enabled',enabled:false}]);
+  assert.equal(state[REC]['101'],true);
+  stamp+=8000;
+  assert.equal(await runtime.tick(),'empty'); // Durable receipt blocks replay.
+  assert.equal(requests.length,3);
+  stamp+=8000;
+  commandId=102;
+  assert.equal(await runtime.tick(),'empty'); // Login/usage UNKNOWN: start denied.
+  assert.equal(state.masterEnabled,false);
+  assert.equal(requests.length,4);
+  assert.equal(state[REC]['102'],undefined);
+  stamp+=8000;
+  permitted=false;
+  assert.equal(await runtime.tick(),'disabled');
+  assert.equal(requests.length,4);
+  // No network to a public host even when the storage flag is true.
+  state[HOST]=lan('8.8.8.8:8777'); permitted=true;
+  stamp+=8000;
+  assert.equal(await runtime.tick(),'disabled');
+  assert.equal(requests.length,4);
+  runtime.stop();
+  assert.equal(await runtime.tick(),'stopped');
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
