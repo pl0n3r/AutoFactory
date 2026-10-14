@@ -248,7 +248,11 @@
       if (!response || response.ok !== true) throw new TypeError('transport unavailable');
       return response;
     }
+    // Bind each ACK to the exact server/key/instance that supplied the GET.
+    // A settings rotation during apply cannot transfer command ownership.
+    let source = null;
     async function fetchPending({ origin, instanceId, agentKey }) {
+      source = null;
       privateOrigin(origin);
       const url = origin + '/api/af/commands?instance_id=' +
         encodeURIComponent(instanceId);
@@ -263,7 +267,9 @@
       if (typeof text !== 'string' || text.length > 32768) {
         throw new TypeError('oversize');
       }
-      return JSON.parse(text);
+      const parsed = JSON.parse(text);
+      source = Object.freeze({ origin, instanceId, agentKey });
+      return parsed;
     }
     async function receipts() {
       const stored = await storage.get({ [RECEIPTS]: null });
@@ -302,10 +308,15 @@
       return true;
     }
     async function ack(id) {
+      const expected = source;
       const local = await configuration();
-      if (!local || await enabled() !== true) return false;
-      await request(local.host + '/api/af/ack', local.agentKey, 'POST',
-        { id, instance_id: local.instanceId });
+      if (!expected || !local ||
+          local.host !== expected.origin ||
+          local.instanceId !== expected.instanceId ||
+          local.agentKey !== expected.agentKey ||
+          await permitted(expected.origin) !== true) return false;
+      await request(expected.origin + '/api/af/ack', expected.agentKey, 'POST',
+        { id, instance_id: expected.instanceId });
       return true;
     }
     const processor = createCommandProcessor({
