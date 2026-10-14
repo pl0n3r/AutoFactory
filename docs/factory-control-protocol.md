@@ -678,3 +678,41 @@ Se serializan exclusivamente `instance_id` (UUID generado en storage local, no i
 Nunca transmitir: chats, prompts, respuestas, títulos, URLs, cookies, tokens, correos o ID de cuenta. El servicio local debe seguir validando Origen, tipo JSON, límite de bytes, forma exacta, consumo autorizado y loopback. La extensión conserva el flag apagado por defecto; el usuario puede apagarlo desde el popup, lo que cancela el alarm y elimina el permiso opcional. Si Safari no implementa `permissions.request`, la activación falla cerrada. No hay empaquetado instalable, publicación ni despliegue en este Issue.
 
 **QA offline:** `node test-factory-control-local-publisher.cjs`; `python3 -m unittest tests.test_factory_control_local_publisher`; `node test-extension-integrity.cjs`; `python3 -m unittest tests.test_release_artifact_attestation`; `npm test`. Antes de fusionar: CI y aceptación exact-SHA, revisión, V3 y protecciones vigentes; live/instalación quedan fuera de alcance.
+
+
+## Adaptador LAN de comandos (AutoFactory #167)
+
+`factory-control-local-commands.js` incorpora ahora un adaptador de
+**puertos de navegador inyectados**, probado con fakes sin conexiones reales.
+No realiza fetch, alarmas, lecturas de clave ni cambios de masterEnabled al
+importarse: solo puede transmitir después de que un consumidor invoque
+explícitamente `createBrowserCommandRuntime(...).tick()`.
+
+El adaptador valida un origen IPv4 RFC1918/loopback sin rutas ni DNS, comprueba
+el permiso opcional del hostname, exige `factoryControlLanCommandsEnabled===true`
+y credenciales/instance_id locales válidos. Emite únicamente
+`GET /api/af/commands?instance_id=<id>` y
+`POST /api/af/ack` con `X-Agent-Key` en cabecera, sin credenciales
+de navegador, redirects ni referer; GET exige JSON acotado. Las órdenes
+globales STOP guardan un recibo persistente **antes** de aplicar cambios,
+detienen masterEnabled y difunden a pestañas; no confirman ACK ante un
+resultado ambiguo. Las órdenes por chat no son interpretadas. Un comando START
+**no** se ejecuta por defecto: requiere la inyección de una verificación
+autenticada de login/uso; en ausencia de esa evidencia se veta sin ACK.
+
+**Limitación de integración:** este cambio solo prepara el adaptador;
+`background-entry.js` todavía no lo instala, el popup mantiene
+el interruptor bloqueado y el manifest no concede destinos LAN. Por lo tanto,
+no hay tráfico LAN real habilitado ni promesa de sondeo a 8 segundos.
+Chrome MV3 puede suspender el service worker y sus alarmas tienen un mínimo
+de 30 segundos; el requisito de 5–10 s requiere una estrategia compatible
+verificada antes de activar producto. Además HTTP en LAN **no cifra**
+`X-Agent-Key`; el consentimiento de red doméstica registrado no
+equivale a certificar confidencialidad frente a observadores de esa red.
+La activación exige resolución explícita de ambos gates, pruebas del wiring
+Chrome/Safari y validación del contrato ACK del servidor. Nada de lo anterior
+habilita Internet, ControlBot, live, release ni tokens reales.
+
+**QA build-ahead:** `node test-factory-control-local-commands.cjs`
+(incluye el caso `ac10` de opt-in, STOP, recibo/ACK, anti-replay,
+restringir destinos y denegar START sin evidencia).
