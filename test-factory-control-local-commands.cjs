@@ -273,7 +273,63 @@ async function ac10() {
   assert.equal(await runtime.tick(),'stopped');
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10};
+
+async function ac11() {
+  const fs=require('node:fs'),path=require('node:path');
+  const entry=fs.readFileSync(path.join(__dirname,'background-entry.js'),'utf8');
+  const mirror=fs.readFileSync(path.join(__dirname,'safari',
+    'ChatGPT Autopilot Local Extension','Resources','background-entry.js'),'utf8');
+  assert.equal(entry,mirror);
+  assert.ok(entry.includes("'factory-control-local-commands.js'"));
+  assert.ok(entry.includes('ChatGPTAutopilotLocalCommands.installBackground(globalThis)'));
+  let network=0,alarms=[],changed=[],started=[];
+  const memory={factoryControlLanCommandsEnabled:false};
+  const browser={
+    storage:{
+      local:{
+        get:async defaults=>({...defaults,...memory}),
+        set:async next=>Object.assign(memory,next)
+      },
+      onChanged:{addListener(fn){changed.push(fn)}}
+    },
+    permissions:{
+      contains:async()=>false,
+      onRemoved:{addListener(){}}
+    },
+    alarms:{
+      create:async()=>{},
+      clear:async()=>true,
+      onAlarm:{addListener(fn){alarms.push(fn)}}
+    },
+    tabs:{
+      query:async()=>[],
+      sendMessage:async()=>({ok:true,enabled:false})
+    },
+    runtime:{
+      onStartup:{addListener(fn){started.push(fn)}},
+      onInstalled:{addListener(){}}
+    }
+  };
+  const root={chrome:browser,fetch:async()=>{network++;throw new Error('network forbidden');},
+    Date:{now:()=>100000}};
+  assert.equal(api.installBackground(root),true);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(network,0);
+  assert.equal(alarms.length,1);
+  alarms[0]({name:'factory-control-lan-commands'});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(network,0);
+  memory.factoryControlLanCommandsEnabled=true;
+  changed[0]({factoryControlLanCommandsEnabled:{newValue:true}},'local');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(network,0); // No origin/key/instance or host permission.
+  started[0]();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(network,0);
+  assert.equal(api.installBackground({chrome:{}}),false);
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
