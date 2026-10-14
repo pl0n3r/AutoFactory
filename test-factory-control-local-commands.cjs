@@ -329,7 +329,52 @@ async function ac11() {
   assert.equal(api.installBackground({chrome:{}}),false);
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11};
+
+async function ac12() {
+  // The command came from server A. Rotating host/key while applying STOP
+  // must NEVER confirm that command to server B under B's credentials.
+  const a=lan('10.0.0.4:8777'),b=lan('10.0.0.5:8777');
+  const FLAG='factoryControlLanCommandsEnabled',HOST='factoryControlLanOriginV1',
+    KEY='factoryControlLanAgentKeyV1',INSTANCE='factoryControlLocalInstanceId',
+    REC='factoryControlLanReceiptsV1';
+  const firstKey='initial-agent-key-0001',secondKey='rotated-agent-key-0002';
+  const data={ [FLAG]:true,[HOST]:a,[KEY]:firstKey,
+    [INSTANCE]:'agent-A',masterEnabled:true };
+  const calls=[];
+  const storage={
+    async get(defaults){return {...defaults,...data};},
+    async set(next){
+      Object.assign(data,next);
+      if (Object.hasOwn(next,'masterEnabled')) {
+        data[HOST]=b;
+        data[KEY]=secondKey;
+        data[INSTANCE]='agent-B';
+      }
+    }
+  };
+  const browser=api.createBrowserCommandRuntime({
+    storage,permissions:{contains:async()=>true},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>100000,
+    fetch:async (url,options)=>{
+      calls.push({url,method:options.method,key:options.headers['X-Agent-Key']});
+      if (options.method==='GET') {
+        assert.equal(url,a+'/api/af/commands?instance_id=agent-A');
+        return {ok:true,headers:{get:name=>name==='content-type'?'application/json':null},
+          text:async()=>JSON.stringify({commands:[{id:401,chat_id:null,want:'stop'}]})};
+      }
+      return {ok:true};
+    }
+  });
+  assert.equal(await browser.tick(),'empty');
+  assert.equal(data.masterEnabled,false); // STOP local effect is real.
+  assert.equal(data[REC]['401'],true); // Pending receipt must not replay.
+  assert.deepEqual(calls,[{
+    url:a+'/api/af/commands?instance_id=agent-A',method:'GET',key:firstKey
+  }]); // NO cross-server ACK, even if rotated origin has permission.
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
