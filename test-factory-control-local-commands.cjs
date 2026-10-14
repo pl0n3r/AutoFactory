@@ -250,7 +250,7 @@ async function ac10() {
   assert.equal(requests.length,2);
   assert.equal(state.masterEnabled,false);
   assert.deepEqual(deliveries,[{type:'autopilot:set-enabled',enabled:false}]);
-  assert.equal(state[REC]['101'],true);
+  assert.equal(state[REC][origin+'|agent-local-1|101'],true);
   stamp+=8000;
   assert.equal(await runtime.tick(),'empty'); // Durable receipt blocks replay.
   assert.equal(requests.length,3);
@@ -259,7 +259,7 @@ async function ac10() {
   assert.equal(await runtime.tick(),'empty'); // Login/usage UNKNOWN: start denied.
   assert.equal(state.masterEnabled,false);
   assert.equal(requests.length,4);
-  assert.equal(state[REC]['102'],undefined);
+  assert.equal(state[REC][origin+'|agent-local-1|102'],undefined);
   stamp+=8000;
   permitted=false;
   assert.equal(await runtime.tick(),'disabled');
@@ -376,7 +376,7 @@ async function ac12() {
     });
     assert.equal(await browser.tick(),'empty',variant.name);
     assert.equal(data.masterEnabled,false,variant.name);
-    assert.equal(data[REC]['401'],true,variant.name);
+    assert.equal(data[REC][a+'|agent-A|401'],true,variant.name);
     assert.deepEqual(calls,[{
       url:a+'/api/af/commands?instance_id=agent-A',
       method:'GET',key:firstKey
