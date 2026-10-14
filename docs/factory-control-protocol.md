@@ -776,3 +776,14 @@ del permiso inmediatamente después de la primera verificación de ACK:
 el STOP se aplica y conserva recibo, pero nunca se emite POST.
 Esto reduce la ventana de carrera sin ofrecer atomicidad transaccional
 entre APIs del navegador. No autoriza red LAN remota ni go-live.
+
+## Límite de consulta de pestañas (ac23)
+
+Además del límite individual de seis segundos en `tabs.sendMessage`, la
+búsqueda `tabs.query` dispone de un `AbortSignal` de seis segundos con
+resultado fail-closed y limpieza de listeners. Una consulta que no responde
+no retiene indefinidamente el procesador, no genera ACK y conserva el
+recibo persistido antes del efecto. `ac23` simula `tabs.query` que nunca
+resuelve y dispara el aborto sin reloj real; una segunda lectura del mismo
+comando no repite el efecto. Esta protección no sustituye la estrategia
+de sondeo Chrome MV3 ni habilita LAN remota.

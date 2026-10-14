@@ -832,7 +832,66 @@ async function ac22() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20,ac21,ac22};
+
+async function ac23() {
+  // Chrome can leave tabs.query unresolved as a service worker is suspended.
+  // A bounded failure must not ACK, replay or block subsequent polling forever.
+  const host=lan('127.0.0.1:8777');
+  const state={
+    factoryControlLanCommandsEnabled:true,
+    factoryControlLanOriginV1:host,
+    factoryControlLanAgentKeyV1:'offline-agent-secret-001',
+    factoryControlLocalInstanceId:'agent-query-hang',
+    masterEnabled:true
+  };
+  const aborter=new AbortController();
+  let now=100000,deadlineCalls=0,queries=0,posts=0,gets=0;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async defaults=>({...defaults,...state}),
+      set:async value=>Object.assign(state,value)
+    },
+    permissions:{contains:async()=>true},
+    tabs:{
+      query:()=>{
+        queries++;
+        setImmediate(()=>aborter.abort());
+        return new Promise(()=>{});
+      },
+      sendMessage:async()=>{throw new Error('must not send to unknown tabs');}
+    },
+    now:()=>now,
+    timeoutSignal:milliseconds=>{
+      assert.equal(milliseconds,6000);
+      deadlineCalls++;
+      return deadlineCalls===2 ? aborter.signal : new AbortController().signal;
+    },
+    fetch:async(_url,options)=>{
+      if(options.method==='POST'){posts++;return {ok:true};}
+      gets++;
+      return {ok:true,headers:{get:key=>
+        key==='content-type'?'application/json':null},
+        text:async()=>JSON.stringify({commands:[
+          {id:908,chat_id:null,want:'stop'}]})};
+    }
+  });
+  assert.equal(await runtime.tick(),'empty');
+  assert.equal(deadlineCalls,2);
+  assert.equal(queries,1);
+  assert.equal(posts,0);
+  assert.equal(gets,1);
+  assert.equal(state.masterEnabled,false);
+  assert.equal(state.factoryControlLanReceiptsV1[
+    host+'|agent-query-hang|908'],true);
+  now+=8000;
+  assert.equal(await runtime.tick(),'empty');
+  assert.equal(queries,1);
+  assert.equal(gets,2);
+  assert.equal(posts,0);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20,ac21,ac22,ac23};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');

@@ -371,7 +371,28 @@
       if (want === 'start' && await allowedToStart() !== true) return false;
       const active = want === 'start';
       await storage.set({ masterEnabled: active });
-      const found = await tabs.query({ url: ['https://chatgpt.com/*'] });
+      // tabs.query can itself remain pending when the browser is suspended.
+      // Bound discovery separately from the per-tab send deadlines.
+      const querySignal = timeoutSignal(6000);
+      if (!querySignal || typeof querySignal.aborted !== 'boolean' ||
+          typeof querySignal.addEventListener !== 'function' ||
+          typeof querySignal.removeEventListener !== 'function') return false;
+      const found = await new Promise(resolve => {
+        let settled = false;
+        const finish = value => {
+          if (settled) return;
+          settled = true;
+          querySignal.removeEventListener('abort', onAbort);
+          resolve(value);
+        };
+        const onAbort = () => finish(null);
+        querySignal.addEventListener('abort', onAbort, { once: true });
+        if (querySignal.aborted) { finish(null); return; }
+        try {
+          Promise.resolve(tabs.query({ url: ['https://chatgpt.com/*'] }))
+            .then(finish, () => finish(null));
+        } catch (_error) { finish(null); }
+      });
       if (!Array.isArray(found) || found.length > 99) return false;
       // A stale/broken tab must not prevent STOP reaching other tabs.
       // Fan out to all valid tabs, but acknowledge only a complete success.
