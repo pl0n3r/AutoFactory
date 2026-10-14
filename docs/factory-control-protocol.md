@@ -717,5 +717,11 @@ Chrome/Safari y validación del contrato ACK del servidor. Nada de lo anterior
 habilita Internet, ControlBot, live, release ni tokens reales.
 
 **QA build-ahead:** `node test-factory-control-local-commands.cjs`
-(incluye el caso `ac10` de opt-in, STOP, recibo/ACK, anti-replay,
-restringir destinos y denegar START sin evidencia).
+(casos `ac10`–`ac16`: opt-in, STOP/ACK, bloqueo de START, carreras de
+revocación, recibos aislados por origen e instancia, migración de recibos
+legacy y vencimiento de conexiones que no responden). GET y POST usan
+`AbortSignal.timeout(6000)` mediante una dependencia inyectable en tests;
+si el navegador carece de un mecanismo de timeout, el adaptador falla
+cerrado, sin petición infinita. El poller vuelve a aplicar backoff en
+fallos de transporte; estos tests no demuestran la cadencia 5–10 s en MV3
+ni proporcionan confidencialidad para `X-Agent-Key` enviado por HTTP LAN.
