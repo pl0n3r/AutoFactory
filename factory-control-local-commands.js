@@ -271,7 +271,37 @@
       }
       const size = Number(response.headers?.get?.('content-length'));
       if (Number.isFinite(size) && size > 32768) throw new TypeError('oversize');
-      const text = await response.text();
+      let text;
+      if (response.body && typeof response.body.getReader === 'function') {
+        // Validate actual bytes while streaming; Content-Length can be absent
+        // or dishonest. Never materialize an unlimited response.text().
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        let bytes = 0;
+        text = '';
+        try {
+          let chunk = await reader.read();
+          while (chunk.done !== true) {
+            if (!(chunk.value instanceof Uint8Array)) {
+              throw new TypeError('invalid response stream');
+            }
+            bytes += chunk.value.byteLength;
+            if (bytes > 32768) throw new TypeError('oversize');
+            text += decoder.decode(chunk.value, { stream: true });
+            chunk = await reader.read();
+          }
+          text += decoder.decode();
+        } catch (error) {
+          try { await reader.cancel(); } catch (_ignored) {}
+          throw error;
+        } finally {
+          reader.releaseLock();
+        }
+      } else {
+        // Synthetic responses used by the offline adapter tests. Real browser
+        // Fetch responses carry a readable body stream for nonempty payloads.
+        text = await response.text();
+      }
       if (typeof text !== 'string' || text.length > 32768) {
         throw new TypeError('oversize');
       }
