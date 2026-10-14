@@ -544,7 +544,53 @@ async function ac16() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16};
+
+async function ac17() {
+  // Content-Length can be missing or false. Do not materialize a multi-MB
+  // response body before enforcing the 32-KiB command-envelope limit.
+  const host=lan('10.0.0.4:8777');
+  const state={
+    factoryControlLanCommandsEnabled:true,
+    factoryControlLanOriginV1:host,
+    factoryControlLanAgentKeyV1:'offline-agent-secret-001',
+    factoryControlLocalInstanceId:'agent-stream',
+    masterEnabled:true
+  };
+  let read=0,cancel=0,posts=0,changes=0;
+  const runtime=api.createBrowserCommandRuntime({
+    storage:{
+      get:async d=>({...d,...state}),
+      set:async x=>{Object.assign(state,x);changes++;}
+    },
+    permissions:{contains:async()=>true},
+    tabs:{query:async()=>[],sendMessage:async()=>({ok:true,enabled:false})},
+    now:()=>100000,
+    fetch:async(_url,options)=>{
+      if(options.method==='POST'){posts++;return {ok:true};}
+      return {
+        ok:true,
+        headers:{get:name=>name==='content-type'?'application/json':null},
+        // Returning a small text is an intentionally misleading fallback:
+        // the real fetch body stream has an oversized first chunk.
+        text:async()=>JSON.stringify({commands:[{id:901,chat_id:null,want:'stop'}]}),
+        body:{getReader:()=>({
+          async read(){read++;return {done:false,value:new Uint8Array(32769)};},
+          async cancel(){cancel++;},
+          releaseLock(){}
+        })}
+      };
+    }
+  });
+  assert.equal(await runtime.tick(),'unavailable');
+  assert.equal(read,1);
+  assert.equal(cancel,1);
+  assert.equal(posts,0);
+  assert.equal(changes,0);
+  assert.equal(state.masterEnabled,true);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');
