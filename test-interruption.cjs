@@ -154,13 +154,13 @@ console.log('Interrupción: controles Stop ocultos o propios no simulan una resp
 
 const newChatButton = {
   disabled: false,
-  innerText: 'Iniciar nuevo chat',
-  textContent: 'Iniciar nuevo chat',
+  innerText: 'Iniciar chat nuevo',
+  textContent: 'Iniciar chat nuevo',
   getAttribute() { return null; },
   closest() {
     return {
       hidden: false,
-      innerText: 'Alcanzaste la duración máxima para esta conversación, pero puedes seguir hablando iniciando un nuevo chat. Iniciar nuevo chat',
+      innerText: 'Alcanzaste la duración máxima para esta conversación, pero puedes seguir hablando iniciando un nuevo chat. Iniciar chat nuevo',
       textContent: this.innerText,
       getAttribute() { return null; }
     };

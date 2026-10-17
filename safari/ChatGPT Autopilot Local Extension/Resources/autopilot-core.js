@@ -194,7 +194,17 @@
     ]);
     for (const button of doc.querySelectorAll('button')) {
       const label = normalize(button.innerText || button.textContent || button.getAttribute('aria-label'));
-      if (!button.disabled && allowed.has(label.toLowerCase())) return button;
+      if (button.disabled || button.hidden || button.getAttribute?.('aria-hidden') === 'true'
+          || !allowed.has(label.toLowerCase())) continue;
+      const style = button.ownerDocument?.defaultView?.getComputedStyle?.(button);
+      if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
+      if (typeof button.checkVisibility === 'function'
+          && !button.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })) continue;
+      const rect = button.getBoundingClientRect?.();
+      const viewportHeight = button.ownerDocument?.defaultView?.innerHeight;
+      if (rect && Number.isFinite(viewportHeight) && (rect.height > 0 || rect.width > 0)
+          && (rect.bottom < 0 || rect.top > viewportHeight)) continue;
+      return button;
     }
     return null;
   }
@@ -208,7 +218,7 @@
   }
   function conversationLimitButton(doc = document) {
     const allowed = new Set([
-      'iniciar nuevo chat', 'start new chat',
+      'iniciar nuevo chat', 'iniciar chat nuevo', 'start new chat',
       'comenzar un nuevo chat', 'start a new chat'
     ]);
     const limitPattern = /(?:duraci[oó]n m[aá]xima|m[aá]xima duraci[oó]n|maximum (?:length|duration)|conversation.{0,80}(?:reached|alcanz).{0,80}(?:limit|m[aá]xim)|l[ií]mite.{0,80}conversaci[oó]n)/i;

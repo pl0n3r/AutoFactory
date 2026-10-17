@@ -2,6 +2,35 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.6 — 2026-10-17
+
+- Modo dirigido: con el enlace al orquestador activo no se envía el prompt genérico; solo issues asignados.
+- Publica la lista de chats con fase local y la ejecución al dar Play; acepta órdenes por chat.
+
+## 1.7.5 — 2026-10-11
+
+- Ejecuta el refresh periódico antes de circuitos de recuperación y esperas internas.
+- Conserva el temporizador y recarga incluso durante respuestas prolongadas.
+
+## 1.7.4 — 2026-10-10
+
+- Ignora controles de recuperación históricos que están fuera de la vista.
+- Permite continuar enviando cuando el compositor actual está disponible.
+
+## 1.7.3 — 2026-10-10
+
+- Libera estados de recuperación antiguos cuando el compositor vuelve a estar disponible.
+- Evita que una recuperación sin fecha deje los envíos bloqueados indefinidamente.
+
+## 1.7.2 — 2026-10-10
+
+- Reconoce el botón «Iniciar chat nuevo» mostrado al alcanzar el límite de una conversación.
+
+## 1.7.1 — 2026-10-10
+
+- Reutiliza la pestaña llena al iniciar el chat de continuación.
+- Evita dejar el chat anterior esperando o abrir ventanas de recuperación adicionales.
+
 ## 1.7.0 — 2026-10-10
 
 - Añade memoria compartida preparada para ControlBot con eventos estrictamente sanitizados y caché local.
