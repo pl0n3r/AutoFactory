@@ -233,7 +233,8 @@
       // A token over HTTP can leave the machine only after the transport
       // has been secured independently. Loopback alone is allowed today.
       if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(host)) return null;
-      return 'http://' + new URL(host).hostname + '/*';
+      // Same exact pattern (with port) that the popup requested and the publisher checks.
+      return host + '/*';
     };
     async function configuration() {
       const stored = await storage.get(memory);
@@ -544,6 +545,20 @@
     async function pollNow() {
       let result = 'error';
       try { result = String(await adapter.tick()); } catch (_error) { result = 'error'; }
+      if (result === 'disabled') {
+        try {
+          const st = await invoke(ext.storage.local, 'get', { factoryControlLanOriginV1: null,
+            factoryControlLanAgentKeyV1: null, factoryControlLanCommandsEnabled: false,
+            factoryControlLocalInstanceId: null });
+          const okKey = typeof st.factoryControlLanAgentKeyV1 === 'string' &&
+            st.factoryControlLanAgentKeyV1.length >= 12;
+          const okInst = typeof st.factoryControlLocalInstanceId === 'string';
+          const perm = await invoke(ext.permissions, 'contains',
+            { origins: [String(st.factoryControlLanOriginV1) + '/*'] }).catch(() => false);
+          result = 'disabled:' + (st.factoryControlLanCommandsEnabled !== true ? 'opcion'
+            : !okKey ? 'clave' : !okInst ? 'instancia' : perm !== true ? 'permiso' : 'otro');
+        } catch (_error) { /* keep plain result */ }
+      }
       try {
         await invoke(ext.storage.local, 'set', { factoryControlLanLastPoll:
           { at: Date.now(), result: result.slice(0, 20) } });

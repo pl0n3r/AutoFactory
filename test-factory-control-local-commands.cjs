@@ -208,7 +208,7 @@ async function ac10() {
   };
   const permissions={
     async contains({origins}){
-      assert.deepEqual(origins,['http://127.0.0.1/*']);
+      assert.deepEqual(origins,['http://127.0.0.1:8777/*']);
       return permitted;
     }
   };
