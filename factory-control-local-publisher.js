@@ -95,7 +95,7 @@
     return Object.freeze(payload);
   }
 
-  function createPublisher({ now, enabled, permission, snapshot, post } = {}) {
+  function createPublisher({ now, enabled, permission, snapshot, post, report } = {}) {
     if (![now, enabled, permission, snapshot, post].every(x => typeof x === 'function')) {
       throw new TypeError('publisher ports required');
     }
@@ -105,23 +105,33 @@
     async function publish() {
       if (inFlight) return false;
       inFlight = true;
+      let step = 'inicio';
+      const note = (ok, detail) => {
+        try { if (typeof report === 'function') report({ ok, step, detail }); } catch (_e) { /* diagnostics only */ }
+      };
       try {
         const current = now();
         if (!Number.isSafeInteger(current) || current < 0 ||
-            current < nextAllowed || !(await enabled()) || !(await permission())) {
-          return false;
-        }
+            current < nextAllowed) return false;
+        step = 'opcion';
+        if (!(await enabled())) { note(false, 'opción apagada'); return false; }
+        step = 'permiso';
+        if (!(await permission())) { note(false, 'sin permiso 127.0.0.1'); return false; }
+        step = 'pestañas';
         const payload = payloadFrom(await snapshot());
+        step = 'envio';
         // Opt-in may be revoked while gathering the snapshot. Never transmit
         // from a stale permission/flag read, even on an in-flight alarm tick.
         if (!(await enabled()) || !(await permission())) return false;
         const result = await post(payload);
         if (result !== true) throw new TypeError('local receiver unavailable');
+        note(true, 'enviado');
         failures = 0;
         nextAllowed = current + 30_000;
         return true;
       } catch (_error) {
-        // No exception details, chat content or private transport data in logs.
+        // Only a fixed error class is recorded, never messages or chat data.
+        note(false, String(_error?.name || 'Error').slice(0, 30));
         failures = Math.min(failures + 1, 5);
         try {
           nextAllowed = Math.max(nextAllowed,
@@ -208,7 +218,13 @@
       });
       return response?.ok === true;
     };
-    const publisher = createPublisher({ now: Date.now, enabled, permission, snapshot, post });
+    const report = info => {
+      try {
+        void call(extension.storage.local, 'set', { factoryControlLocalLastPublish:
+          { at: Date.now(), ok: info.ok === true, step: String(info.step), detail: String(info.detail) } });
+      } catch (_e) { /* diagnostics only */ }
+    };
+    const publisher = createPublisher({ now: Date.now, enabled, permission, snapshot, post, report });
     // Pressing Play starts a new run: announce the detected chats right away.
     extension.storage.onChanged?.addListener((changes, area) => {
       if (area === 'local' && changes.masterEnabled?.newValue === true) {
