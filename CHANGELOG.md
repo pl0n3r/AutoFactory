@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.23 — 2026-10-17
+
+- Diagnóstico: en modo dirigido con «interfaz no disponible» registra recuentos y un código del motivo por el que el campo de escritura no es utilizable (sin texto).
+
 ## 1.7.22 — 2026-10-17
 
 - Modo dirigido: ninguna pestaña recarga por «interfaz ausente» (la 1.7.21 no incluyó este cambio por error).
