@@ -392,6 +392,40 @@
     state.nextSendAt = 0;
     return true;
   }
+  // Diagnostics only (counts and a reason code, never text): why is the composer not usable?
+  let lastProbeAt = 0;
+  function probeComposer() {
+    if (Date.now() - lastProbeAt < 60000) return;
+    lastProbeAt = Date.now();
+    const el = document.querySelector('#prompt-textarea');
+    let reason = 0;
+    if (el) {
+      if (el.disabled) reason = 9;
+      else if (el.readOnly || el.getAttribute('aria-readonly') === 'true') reason = 10;
+      else {
+        for (let n = el; n?.nodeType === 1 && !reason; n = n.parentElement) {
+          if (n.hidden) reason = 1;
+          else if (n.hasAttribute('inert')) reason = 2;
+          else if (n.getAttribute('aria-hidden') === 'true') reason = 3;
+          else if (n.getAttribute('aria-disabled') === 'true') reason = 4;
+          else {
+            const st = getComputedStyle(n);
+            if (st.display === 'none') reason = 5;
+            else if (st.visibility === 'hidden' || st.visibility === 'collapse') reason = 6;
+            else if (st.pointerEvents === 'none') reason = 7;
+            else if (Number.parseFloat(st.opacity) === 0) reason = 8;
+          }
+        }
+      }
+    }
+    log('failure', {
+      cmpCount: document.querySelectorAll('#prompt-textarea').length,
+      cmpReason: reason,
+      taCount: document.querySelectorAll('textarea').length,
+      edCount: document.querySelectorAll('[contenteditable="true"]').length
+    });
+  }
+
   function replyPhase() {
     if (state.waiting) return 'trabajando';
     const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
@@ -1109,6 +1143,7 @@
       // (no stop button, composer hidden) were reloaded and lost their work.
       void missingReloadAt;
       const directedHold = isDirected();
+      if (directedHold && signal.code === 'interface-missing') probeComposer();
       // The new «Thinking» UI shows no stop button: right after our own send the
       // composer is hidden while ChatGPT works. Never reload during that window.
       const respondingToOurSend = state.waiting && Date.now() - state.lastSentAt < 45 * 60000;

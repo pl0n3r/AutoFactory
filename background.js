@@ -236,7 +236,8 @@
     'source', 'version'
   ]);
   const DIAGNOSTIC_BOOLEAN = new Set(['enabled', 'backgroundTabs', 'persistentState']);
-  const DIAGNOSTIC_NUMBER = new Set(['promptLength', 'attempt', 'intervalMinutes']);
+  const DIAGNOSTIC_NUMBER = new Set(['promptLength', 'attempt', 'intervalMinutes',
+    'cmpCount', 'cmpReason', 'taCount', 'edCount']);
 
   // A send-control-missing event is reduced to bounded counts at the trust edge.
   // Textual DOM attributes and the conversation path are inspected for shape only.
