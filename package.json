@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-autopilot-local",
-  "version": "1.7.16",
+  "version": "1.7.17",
   "private": true,
   "description": "Local Chrome and Safari extension that safely continues ChatGPT workflows.",
   "scripts": {
