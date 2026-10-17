@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.20 — 2026-10-17
+
+- Con varios campos de texto visibles, usa #prompt-textarea si es el único utilizable (antes quedaba «interfaz no disponible» en chats sanos).
+
 ## 1.7.19 — 2026-10-17
 
 - La asignación de un issue usa el prompt del modo dirigido de Factory con el issue asignado: trabajarlo hasta fusionarlo y resolver bloqueos.
