@@ -1096,8 +1096,12 @@
       let missingReloadAt = 0;
       try { missingReloadAt = Number(sessionStorage.getItem('autofactory-missing-reload-at')) || 0; } catch (_e) { /* ignore */ }
       const directedHold = isDirected() && Date.now() - missingReloadAt < 600000;
+      // The new «Thinking» UI shows no stop button: right after our own send the
+      // composer is hidden while ChatGPT works. Never reload during that window.
+      const respondingToOurSend = state.waiting && Date.now() - state.lastSentAt < 45 * 60000;
       const interfaceMissingLongEnough = signal.code === 'interface-missing'
         && !generating
+        && !respondingToOurSend
         && !directedHold
         && Date.now() - state.contentLoadedAt > 15000;
       if (signal.code === 'interface-missing' && !interfaceMissingLongEnough) {
