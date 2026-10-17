@@ -18,14 +18,20 @@ assert.match(content, /button = core\.sendButton\(document\);[\s\S]*button\?\.is
   'debe recuperar y pulsar el botón vivo después del último render de React');
 assert.match(content, /ambiguousSendFailure[\s\S]*circuitOpenUntil = Date\.now\(\) \+ 300000/,
   'un envío no confirmado debe abrir la protección sin reintentos ambiguos');
+assert.match(content, /readyComposerCanRetry[\s\S]{0,500}reason: 'ready-composer'/,
+  'un compositor listo debe liberar un circuito antiguo sin envío pendiente');
+assert.doesNotMatch(content, /nextSendAt = plan\.retryAt \|\| Number\.POSITIVE_INFINITY/,
+  'la recuperación no debe dejar el próximo envío bloqueado para siempre');
 assert.match(content, /function promptMatches\(value, prompt\)[\s\S]*reliability\.signature\(value\) === reliability\.signature\(prompt\)/,
   'debe reconocer su borrador aunque el editor normalice espacios o saltos');
 assert.match(content, /const resumableDraft = promptMatches\(core\.composerText\(field\), prompt\)/,
   'el ciclo debe retomar un borrador propio normalizado');
 assert.match(content, /signal\.code === 'conversation-limit'[\s\S]*location\.pathname === '\/'[\s\S]*signal = \{ code: 'ready', action: 'none' \}/,
   'una pestaña que ya está en chat nuevo no debe abrir otro chat');
-assert.match(content, /if \(periodicReloadDue && generating\) \{[\s\S]{0,250}return;[\s\S]{0,120}if \(periodicReloadDue\) \{[\s\S]{0,500}location\.reload\(\)/,
-  'el refresh vencido debe esperar una generación real y recargar al terminar');
+assert.match(content, /const periodicReloadDue[\s\S]{0,700}location\.reload\(\)[\s\S]{0,140}let signal = core\.pageSignal/,
+  'el refresh periódico debe ejecutarse antes de cualquier recuperación o bloqueo');
+assert.doesNotMatch(content, /periodicReloadDue && generating/,
+  'una respuesta prolongada no debe aplazar indefinidamente el refresh');
 assert.doesNotMatch(content, /Conversación inaccesible; continuando en un chat nuevo/,
   'un fallo de carga no debe abrir automáticamente otro chat');
 assert.match(content, /if \(signal\.code === 'recoverable' && generationAtSignal\)[\s\S]{0,120}signal = \{ code: 'ready', action: 'none' \}/,
@@ -52,8 +58,10 @@ assert.match(content, /CONVERSATION_TRANSFER_COOLDOWN_MS\s*=\s*10 \* 60 \* 1000/
   'cada pestaña debe limitar la creación automática de chats nuevos');
 assert.match(content, /sessionStorage\.setItem\(CONVERSATION_TRANSFER_KEY, String\(state\.conversationTransferAt\)\)/,
   'la transferencia debe persistirse antes de navegar');
-assert.match(content, /async function openFreshConversation\(button\) \{\s*if \(button\?\.click\) \{\s*button\.click\(\);\s*return true;/,
-  'una alerta debe ejecutar una sola apertura y terminar');
+assert.match(content, /El chat nuevo no abrió; reintentando en esta pestaña[\s\S]{0,180}openFreshConversation\(signal\.element\)/,
+  'una alerta todavía visible debe reintentar la transición en la misma pestaña');
+assert.match(content, /button\.getAttribute\?\.\('href'\)[\s\S]{0,180}location\.assign\(href \? new URL\(href, location\.origin\)\.href : 'https:\/\/chatgpt\.com\/'\)/,
+  'una alerta debe reutilizar la pestaña actual sin abrir ventanas adicionales');
 
 console.log('Mensaje personalizado: cualquier texto no vacío se conserva y se envía');
 

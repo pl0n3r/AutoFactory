@@ -424,8 +424,9 @@
   }
 
   async function openFreshConversation(button) {
-    if (button?.click) {
-      button.click();
+    if (button) {
+      const href = button.getAttribute?.('href');
+      location.assign(href ? new URL(href, location.origin).href : 'https://chatgpt.com/');
       return true;
     }
     const newChatLink = [...document.querySelectorAll('a[href]')].find(link => {
@@ -788,6 +789,24 @@
     if (!state.enabled || state.busy) return;
     state.busy = true;
     try {
+      const currentConfig = await config();
+      const { prompt: defaultPrompt, delaySeconds } = currentConfig;
+      let prompt = defaultPrompt;
+      state.settings = { ...state.settings, ...currentConfig };
+      const periodicReloadDue = currentConfig.periodicReload
+        && Date.now() - state.lastPeriodicReloadAt >= currentConfig.periodicReloadMinutes * 60000;
+      if (periodicReloadDue) {
+        state.lastPeriodicReloadAt = Date.now();
+        sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));
+        persistRuntime();
+        log('recovery', { code: 'periodic-refresh', action: 'reload',
+          intervalMinutes: currentConfig.periodicReloadMinutes,
+          waiting: state.waiting,
+          generating: Boolean(core.stopButton(document)) });
+        setStatus('Recarga periódica; conservando el estado');
+        location.reload();
+        return;
+      }
       let signal = core.pageSignal(document);
       const generationAtSignal = Boolean(core.stopButton(document));
       const isNewChatRoute = location.pathname === '/' || location.pathname === '';
@@ -870,7 +889,7 @@
           }
         } else {
           state.waiting = false;
-          state.nextSendAt = plan.retryAt || Number.POSITIVE_INFINITY;
+          state.nextSendAt = plan.retryAt > Date.now() ? plan.retryAt : Date.now() + 1000;
           persistRuntime();
           if (plan.retryAt > Date.now()) {
             const remainingMinutes = Math.max(1, Math.ceil((plan.retryAt - Date.now()) / 60000));
@@ -913,35 +932,23 @@
         persistRuntime();
         log('circuit-reset', { reason: 'active-interrupted-generation' });
       }
+      const readyComposerCanRetry = signal.code === 'ready'
+        && Boolean(core.composer(document))
+        && !core.stopButton(document)
+        && !state.pendingSignature;
+      if (Date.now() < state.circuitOpenUntil && readyComposerCanRetry) {
+        Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
+        state.nextSendAt = Date.now() + 1000;
+        persistRuntime();
+        log('circuit-reset', { reason: 'ready-composer' });
+      }
       if (Date.now() < state.circuitOpenUntil) {
         setStatus(`Protección activa; reintento en ${Math.ceil((state.circuitOpenUntil - Date.now()) / 60000)} min`, 'error');
         return;
       }
-      const currentConfig = await config();
-      const { prompt: defaultPrompt, delaySeconds } = currentConfig;
-      let prompt = defaultPrompt;
-      state.settings = { ...state.settings, ...currentConfig };
       const generating = Boolean(core.stopButton(document));
       if (Date.now() - state.contentLoadedAt < 5000) {
         setStatus('Inicializando la interfaz');
-        return;
-      }
-      const periodicReloadDue = currentConfig.periodicReload
-        && Date.now() - state.lastPeriodicReloadAt >= currentConfig.periodicReloadMinutes * 60000;
-      if (periodicReloadDue && generating) {
-        setStatus('Refresh pendiente; esperando que ChatGPT termine');
-        return;
-      }
-      if (periodicReloadDue) {
-        state.lastPeriodicReloadAt = Date.now();
-        sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));
-        persistRuntime();
-        log('recovery', { code: 'periodic-refresh', action: 'reload',
-          intervalMinutes: currentConfig.periodicReloadMinutes,
-          waiting: state.waiting,
-          generating });
-        setStatus('Recarga periódica; conservando la espera');
-        location.reload();
         return;
       }
       if (signal.code !== 'ready') followLatest(true);
@@ -994,7 +1001,14 @@
       }
       if (signal.code === 'conversation-limit') {
         if (Date.now() - state.conversationTransferAt < CONVERSATION_TRANSFER_COOLDOWN_MS) {
-          setStatus('Chat nuevo ya abierto; evitando duplicados', 'error');
+          if (signal.element && Date.now() >= state.nextSendAt) {
+            state.nextSendAt = Date.now() + 5000;
+            persistRuntime();
+            setStatus('El chat nuevo no abrió; reintentando en esta pestaña', 'error');
+            await openFreshConversation(signal.element);
+          } else {
+            setStatus('Esperando que abra el chat de recuperación', 'error');
+          }
           return;
         }
         state.conversationTransferAt = Date.now();
