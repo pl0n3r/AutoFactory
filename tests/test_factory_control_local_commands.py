@@ -47,6 +47,21 @@ class FactoryControlLocalCommandsTests(unittest.TestCase):
     def test_ac08_local_poller_revocation_and_backoff(self):
         self.case("ac08")
 
+    def test_ac19_remote_http_key_transport_denied(self):
+        self.case("ac19")
+
+    def test_ac20_global_stop_fanout_is_fail_closed(self):
+        self.case("ac20")
+
+    def test_ac21_hung_tab_has_bounded_ack_wait(self):
+        self.case("ac21")
+
+    def test_ac22_host_grant_revocation_blocks_ack(self):
+        self.case("ac22")
+
+    def test_ac23_hung_tab_discovery_fails_closed(self):
+        self.case("ac23")
+
 
 if __name__ == "__main__":
     unittest.main()

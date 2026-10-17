@@ -678,3 +678,112 @@ Se serializan exclusivamente `instance_id` (UUID generado en storage local, no i
 Nunca transmitir: chats, prompts, respuestas, títulos, URLs, cookies, tokens, correos o ID de cuenta. El servicio local debe seguir validando Origen, tipo JSON, límite de bytes, forma exacta, consumo autorizado y loopback. La extensión conserva el flag apagado por defecto; el usuario puede apagarlo desde el popup, lo que cancela el alarm y elimina el permiso opcional. Si Safari no implementa `permissions.request`, la activación falla cerrada. No hay empaquetado instalable, publicación ni despliegue en este Issue.
 
 **QA offline:** `node test-factory-control-local-publisher.cjs`; `python3 -m unittest tests.test_factory_control_local_publisher`; `node test-extension-integrity.cjs`; `python3 -m unittest tests.test_release_artifact_attestation`; `npm test`. Antes de fusionar: CI y aceptación exact-SHA, revisión, V3 y protecciones vigentes; live/instalación quedan fuera de alcance.
+
+
+## Adaptador LAN de comandos (AutoFactory #167)
+
+`factory-control-local-commands.js` incorpora ahora un adaptador de
+**puertos de navegador inyectados**, probado con fakes sin conexiones reales.
+No realiza fetch, alarmas, lecturas de clave ni cambios de masterEnabled al
+importarse: solo puede transmitir después de que un consumidor invoque
+explícitamente `createBrowserCommandRuntime(...).tick()`.
+
+El adaptador valida un origen IPv4 RFC1918/loopback sin rutas ni DNS, comprueba
+el permiso opcional del hostname, exige `factoryControlLanCommandsEnabled===true`
+y credenciales/instance_id locales válidos. Emite únicamente
+`GET /api/af/commands?instance_id=<id>` y
+`POST /api/af/ack` con `X-Agent-Key` en cabecera, sin credenciales
+de navegador, redirects ni referer; GET exige JSON acotado. Las órdenes
+globales STOP guardan un recibo persistente **antes** de aplicar cambios,
+detienen masterEnabled y difunden a pestañas; no confirman ACK ante un
+resultado ambiguo. Las órdenes por chat no son interpretadas. Un comando START
+**no** se ejecuta por defecto: requiere la inyección de una verificación
+autenticada de login/uso; en ausencia de esa evidencia se veta sin ACK.
+
+**Limitación de integración:** `background-entry.js` de Chrome y Safari
+ahora instala el adaptador y registra listeners de `alarms`/storage, pero el
+popup mantiene el interruptor bloqueado y el manifest no concede destinos
+LAN diferentes del loopback. El módulo importado no activa por sí solo red;
+la instalación exige el flag local y el permiso exacto. Con el flujo normal
+actual el flag permanece `false`, por lo que no hay tráfico LAN habilitado
+ni garantía de sondeo cada 8 segundos.
+Chrome MV3 puede suspender el service worker y sus alarmas tienen un mínimo
+de 30 segundos; el requisito de 5–10 s requiere una estrategia compatible
+verificada antes de activar producto. Además HTTP en LAN **no cifra**
+`X-Agent-Key`; el consentimiento de red doméstica registrado no
+equivale a certificar confidencialidad frente a observadores de esa red.
+La activación exige resolución explícita de ambos gates, pruebas del wiring
+Chrome/Safari y validación del contrato ACK del servidor. Nada de lo anterior
+habilita Internet, ControlBot, live, release ni tokens reales.
+
+**QA build-ahead:** `node test-factory-control-local-commands.cjs`
+(casos `ac10`–`ac18`: opt-in, STOP/ACK, bloqueo de START, carreras de
+revocación, recibos aislados por origen e instancia, migración de recibos
+legacy, vencimiento de conexiones que no responden, rechazo de streams
+excesivos sin `Content-Length` y procesamiento normal de streams fragmentados).
+El body real de Fetch se procesa en bloques y se rechaza al superar
+**32 768 bytes**, antes de materializar el JSON completo; se cancela el
+reader ante el exceso. La prueba offline incluye un body falso que
+ofrece texto pequeño pero un stream de más de 32 KiB para evitar
+regresiones del límite. GET y POST usan
+`AbortSignal.timeout(6000)` mediante una dependencia inyectable en tests;
+si el navegador carece de un mecanismo de timeout, el adaptador falla
+cerrado, sin petición infinita. El poller vuelve a aplicar backoff en
+fallos de transporte; estos tests no demuestran la cadencia 5–10 s en MV3
+ni proporcionan confidencialidad para `X-Agent-Key` enviado por HTTP LAN.
+
+## Contención de confidencialidad LAN (ac19, build-ahead)
+
+Sin transporte cifrado y autenticado verificado con el Mac, el adaptador
+de background **solo permite HTTP a 127.0.0.1**. El validador puro
+continúa reconociendo RFC1918, pero un host remoto privado no solicita
+permiso ni emite GET/ACK con `X-Agent-Key`, incluso con opt-in y una
+concesión de host simulada. El transporte revalida el destino antes de
+adjuntar la cabecera. `ac19` prueba ausencia de red y mutaciones.
+Esto **no habilita** dos PC, HTTPS remoto ni producción. Requiere
+transporte cifrado verificable, consentimiento seguro y pruebas de
+integración/MV3 antes de ampliar el allowlist. El hallazgo previo de
+SonarCloud permanece trazable y no se oculta mediante exenciones.
+
+## Propagación de STOP frente a pestañas no disponibles (ac20)
+
+El adaptador de background intenta difundir STOP a todas las pestañas
+ChatGPT válidas incluso cuando una no responde o se descarga durante el
+envío. Solo devuelve éxito cuando **todas** responden con la confirmación
+esperada; ante una falla parcial conserva el recibo `pending`/consumido,
+no emite ACK y no repite el comando en sondeos posteriores. `ac20` usa
+transporte simulado: primera pestaña rechaza, las dos restantes reciben
+STOP, no hay POST ACK ni duplicación. El control LAN remoto sigue
+desactivado y no se han enviado comandos a pestañas reales.
+
+## Timeout de pestañas suspendidas (ac21)
+
+El fan-out de STOP acota cada `tabs.sendMessage` a seis segundos con una
+`AbortSignal` del adaptador, elimina los listeners al concluir y trata
+cada timeout como fracaso parcial. Incluso si una pestaña nunca responde,
+el resto recibe STOP; no se emite ACK y el recibo ya persistido impide
+repetir silenciosamente la orden ambigua. `ac21` reproduce un mensaje
+que nunca resuelve con aborto sintético, sin tráfico real.
+El timeout no prueba la cadencia real de Chrome MV3 ni desbloquea LAN.
+
+## Revocación del permiso de host durante ACK (ac22)
+
+Una respuesta afirmativa de `permissions.contains` puede quedar obsoleta
+mientras se vuelve a leer el consentimiento almacenado. Antes de enviar
+`POST /api/af/ack`, se revalida de nuevo el permiso exacto y luego
+se releen host, clave, instancia y opt-in. `ac22` inyecta la pérdida
+del permiso inmediatamente después de la primera verificación de ACK:
+el STOP se aplica y conserva recibo, pero nunca se emite POST.
+Esto reduce la ventana de carrera sin ofrecer atomicidad transaccional
+entre APIs del navegador. No autoriza red LAN remota ni go-live.
+
+## Límite de consulta de pestañas (ac23)
+
+Además del límite individual de seis segundos en `tabs.sendMessage`, la
+búsqueda `tabs.query` dispone de un `AbortSignal` de seis segundos con
+resultado fail-closed y limpieza de listeners. Una consulta que no responde
+no retiene indefinidamente el procesador, no genera ACK y conserva el
+recibo persistido antes del efecto. `ac23` simula `tabs.query` que nunca
+resuelve y dispara el aborto sin reloj real; una segunda lectura del mismo
+comando no repite el efecto. Esta protección no sustituye la estrategia
+de sondeo Chrome MV3 ni habilita LAN remota.
