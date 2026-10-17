@@ -216,8 +216,30 @@
         credentials: 'omit', mode: 'cors', redirect: 'error', cache: 'no-store',
         referrerPolicy: 'no-referrer', body: JSON.stringify(payload)
       });
-      return response?.ok === true;
+      const ok = response?.ok === true;
+      if (ok) void sendLogs(payload.instance_id);
+      return ok;
     };
+    // Forward the already-sanitized diagnostic log (event names, codes, routes;
+    // no chat text) so the local orchestrator can read what recoveries happen.
+    const CURSOR = 'factoryControlLogCursor';
+    async function sendLogs(instanceId) {
+      try {
+        const stored = await call(extension.storage.local, 'get', { diagnosticLog: [], [CURSOR]: '' });
+        const all = Array.isArray(stored?.diagnosticLog) ? stored.diagnosticLog : [];
+        const cursor = typeof stored?.[CURSOR] === 'string' ? stored[CURSOR] : '';
+        const fresh = all.filter(e => typeof e?.at === 'string' && e.at > cursor).slice(-50);
+        if (!fresh.length) return;
+        const response = await root.fetch(ENDPOINT + '/log', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'omit', mode: 'cors', redirect: 'error', cache: 'no-store',
+          referrerPolicy: 'no-referrer', body: JSON.stringify({ instance_id: instanceId, entries: fresh })
+        });
+        if (response?.ok === true) {
+          await call(extension.storage.local, 'set', { [CURSOR]: fresh[fresh.length - 1].at });
+        }
+      } catch (_error) { /* diagnostics only */ }
+    }
     const report = info => {
       try {
         void call(extension.storage.local, 'set', { factoryControlLocalLastPublish:
