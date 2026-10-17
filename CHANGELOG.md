@@ -8,6 +8,7 @@ Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante
 - Coordina incidentes entre pestañas para impedir chats de recuperación duplicados.
 - Incorpora un selector adaptativo seguro en modo observación y controles de rollback.
 - Mantiene la sincronización remota desactivada hasta superar consentimiento, seguridad y puerta legal.
+- Publica la lista de chats (identificador opaco y estado, máx. 12) y acepta órdenes de pausa/reanudación por chat desde el orquestador local; el interruptor de órdenes del popup ya se puede activar con permiso explícito.
 
 ## 1.6.29 — 2026-10-10
 

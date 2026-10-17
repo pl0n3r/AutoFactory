@@ -48,9 +48,10 @@
       values[key] = d.value;
     }
     if (!Number.isSafeInteger(values.id) || values.id < 1 ||
-        values.chat_id !== null ||
+        !(values.chat_id === null ||
+          (typeof values.chat_id === 'string' && /^t[0-9]{1,9}$/.test(values.chat_id))) ||
         (values.want !== 'stop' && values.want !== 'start')) return null;
-    return Object.freeze({ id: values.id, want: values.want });
+    return Object.freeze({ id: values.id, chat_id: values.chat_id, want: values.want });
   }
 
   // Pure, injected coordinator: the caller supplies permission, durable
@@ -81,7 +82,7 @@
         // Account/session state can change while the receipt is persisted.
         // Do not resume on a stale pre-mark authorization.
         if (command.want === 'start' && await allowedToStart() !== true) return false;
-        if (await apply(command.want) !== true) return false;
+        if (await apply(command.want, command.chat_id) !== true) return false;
         if (await enabled() !== true) return false;
         return await ack(command.id) === true;
       } catch (_error) {
@@ -366,11 +367,11 @@
       await storage.set({ [RECEIPTS]: next });
       return (await receipts())[key] === true;
     }
-    async function apply(want) {
+    async function apply(want, chatId = null) {
       if (want !== 'stop' && want !== 'start') return false;
       if (want === 'start' && await allowedToStart() !== true) return false;
       const active = want === 'start';
-      await storage.set({ masterEnabled: active });
+      if (chatId === null) await storage.set({ masterEnabled: active });
       // tabs.query can itself remain pending when the browser is suspended.
       // Bound discovery separately from the per-tab send deadlines.
       const querySignal = timeoutSignal(6000);
@@ -396,7 +397,11 @@
       if (!Array.isArray(found) || found.length > 99) return false;
       // A stale/broken tab must not prevent STOP reaching other tabs.
       // Fan out to all valid tabs, but acknowledge only a complete success.
-      const outcomes = await Promise.all(found.map(async tab => {
+      // Per-chat order: only the matching opaque chat id; a missing chat is a
+      // harmless no-op that is still acknowledged (idempotent).
+      const targets = chatId === null ? found
+        : found.filter(tab => Number.isSafeInteger(tab?.id) && 't' + tab.id === chatId);
+      const outcomes = await Promise.all(targets.map(async tab => {
         if (!Number.isSafeInteger(tab?.id) || tab.id < 0) return false;
         // A tab may never settle (e.g. a suspended content script). Bound each
         // response, so the overall STOP can finish without an unsafe ACK.
@@ -459,7 +464,7 @@
     const poller = createCommandPoller({
       enabled, permission: permitted, configuration, fetchPending,
       process: async command => processor.process({
-        id: command.id, chat_id: null, want: command.want
+        id: command.id, chat_id: command.chat_id ?? null, want: command.want
       }), now
     });
     return Object.freeze({ tick: poller.tick, stop: poller.stop });
