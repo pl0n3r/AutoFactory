@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.10 — 2026-10-17
+
+- La tarjeta Orquestador muestra también el resultado de la última consulta de órdenes.
+
 ## 1.7.9 — 2026-10-17
 
 - La tarjeta Orquestador muestra el resultado del último envío (correcto o en qué paso falló) y se corrige el solapamiento de textos.

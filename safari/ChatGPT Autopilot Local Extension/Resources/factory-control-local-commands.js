@@ -540,6 +540,15 @@
       // No trusted provider-login/usage signal currently wired. START denies.
     });
     const ALARM = 'factory-control-lan-commands';
+    // Diagnostics only: fixed result words, never keys, URLs or chat data.
+    async function pollNow() {
+      let result = 'error';
+      try { result = String(await adapter.tick()); } catch (_error) { result = 'error'; }
+      try {
+        await invoke(ext.storage.local, 'set', { factoryControlLanLastPoll:
+          { at: Date.now(), result: result.slice(0, 20) } });
+      } catch (_error) { /* diagnostics only */ }
+    }
     async function reconcile() {
       try {
         const saved = await invoke(ext.storage.local, 'get',
@@ -552,7 +561,7 @@
         const scheduled = ext.alarms.create(ALARM, { periodInMinutes: 0.5 });
         if (scheduled?.then) await scheduled;
         void broadcastDirected(true);
-        void adapter.tick();
+        void pollNow();
       } catch (_error) {
         // Nothing may bypass the stored opt-in and exact host permission.
       }
@@ -571,7 +580,7 @@
       } catch (_error) { /* tabs unavailable */ }
     }
     ext.alarms.onAlarm.addListener(alarm => {
-      if (alarm?.name === ALARM) { void broadcastDirected(true); void adapter.tick(); }
+      if (alarm?.name === ALARM) { void broadcastDirected(true); void pollNow(); }
     });
     ext.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && ['factoryControlLanCommandsEnabled',
