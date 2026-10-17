@@ -386,7 +386,9 @@
   }
   function assignIssue(issue) {
     if (typeof issue !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(issue)) return false;
-    assignedPrompt = 'Trabaja únicamente el issue ' + issue + '. Revisa su estado real (rama, PR, CI, reservas) y avanza hasta fusionarlo. Si dependes de CI o de una revisión externa, dilo en una línea y espera sin pedir más instrucciones.';
+    const [repo, number] = issue.split('#');
+    // Factory «modo dirigido» + one assigned issue: work it to a merged PR, resolve blockers.
+    assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio. Tu issue asignado es #' + number + ': trabájalo siguiendo el plan hasta dejar su PR fusionado. Si aparece un bloqueo, resuélvelo como parte de esta tarea (o abre su issue y trabájalo) y continúa; no te detengas hasta fusionar.';
     state.nextSendAt = 0;
     return true;
   }
