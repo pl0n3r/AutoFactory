@@ -341,7 +341,27 @@
   // no reply text, titles or URLs are ever exposed.
   const DIRECTED_KEY = 'autofactory-directed';
   let assignedPrompt = '';
+  // One CONNECT per browser profile: the opt-in lives in extension storage, so
+  // every ChatGPT tab (including ones opened later) is directed without a push.
+  const LINK_FLAG = 'factoryControlLanCommandsEnabled';
+  let linkEnabled = false;
+  const linkReady = new Promise(resolve => {
+    try {
+      const done = values => { linkEnabled = values?.[LINK_FLAG] === true; resolve(); };
+      const r = extensionApi.storage.local.get({ [LINK_FLAG]: false }, done);
+      if (r?.then) r.then(done, () => resolve());
+    } catch (_e) { resolve(); }
+  });
+  try {
+    extensionApi.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && Object.hasOwn(changes, LINK_FLAG)) {
+        linkEnabled = changes[LINK_FLAG].newValue === true;
+        if (!linkEnabled) assignedPrompt = '';
+      }
+    });
+  } catch (_e) { /* storage events unavailable */ }
   function isDirected() {
+    if (linkEnabled) return true;
     try { return sessionStorage.getItem(DIRECTED_KEY) === '1'; } catch (_e) { return false; }
   }
   function setDirected(on) {
@@ -1195,6 +1215,7 @@
       }
       // Directed mode: the local orchestrator owns this chat. Never send the
       // generic continuation; only a queued assignment is sent (at most once).
+      await linkReady;
       if (isDirected()) {
         const assigned = takeAssignment();
         if (!assigned) {
