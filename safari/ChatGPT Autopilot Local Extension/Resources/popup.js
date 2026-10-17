@@ -380,6 +380,12 @@ async function refreshOrchestrator() {
     const on = s[LAN_ENABLED] === true && s[LOCAL_CONTROL_FLAG] === true && typeof s[LAN_KEY] === 'string';
     orchSummary.textContent = on ? 'CONECTADO · el orquestador dirige a los chats'
       : s[LAN_KEY] ? 'GUARDADO · pulsa CONECTAR' : 'SIN CONECTAR · los chats siguen con el mensaje genérico';
+    const last = (await storageGet({ factoryControlLocalLastPublish: null })).factoryControlLocalLastPublish;
+    if (on && last) {
+      const secs = Math.max(0, Math.round((Date.now() - last.at) / 1000));
+      orchSummary.textContent += ' · último envío hace ' + secs + ' s: '
+        + (last.ok ? 'correcto' : 'falló en ' + last.step + ' (' + last.detail + ')');
+    } else if (on) orchSummary.textContent += ' · aún sin envíos';
     orchSummary.classList.toggle('active', on);
     orchSummary.classList.toggle('paused', !on);
   } catch (_error) { orchSummary.textContent = 'NO DISPONIBLE · almacenamiento local inaccesible'; }
@@ -420,6 +426,6 @@ orchDisconnect.addEventListener('click', async () => {
   void refreshOrchestrator(); void refreshLocalControl(); void loadLanSetup();
 });
 extensionApi.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && [LAN_ENABLED, LOCAL_CONTROL_FLAG, LAN_KEY].some(k => Object.hasOwn(changes, k))) void refreshOrchestrator();
+  if (area === 'local' && [LAN_ENABLED, LOCAL_CONTROL_FLAG, LAN_KEY, 'factoryControlLocalLastPublish'].some(k => Object.hasOwn(changes, k))) void refreshOrchestrator();
 });
 void refreshOrchestrator();
