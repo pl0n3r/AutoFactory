@@ -16,7 +16,7 @@
     'circuit_breaker', 'envio_ambiguo_5min', 'sesion_cerrada', 'pausa_manual',
     'sin_trabajo', 'desconocido']);
   const FIELDS = Object.freeze(['instance_id', 'label', 'state', 'current_task',
-    'chats_open', 'limit_resets_at', 'idle_reason', 'idle_since', 'chats']);
+    'chats_open', 'limit_resets_at', 'idle_reason', 'idle_since', 'chats', 'run_id']);
   const REQUIRED = Object.freeze(['instance_id', 'label', 'state', 'chats_open', 'idle_reason']);
   const plain = value => value !== null && typeof value === 'object' &&
     !Array.isArray(value) &&
@@ -32,6 +32,7 @@
   const CHAT_STATES = Object.freeze(['generando', 'esperando_envio', 'detenido',
     'error', 'limite', 'sesion_cerrada', 'desconocido']);
   // Opaque ids and coarse states only: never titles, text, URLs or conversation ids.
+  const PHASES = Object.freeze(['trabajando', 'esperando_externo', 'termino', 'bloqueado', 'desconocido']);
   function chatsFrom(list) {
     if (!Array.isArray(list)) return [];
     const out = [];
@@ -44,6 +45,8 @@
           /^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(item.current_task)) {
         chat.current_task = item.current_task;
       }
+      chat.phase = PHASES.includes(item.phase) ? item.phase : 'desconocido';
+      chat.directed = item.directed === true;
       out.push(Object.freeze(chat));
     }
     return out;
@@ -83,6 +86,7 @@
       payload.current_task = fields.current_task;
     }
     if (iso(fields.idle_since)) payload.idle_since = fields.idle_since;
+    if (id(fields.run_id)) payload.run_id = fields.run_id;
     if (Object.hasOwn(fields, 'chats')) payload.chats = chatsFrom(fields.chats);
     if ((state === 'limite' || state === 'sesion_cerrada') &&
         iso(fields.limit_resets_at)) {
@@ -128,7 +132,8 @@
         inFlight = false;
       }
     }
-    return Object.freeze({ publish, payloadFrom });
+    function reset() { nextAllowed = 0; failures = 0; }
+    return Object.freeze({ publish, payloadFrom, reset });
   }
 
   function installBackground(root = globalThis) {
@@ -155,6 +160,7 @@
         }
       });
     }
+    let runId = root.crypto?.randomUUID?.() || 'run-initial';
     const enabled = async () => {
       const stored = await call(extension.storage.local, 'get', { [FLAG]: false });
       return stored?.[FLAG] === true;
@@ -179,7 +185,7 @@
         // No free text, URLs or account details from content scripts are read.
         const flag = typeof signal?.enabled === 'boolean' ? signal.enabled : null;
         const text = typeof signal?.status === 'string' ? signal.status.toLowerCase() : '';
-        chats.push({ chat_id: 't' + tab.id,
+        chats.push({ chat_id: 't' + tab.id, phase: signal?.phase, directed: signal?.directed === true,
           state: flag === null ? 'desconocido' : /l[ií]mite/.test(text) ? 'limite'
             : /sesi[oó]n/.test(text) ? 'sesion_cerrada' : flag ? 'generando' : 'detenido' });
         return flag;
@@ -191,7 +197,7 @@
       return {
         instance_id, label: 'AutoFactory', state, chats_open: tabs.length,
         idle_reason: active ? 'activo' : complete ? 'pausa_manual' : 'desconocido',
-        chats
+        run_id: runId, chats
       };
     }
     const post = async payload => {
@@ -203,6 +209,14 @@
       return response?.ok === true;
     };
     const publisher = createPublisher({ now: Date.now, enabled, permission, snapshot, post });
+    // Pressing Play starts a new run: announce the detected chats right away.
+    extension.storage.onChanged?.addListener((changes, area) => {
+      if (area === 'local' && changes.masterEnabled?.newValue === true) {
+        runId = root.crypto?.randomUUID?.() || runId;
+        publisher.reset?.();
+        void publisher.publish();
+      }
+    });
     async function reconcile() {
       try {
         if (await enabled() && await permission()) {

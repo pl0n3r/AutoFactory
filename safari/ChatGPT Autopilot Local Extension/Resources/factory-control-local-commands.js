@@ -39,8 +39,9 @@
   function globalCommand(raw) {
     if (!isObject(raw)) return null;
     const keys = Reflect.ownKeys(raw);
-    if (keys.length !== 3 || keys.some(k => typeof k !== 'string' ||
-        !['id', 'chat_id', 'want'].includes(k))) return null;
+    if ((keys.length !== 3 && keys.length !== 4) || keys.some(k => typeof k !== 'string' ||
+        !['id', 'chat_id', 'want', 'issue'].includes(k)) ||
+        (keys.length === 4) !== keys.includes('issue')) return null;
     const values = Object.create(null);
     for (const key of keys) {
       const d = Object.getOwnPropertyDescriptor(raw, key);
@@ -50,7 +51,15 @@
     if (!Number.isSafeInteger(values.id) || values.id < 1 ||
         !(values.chat_id === null ||
           (typeof values.chat_id === 'string' && /^t[0-9]{1,9}$/.test(values.chat_id))) ||
-        (values.want !== 'stop' && values.want !== 'start')) return null;
+        !['stop', 'start', 'assign'].includes(values.want)) return null;
+    if (values.want === 'assign') {
+      // Fixed template only: an opaque chat plus a Repo#N reference, no free text.
+      if (values.chat_id === null || typeof values.issue !== 'string' ||
+          !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(values.issue)) return null;
+      return Object.freeze({ id: values.id, chat_id: values.chat_id,
+        want: 'assign', issue: values.issue });
+    }
+    if (keys.length === 4) return null;
     return Object.freeze({ id: values.id, chat_id: values.chat_id, want: values.want });
   }
 
@@ -82,7 +91,7 @@
         // Account/session state can change while the receipt is persisted.
         // Do not resume on a stale pre-mark authorization.
         if (command.want === 'start' && await allowedToStart() !== true) return false;
-        if (await apply(command.want, command.chat_id) !== true) return false;
+        if (await apply(command.want, command.chat_id, command.issue) !== true) return false;
         if (await enabled() !== true) return false;
         return await ack(command.id) === true;
       } catch (_error) {
@@ -367,11 +376,12 @@
       await storage.set({ [RECEIPTS]: next });
       return (await receipts())[key] === true;
     }
-    async function apply(want, chatId = null) {
-      if (want !== 'stop' && want !== 'start') return false;
+    async function apply(want, chatId = null, issue = null) {
+      if (want !== 'stop' && want !== 'start' && want !== 'assign') return false;
+      if (want === 'assign' && (chatId === null || !issue)) return false;
       if (want === 'start' && await allowedToStart() !== true) return false;
       const active = want === 'start';
-      if (chatId === null) await storage.set({ masterEnabled: active });
+      if (chatId === null && want !== 'assign') await storage.set({ masterEnabled: active });
       // tabs.query can itself remain pending when the browser is suspended.
       // Bound discovery separately from the per-tab send deadlines.
       const querySignal = timeoutSignal(6000);
@@ -422,9 +432,11 @@
           if (signal.aborted) { finish(false); return; }
           try {
             Promise.resolve(tabs.sendMessage(tab.id,
-              { type: 'autopilot:set-enabled', enabled: active }))
-              .then(result => finish(
-                result?.ok === true && result?.enabled === active),
+              want === 'assign'
+                ? { type: 'autopilot:assign', issue }
+                : { type: 'autopilot:set-enabled', enabled: active }))
+              .then(result => finish(want === 'assign' ? result?.ok === true
+                : result?.ok === true && result?.enabled === active),
               () => finish(false));
           } catch (_error) { finish(false); }
         });
@@ -464,7 +476,8 @@
     const poller = createCommandPoller({
       enabled, permission: permitted, configuration, fetchPending,
       process: async command => processor.process({
-        id: command.id, chat_id: command.chat_id ?? null, want: command.want
+        id: command.id, chat_id: command.chat_id ?? null, want: command.want,
+        ...(command.issue ? { issue: command.issue } : {})
       }), now
     });
     return Object.freeze({ tick: poller.tick, stop: poller.stop });
@@ -533,17 +546,32 @@
           { factoryControlLanCommandsEnabled: false });
         if (saved?.factoryControlLanCommandsEnabled !== true) {
           await invoke(ext.alarms, 'clear', ALARM).catch(() => {});
+          void broadcastDirected(false);
           return;
         }
         const scheduled = ext.alarms.create(ALARM, { periodInMinutes: 0.5 });
         if (scheduled?.then) await scheduled;
+        void broadcastDirected(true);
         void adapter.tick();
       } catch (_error) {
         // Nothing may bypass the stored opt-in and exact host permission.
       }
     }
+    // While the orchestrator link is opted in, every ChatGPT tab is "directed":
+    // the generic continuation prompt is never sent, only assigned issues.
+    async function broadcastDirected(on) {
+      try {
+        const found = await invoke(ext.tabs, 'query', { url: ['https://chatgpt.com/*'] });
+        for (const tab of (Array.isArray(found) ? found : []).slice(0, 99)) {
+          if (Number.isSafeInteger(tab?.id)) {
+            invoke(ext.tabs, 'sendMessage', tab.id,
+              { type: 'autopilot:directed', on }).catch(() => {});
+          }
+        }
+      } catch (_error) { /* tabs unavailable */ }
+    }
     ext.alarms.onAlarm.addListener(alarm => {
-      if (alarm?.name === ALARM) void adapter.tick();
+      if (alarm?.name === ALARM) { void broadcastDirected(true); void adapter.tick(); }
     });
     ext.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && ['factoryControlLanCommandsEnabled',
