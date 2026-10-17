@@ -1088,7 +1088,11 @@
         state.connectionFirstSeenAt = 0;
         state.connectionCancelAt = 0;
       }
+      // While ChatGPT is generating (stop button visible) the composer can be
+      // hidden or disabled: that is not a broken page. Reloading here is what
+      // produced «Stopped thinking» and unloadable conversations.
       const interfaceMissingLongEnough = signal.code === 'interface-missing'
+        && !generating
         && Date.now() - state.contentLoadedAt > 15000;
       if (signal.code === 'interface-missing' && !interfaceMissingLongEnough) {
         setStatus('Esperando que ChatGPT termine de cargar la interfaz');
