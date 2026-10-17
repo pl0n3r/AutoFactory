@@ -82,8 +82,13 @@
         if (field.disabled || field.readOnly || field.getAttribute('aria-readonly') === 'true'
           || field.closest('fieldset[disabled]') || !isVisible(field, doc)) continue;
         usableFields.add(field);
-        if (usableFields.size > 1) return null;
       }
+    }
+    if (usableFields.size > 1) {
+      // Ambiguous (e.g. an «edit message» box beside the main composer): trust the
+      // canonical #prompt-textarea only when exactly one such usable element exists.
+      const main = [...doc.querySelectorAll('#prompt-textarea')].filter(f => usableFields.has(f));
+      return main.length === 1 ? main[0] : null;
     }
     return usableFields.values().next().value || null;
   }
