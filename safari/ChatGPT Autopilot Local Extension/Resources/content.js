@@ -337,6 +337,43 @@
     return /^[0-9a-f]{1,8}$/.test(hash) ? hash.padStart(8, '0') : '';
   }
 
+  // Directed mode + coarse local phase. Only fixed labels leave this module:
+  // no reply text, titles or URLs are ever exposed.
+  const DIRECTED_KEY = 'autofactory-directed';
+  let assignedPrompt = '';
+  function isDirected() {
+    try { return sessionStorage.getItem(DIRECTED_KEY) === '1'; } catch (_e) { return false; }
+  }
+  function setDirected(on) {
+    try {
+      if (on) sessionStorage.setItem(DIRECTED_KEY, '1');
+      else sessionStorage.removeItem(DIRECTED_KEY);
+    } catch (_e) { /* ignore */ }
+    if (!on) assignedPrompt = '';
+  }
+  function takeAssignment() {
+    const value = assignedPrompt;
+    assignedPrompt = '';
+    return value;
+  }
+  function assignIssue(issue) {
+    if (typeof issue !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(issue)) return false;
+    assignedPrompt = 'Trabaja únicamente el issue ' + issue + '. Revisa su estado real (rama, PR, CI, reservas) y avanza hasta fusionarlo. Si dependes de CI o de una revisión externa, dilo en una línea y espera sin pedir más instrucciones.';
+    state.nextSendAt = 0;
+    return true;
+  }
+  function replyPhase() {
+    if (state.waiting) return 'trabajando';
+    const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
+    const last = messages[messages.length - 1];
+    const text = core.normalize(last?.innerText || last?.textContent || '').slice(-1200).toLowerCase();
+    if (!text) return 'desconocido';
+    if (/(esperando|debo esperar|aguardando|espero)[^.]{0,80}(ci|checks?|revisi|workflow|merge|fusi)/.test(text)) return 'esperando_externo';
+    if (/(bloquead|no puedo continuar|requiere (que )?(el due|tu ))/.test(text)) return 'bloqueado';
+    if (/(fusionad|merged|terminad|completad|cerrad)/.test(text)) return 'termino';
+    return 'desconocido';
+  }
+
   function runtimeSnapshot() {
     return {
       pendingSignature: state.pendingSignature,
@@ -881,7 +918,8 @@
         return;
       }
       const currentConfig = await config();
-      const { prompt, delaySeconds } = currentConfig;
+      const { prompt: defaultPrompt, delaySeconds } = currentConfig;
+      let prompt = defaultPrompt;
       state.settings = { ...state.settings, ...currentConfig };
       const generating = Boolean(core.stopButton(document));
       if (Date.now() - state.contentLoadedAt < 5000) {
@@ -1141,6 +1179,17 @@
         log('recovery', { code: 'recoverable', action: 'click-recovery' });
         return;
       }
+      // Directed mode: the local orchestrator owns this chat. Never send the
+      // generic continuation; only a queued assignment is sent (at most once).
+      if (isDirected()) {
+        const assigned = takeAssignment();
+        if (!assigned) {
+          setStatus('Dirigido: esperando orden del orquestador');
+          state.nextSendAt = Date.now() + 5000;
+          return;
+        }
+        prompt = assigned;
+      }
       const field = core.composer(document);
       if (!field) {
         setStatus('Campo de mensaje no encontrado', 'error');
@@ -1228,8 +1277,16 @@
       setEnabled(message.enabled, message.enabled === true);
     }
     if (message?.type === 'autopilot:heartbeat') void tick();
+    if (message?.type === 'autopilot:directed') setDirected(message.on === true);
+    if (message?.type === 'autopilot:assign') {
+      const accepted = assignIssue(message.issue);
+      if (accepted) setDirected(true);
+      reply({ ok: accepted, assigned: accepted });
+      return;
+    }
     if (message?.type === 'autopilot:get-status') {
-      reply({ enabled: state.enabled, status: state.status });
+      reply({ enabled: state.enabled, status: state.status,
+        directed: isDirected(), phase: replyPhase() });
     } else reply({ ok: true, enabled: state.enabled, status: state.status });
   });
 
