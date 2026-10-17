@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.12 — 2026-10-17
+
+- Modo dirigido: el refresh periódico no corta una respuesta en curso (máx. 90 min de gracia) y no se envía una asignación mientras ChatGPT responde.
+
 ## 1.7.11 — 2026-10-17
 
 - Corrige la consulta de órdenes: comprueba el mismo permiso (con puerto) que se concede al conectar; antes quedaba siempre «disabled».

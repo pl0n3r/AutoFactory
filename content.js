@@ -813,8 +813,11 @@
       const { prompt: defaultPrompt, delaySeconds } = currentConfig;
       let prompt = defaultPrompt;
       state.settings = { ...state.settings, ...currentConfig };
-      const periodicReloadDue = currentConfig.periodicReload
-        && Date.now() - state.lastPeriodicReloadAt >= currentConfig.periodicReloadMinutes * 60000;
+      // Directed chats do long work: never cut a live response for the periodic
+      // refresh (hard limit: 90 extra minutes past due, then refresh anyway).
+      const overdueMs = Date.now() - state.lastPeriodicReloadAt - currentConfig.periodicReloadMinutes * 60000;
+      const deferForLiveResponse = isDirected() && Boolean(core.stopButton(document)) && overdueMs < 90 * 60000;
+      const periodicReloadDue = currentConfig.periodicReload && overdueMs >= 0 && !deferForLiveResponse;
       if (periodicReloadDue) {
         state.lastPeriodicReloadAt = Date.now();
         sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));
@@ -1217,6 +1220,12 @@
       // generic continuation; only a queued assignment is sent (at most once).
       await linkReady;
       if (isDirected()) {
+        // Never press send while ChatGPT is answering: that button is Stop.
+        if (core.stopButton(document)) {
+          setStatus('Dirigido: ChatGPT está respondiendo; espero');
+          state.nextSendAt = Date.now() + 5000;
+          return;
+        }
         const assigned = takeAssignment();
         if (!assigned) {
           setStatus('Dirigido: esperando orden del orquestador');
