@@ -196,7 +196,7 @@
         const flag = typeof signal?.enabled === 'boolean' ? signal.enabled : null;
         const text = typeof signal?.status === 'string' ? signal.status.toLowerCase() : '';
         chats.push({ chat_id: 't' + tab.id, phase: signal?.phase, directed: signal?.directed === true,
-          state: flag === null ? 'desconocido' : /l[ií]mite/.test(text) ? 'limite'
+          state: flag === null ? 'desconocido' : /no disponible|recuperaci[oó]n|protecci[oó]n activa|no encontrado|recarga/.test(text) ? 'error' : /l[ií]mite/.test(text) ? 'limite'
             : /sesi[oó]n/.test(text) ? 'sesion_cerrada' : flag ? 'generando' : 'detenido' });
         return flag;
       }));

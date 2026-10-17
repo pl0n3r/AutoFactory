@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.17 — 2026-10-17
+
+- El estado de cada chat distingue «error» (conversación no disponible, recuperación, protección) de «generando», para que el orquestador no cuente chats rotos como activos.
+
 ## 1.7.16 — 2026-10-17
 
 - No recarga por «interfaz ausente» mientras espera la respuesta a su propio envío (hasta 45 min); la interfaz «Thinking» no muestra botón de parar.
