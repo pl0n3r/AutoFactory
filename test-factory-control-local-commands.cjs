@@ -104,7 +104,7 @@ async function ac07() {
       return {commands:[{id:1,chat_id:44,want:'stop'},
         {id:2,chat_id:null,want:'stop'}]};
     },
-    process:async item=>{applied++;assert.deepEqual(item,{id:2,want:'stop'});return true}
+    process:async item=>{applied++;assert.deepEqual(item,{id:2,chat_id:null,want:'stop'});return true}
   });
   assert.equal(await poller.tick(),'disabled');
   assert.equal(network,0);
@@ -187,7 +187,7 @@ async function ac09() {
   assert.ok(stage.includes('lanGuard.privateOrigin(lanHost.value.trim())'));
   assert.ok(stage.includes("lanKey.value = ''"));
   assert.equal(stage.includes('fetch('),false);
-  assert.equal(stage.includes('permissions.request'),false);
+  assert.ok(stage.includes('permissions.request'));
   for(const file of ['popup.js','popup.html','factory-control-local-commands.js']) {
     assert.deepEqual(fs.readFileSync(path.join(__dirname,file)),
       fs.readFileSync(path.join(safari,file)));

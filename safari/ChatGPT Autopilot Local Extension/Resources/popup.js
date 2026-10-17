@@ -279,16 +279,12 @@ const LAN_HOST = 'factoryControlLanOriginV1';
 const LAN_KEY = 'factoryControlLanAgentKeyV1';
 const LAN_ENABLED = 'factoryControlLanCommandsEnabled';
 const lanGuard = globalThis.ChatGPTAutopilotLocalCommands;
-lanToggle.checked = false;
-lanToggle.disabled = true;
 function lanFeedback(value) {
   lanStatus.textContent = value;
   lanStatus.classList.add('paused');
   lanStatus.classList.remove('active');
 }
 async function loadLanSetup() {
-  lanToggle.checked = false;
-  lanToggle.disabled = true;
   lanKey.value = ''; // Never reflect a saved secret into the DOM.
   try {
     const stored = await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),
@@ -300,9 +296,12 @@ async function loadLanSetup() {
       }
     } catch (_error) { /* Bad host remains unusable. */ }
     lanHost.value = host;
-    lanFeedback(host && typeof stored?.[LAN_KEY] === 'string'
-      ? 'GUARDADO · órdenes deshabilitadas'
-      : 'DESACTIVADO · sin conexión');
+    const ready = Boolean(host && typeof stored?.[LAN_KEY] === 'string');
+    lanToggle.disabled = !ready;
+    lanToggle.checked = ready && stored[LAN_ENABLED] === true;
+    lanFeedback(!ready ? 'DESACTIVADO · sin conexión'
+      : lanToggle.checked ? 'ACTIVO · recibiendo órdenes del orquestador'
+        : 'GUARDADO · órdenes apagadas');
   } catch (_error) { lanFeedback('NO DISPONIBLE · almacenamiento local inaccesible'); }
 }
 lanSave.addEventListener('click', async () => {
@@ -334,5 +333,31 @@ lanClear.addEventListener('click', async () => {
     lanFeedback('BORRADO · control LAN deshabilitado');
   } catch (_error) { lanFeedback('ERROR · borrado local no confirmado'); }
   finally { lanClear.disabled = false; }
+});
+lanToggle.addEventListener('change', async () => {
+  const requested = lanToggle.checked;
+  lanToggle.disabled = true;
+  try {
+    const stored = await apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local),
+      { [LAN_HOST]: null });
+    const origin = lanGuard.privateOrigin(stored?.[LAN_HOST]);
+    if (requested) {
+      // Request in the user's click; a denial leaves everything off.
+      const granted = await new Promise(resolve => {
+        let done = false;
+        const fin = v => { if (!done) { done = true; resolve(v === true); } };
+        try {
+          const a = extensionApi.permissions.request({ origins: [origin + '/*'] }, fin);
+          if (a?.then) a.then(fin, () => fin(false));
+        } catch (_e) { fin(false); }
+      });
+      if (!granted) throw new Error('permission_denied');
+    }
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+      { [LAN_ENABLED]: requested });
+  } catch (_error) {
+    await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),
+      { [LAN_ENABLED]: false }).catch(() => {});
+  } finally { void loadLanSetup(); }
 });
 void loadLanSetup();

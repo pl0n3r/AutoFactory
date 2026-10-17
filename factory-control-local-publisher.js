@@ -16,7 +16,7 @@
     'circuit_breaker', 'envio_ambiguo_5min', 'sesion_cerrada', 'pausa_manual',
     'sin_trabajo', 'desconocido']);
   const FIELDS = Object.freeze(['instance_id', 'label', 'state', 'current_task',
-    'chats_open', 'limit_resets_at', 'idle_reason', 'idle_since']);
+    'chats_open', 'limit_resets_at', 'idle_reason', 'idle_since', 'chats']);
   const REQUIRED = Object.freeze(['instance_id', 'label', 'state', 'chats_open', 'idle_reason']);
   const plain = value => value !== null && typeof value === 'object' &&
     !Array.isArray(value) &&
@@ -28,6 +28,26 @@
     /^[A-Za-z0-9_.:-]{3,64}$/.test(value);
   const label = value => typeof value === 'string' &&
     /^[A-Za-z0-9 _.-]{1,40}$/.test(value);
+
+  const CHAT_STATES = Object.freeze(['generando', 'esperando_envio', 'detenido',
+    'error', 'limite', 'sesion_cerrada', 'desconocido']);
+  // Opaque ids and coarse states only: never titles, text, URLs or conversation ids.
+  function chatsFrom(list) {
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const item of list.slice(0, 12)) {
+      if (!plain(item) || typeof item.chat_id !== 'string' ||
+          !/^t[0-9]{1,9}$/.test(item.chat_id)) continue;
+      const chat = { chat_id: item.chat_id,
+        state: CHAT_STATES.includes(item.state) ? item.state : 'desconocido' };
+      if (typeof item.current_task === 'string' &&
+          /^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(item.current_task)) {
+        chat.current_task = item.current_task;
+      }
+      out.push(Object.freeze(chat));
+    }
+    return out;
+  }
 
   function payloadFrom(value) {
     if (!plain(value)) throw new TypeError('invalid state source');
@@ -63,6 +83,7 @@
       payload.current_task = fields.current_task;
     }
     if (iso(fields.idle_since)) payload.idle_since = fields.idle_since;
+    if (Object.hasOwn(fields, 'chats')) payload.chats = chatsFrom(fields.chats);
     if ((state === 'limite' || state === 'sesion_cerrada') &&
         iso(fields.limit_resets_at)) {
       payload.limit_resets_at = fields.limit_resets_at;
@@ -151,11 +172,17 @@
       const found = await call(extension.tabs, 'query', { url: ['https://chatgpt.com/*'] });
       if (!Array.isArray(found)) throw new TypeError('tab snapshot unavailable');
       const tabs = found.filter(t => Number.isSafeInteger(t?.id) && t.id >= 0).slice(0, 99);
+      const chats = [];
       const observed = await Promise.all(tabs.map(async tab => {
         const signal = await call(extension.tabs, 'sendMessage',
           tab.id, { type: 'autopilot:get-status' });
         // No free text, URLs or account details from content scripts are read.
-        return typeof signal?.enabled === 'boolean' ? signal.enabled : null;
+        const flag = typeof signal?.enabled === 'boolean' ? signal.enabled : null;
+        const text = typeof signal?.status === 'string' ? signal.status.toLowerCase() : '';
+        chats.push({ chat_id: 't' + tab.id,
+          state: flag === null ? 'desconocido' : /l[ií]mite/.test(text) ? 'limite'
+            : /sesi[oó]n/.test(text) ? 'sesion_cerrada' : flag ? 'generando' : 'detenido' });
+        return flag;
       }));
       const complete = observed.length === tabs.length && observed.every(x => x !== null);
       const active = observed.some(x => x === true);
@@ -163,7 +190,8 @@
         complete ? 'inactivo' : 'desconocido';
       return {
         instance_id, label: 'AutoFactory', state, chats_open: tabs.length,
-        idle_reason: active ? 'activo' : 'desconocido'
+        idle_reason: active ? 'activo' : complete ? 'pausa_manual' : 'desconocido',
+        chats
       };
     }
     const post = async payload => {
