@@ -361,3 +361,65 @@ lanToggle.addEventListener('change', async () => {
   } finally { void loadLanSetup(); }
 });
 void loadLanSetup();
+
+
+// Simple one-button link with the orchestrator: grants the permission, saves
+// the key and turns on both state publishing and orders (see sections above).
+const orchSummary = $('orchestrator-summary');
+const orchConnect = $('orchestrator-connect');
+const orchDisconnect = $('orchestrator-disconnect');
+function storageGet(defaults) {
+  return apiCall(extensionApi.storage.local.get.bind(extensionApi.storage.local), defaults);
+}
+function storageSet(values) {
+  return apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local), values);
+}
+async function refreshOrchestrator() {
+  try {
+    const s = await storageGet({ [LAN_HOST]: null, [LAN_KEY]: null, [LAN_ENABLED]: false, [LOCAL_CONTROL_FLAG]: false });
+    const on = s[LAN_ENABLED] === true && s[LOCAL_CONTROL_FLAG] === true && typeof s[LAN_KEY] === 'string';
+    orchSummary.textContent = on ? 'CONECTADO · el orquestador dirige a los chats'
+      : s[LAN_KEY] ? 'GUARDADO · pulsa CONECTAR' : 'SIN CONECTAR · los chats siguen con el mensaje genérico';
+    orchSummary.classList.toggle('active', on);
+    orchSummary.classList.toggle('paused', !on);
+  } catch (_error) { orchSummary.textContent = 'NO DISPONIBLE · almacenamiento local inaccesible'; }
+}
+orchConnect.addEventListener('click', async () => {
+  orchConnect.disabled = true;
+  try {
+    const saved = await storageGet({ [LAN_HOST]: null, [LAN_KEY]: null });
+    const origin = lanGuard.privateOrigin(lanHost.value.trim() || saved[LAN_HOST] || 'http://127.0.0.1:8777');
+    const secret = lanKey.value || saved[LAN_KEY];
+    if (typeof secret !== 'string' || secret.length < 12 || secret.length > 256 || !/^[\x21-\x7e]+$/.test(secret)) {
+      throw new TypeError('Falta la clave: ábrela en «Dirección y clave»');
+    }
+    // Ask first, inside the click, so the browser still counts it as a user action.
+    const granted = await new Promise(resolve => {
+      let done = false;
+      const fin = v => { if (!done) { done = true; resolve(v === true); } };
+      try {
+        const a = extensionApi.permissions.request({ origins: [origin + '/*'] }, fin);
+        if (a?.then) a.then(fin, () => fin(false));
+      } catch (_e) { fin(false); }
+    });
+    if (!granted) throw new Error('Permiso denegado');
+    await storageSet({ [LAN_HOST]: origin, [LAN_KEY]: secret, [LAN_ENABLED]: true, [LOCAL_CONTROL_FLAG]: true });
+    lanKey.value = '';
+  } catch (error) {
+    orchSummary.textContent = 'NO CONECTADO · ' + (error?.message || 'revisa los datos');
+    orchSummary.classList.add('paused');
+    orchSummary.classList.remove('active');
+    orchConnect.disabled = false;
+    return;
+  }
+  orchConnect.disabled = false;
+  void refreshOrchestrator(); void refreshLocalControl(); void loadLanSetup();
+});
+orchDisconnect.addEventListener('click', async () => {
+  try { await storageSet({ [LAN_ENABLED]: false, [LOCAL_CONTROL_FLAG]: false }); } catch (_e) { /* fail closed */ }
+  void refreshOrchestrator(); void refreshLocalControl(); void loadLanSetup();
+});
+extensionApi.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && [LAN_ENABLED, LOCAL_CONTROL_FLAG, LAN_KEY].some(k => Object.hasOwn(changes, k))) void refreshOrchestrator();
+});
+void refreshOrchestrator();
