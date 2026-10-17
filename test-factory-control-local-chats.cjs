@@ -54,5 +54,17 @@ const publisher = require('./factory-control-local-publisher.js');
   assert.equal(o2.chats[0].phase, 'esperando_externo');
   assert.equal(o2.chats[0].directed, true);
   assert.equal(o2.chats[1].phase, 'desconocido');
+  // Factory directed mode: repository assignment (known repos only).
+  assert.deepEqual(commands.globalCommand({ id: 11, chat_id: 't3', want: 'assign', repo: 'Condor' }),
+    { id: 11, chat_id: 't3', want: 'assign', repo: 'Condor' });
+  for (const bad of [
+    { id: 11, chat_id: 't3', want: 'assign', repo: 'otro-repo' },
+    { id: 11, chat_id: null, want: 'assign', repo: 'Condor' },
+    { id: 11, chat_id: 't3', want: 'assign', repo: 'Condor', issue: 'Condor#1' },
+    { id: 11, chat_id: 't3', want: 'stop', repo: 'Condor' }])
+    assert.equal(commands.globalCommand(bad), null);
+  applied.length = 0;
+  assert.equal(await p.process({ id: 3, chat_id: 't7', want: 'assign', repo: 'Condor' }), true);
+  assert.deepEqual(applied, [['assign', 't7']]);
   console.log('ok');
 })().catch(e => { console.error(e); process.exit(1); });

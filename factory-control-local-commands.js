@@ -36,12 +36,14 @@
 
   // Validate data descriptors before reading any command values. Explicitly
   // ignore per-chat commands, which belong to a different authorized task.
+  const REPOS = Object.freeze(['Factory', 'Condor', 'GrindFlow', 'brvtal', 'ControlBot', 'AutoFactory', 'FactoryRunner']);
   function globalCommand(raw) {
     if (!isObject(raw)) return null;
     const keys = Reflect.ownKeys(raw);
     if ((keys.length !== 3 && keys.length !== 4) || keys.some(k => typeof k !== 'string' ||
-        !['id', 'chat_id', 'want', 'issue'].includes(k)) ||
-        (keys.length === 4) !== keys.includes('issue')) return null;
+        !['id', 'chat_id', 'want', 'issue', 'repo'].includes(k))) return null;
+    const extra = keys.filter(k => k === 'issue' || k === 'repo');
+    if ((keys.length === 4) !== (extra.length === 1)) return null;
     const values = Object.create(null);
     for (const key of keys) {
       const d = Object.getOwnPropertyDescriptor(raw, key);
@@ -53,11 +55,18 @@
           (typeof values.chat_id === 'string' && /^t[0-9]{1,9}$/.test(values.chat_id))) ||
         !['stop', 'start', 'assign'].includes(values.want)) return null;
     if (values.want === 'assign') {
-      // Fixed template only: an opaque chat plus a Repo#N reference, no free text.
-      if (values.chat_id === null || typeof values.issue !== 'string' ||
-          !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(values.issue)) return null;
+      // Fixed templates only: an opaque chat plus a Repo#N reference or one of
+      // the seven known repositories. No free text ever crosses this channel.
+      if (values.chat_id === null || extra.length !== 1) return null;
+      if (extra[0] === 'issue') {
+        if (typeof values.issue !== 'string' ||
+            !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(values.issue)) return null;
+        return Object.freeze({ id: values.id, chat_id: values.chat_id,
+          want: 'assign', issue: values.issue });
+      }
+      if (!REPOS.includes(values.repo)) return null;
       return Object.freeze({ id: values.id, chat_id: values.chat_id,
-        want: 'assign', issue: values.issue });
+        want: 'assign', repo: values.repo });
     }
     if (keys.length === 4) return null;
     return Object.freeze({ id: values.id, chat_id: values.chat_id, want: values.want });
@@ -91,7 +100,7 @@
         // Account/session state can change while the receipt is persisted.
         // Do not resume on a stale pre-mark authorization.
         if (command.want === 'start' && await allowedToStart() !== true) return false;
-        if (await apply(command.want, command.chat_id, command.issue) !== true) return false;
+        if (await apply(command.want, command.chat_id, command.issue || command.repo) !== true) return false;
         if (await enabled() !== true) return false;
         return await ack(command.id) === true;
       } catch (_error) {
@@ -434,7 +443,8 @@
           try {
             Promise.resolve(tabs.sendMessage(tab.id,
               want === 'assign'
-                ? { type: 'autopilot:assign', issue }
+                ? (REPOS.includes(issue) ? { type: 'autopilot:assign', repo: issue }
+                  : { type: 'autopilot:assign', issue })
                 : { type: 'autopilot:set-enabled', enabled: active }))
               .then(result => finish(want === 'assign' ? result?.ok === true
                 : result?.ok === true && result?.enabled === active),
@@ -478,7 +488,8 @@
       enabled, permission: permitted, configuration, fetchPending,
       process: async command => processor.process({
         id: command.id, chat_id: command.chat_id ?? null, want: command.want,
-        ...(command.issue ? { issue: command.issue } : {})
+        ...(command.issue ? { issue: command.issue } : {}),
+        ...(command.repo ? { repo: command.repo } : {})
       }), now
     });
     return Object.freeze({ tick: poller.tick, stop: poller.stop });

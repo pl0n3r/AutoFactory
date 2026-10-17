@@ -376,6 +376,14 @@
     assignedPrompt = '';
     return value;
   }
+  // Factory «modo dirigido»: the exact per-repository prompt from factory/README.md.
+  const DIRECTED_REPOS = ['Factory', 'Condor', 'GrindFlow', 'brvtal', 'ControlBot', 'AutoFactory', 'FactoryRunner'];
+  function assignRepo(repo) {
+    if (!DIRECTED_REPOS.includes(repo)) return false;
+    assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio.';
+    state.nextSendAt = 0;
+    return true;
+  }
   function assignIssue(issue) {
     if (typeof issue !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(issue)) return false;
     assignedPrompt = 'Trabaja únicamente el issue ' + issue + '. Revisa su estado real (rama, PR, CI, reservas) y avanza hasta fusionarlo. Si dependes de CI o de una revisión externa, dilo en una línea y espera sin pedir más instrucciones.';
@@ -1340,7 +1348,7 @@
     if (message?.type === 'autopilot:heartbeat') void tick();
     if (message?.type === 'autopilot:directed') setDirected(message.on === true);
     if (message?.type === 'autopilot:assign') {
-      const accepted = assignIssue(message.issue);
+      const accepted = typeof message.repo === 'string' ? assignRepo(message.repo) : assignIssue(message.issue);
       if (accepted) setDirected(true);
       reply({ ok: accepted, assigned: accepted });
       return;
