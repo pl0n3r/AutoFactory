@@ -1091,11 +1091,17 @@
       // While ChatGPT is generating (stop button visible) the composer can be
       // hidden or disabled: that is not a broken page. Reloading here is what
       // produced «Stopped thinking» and unloadable conversations.
+      // Directed tabs may reload for a missing interface at most once per 10 minutes:
+      // a page whose composer is ambiguous or disabled must not reload in a loop.
+      let missingReloadAt = 0;
+      try { missingReloadAt = Number(sessionStorage.getItem('autofactory-missing-reload-at')) || 0; } catch (_e) { /* ignore */ }
+      const directedHold = isDirected() && Date.now() - missingReloadAt < 600000;
       const interfaceMissingLongEnough = signal.code === 'interface-missing'
         && !generating
+        && !directedHold
         && Date.now() - state.contentLoadedAt > 15000;
       if (signal.code === 'interface-missing' && !interfaceMissingLongEnough) {
-        setStatus('Esperando que ChatGPT termine de cargar la interfaz');
+        setStatus(directedHold ? 'Dirigido: interfaz no disponible; sin recargar' : 'Esperando que ChatGPT termine de cargar la interfaz');
         return;
       }
       if (interfaceMissingLongEnough && isNewChatRoute) {
@@ -1123,6 +1129,9 @@
           setStatus('Protección activa: demasiadas recargas', 'error');
           log('circuit-open', { code: signal.code, reason: 'reload-limit' });
           return;
+        }
+        if (signal.code === 'interface-missing') {
+          try { sessionStorage.setItem('autofactory-missing-reload-at', String(Date.now())); } catch (_e) { /* ignore */ }
         }
         Object.assign(state, reliability.beforeReload(runtimeSnapshot()));
         state.lastReloadAt = Date.now();
