@@ -1105,7 +1105,10 @@
       // a page whose composer is ambiguous or disabled must not reload in a loop.
       let missingReloadAt = 0;
       try { missingReloadAt = Number(sessionStorage.getItem('autofactory-missing-reload-at')) || 0; } catch (_e) { /* ignore */ }
-      const directedHold = isDirected() && Date.now() - missingReloadAt < 600000;
+      // Directed tabs never reload for a missing interface: chats that were mid-«Thinking»
+      // (no stop button, composer hidden) were reloaded and lost their work.
+      void missingReloadAt;
+      const directedHold = isDirected();
       // The new «Thinking» UI shows no stop button: right after our own send the
       // composer is hidden while ChatGPT works. Never reload during that window.
       const respondingToOurSend = state.waiting && Date.now() - state.lastSentAt < 45 * 60000;
