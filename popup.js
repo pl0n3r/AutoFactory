@@ -386,6 +386,9 @@ async function refreshOrchestrator() {
       orchSummary.textContent += ' · último envío hace ' + secs + ' s: '
         + (last.ok ? 'correcto' : 'falló en ' + last.step + ' (' + last.detail + ')');
     } else if (on) orchSummary.textContent += ' · aún sin envíos';
+    const poll = on ? (await storageGet({ factoryControlLanLastPoll: null })).factoryControlLanLastPoll : null;
+    if (poll) orchSummary.textContent += ' · órdenes: ' + poll.result;
+    else if (on) orchSummary.textContent += ' · órdenes: sin consultar aún';
     orchSummary.classList.toggle('active', on);
     orchSummary.classList.toggle('paused', !on);
   } catch (_error) { orchSummary.textContent = 'NO DISPONIBLE · almacenamiento local inaccesible'; }
@@ -426,6 +429,6 @@ orchDisconnect.addEventListener('click', async () => {
   void refreshOrchestrator(); void refreshLocalControl(); void loadLanSetup();
 });
 extensionApi.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && [LAN_ENABLED, LOCAL_CONTROL_FLAG, LAN_KEY, 'factoryControlLocalLastPublish'].some(k => Object.hasOwn(changes, k))) void refreshOrchestrator();
+  if (area === 'local' && [LAN_ENABLED, LOCAL_CONTROL_FLAG, LAN_KEY, 'factoryControlLocalLastPublish', 'factoryControlLanLastPoll'].some(k => Object.hasOwn(changes, k))) void refreshOrchestrator();
 });
 void refreshOrchestrator();
