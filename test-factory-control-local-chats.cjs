@@ -66,5 +66,38 @@ const publisher = require('./factory-control-local-publisher.js');
   applied.length = 0;
   assert.equal(await p.process({ id: 3, chat_id: 't7', want: 'assign', repo: 'Condor' }), true);
   assert.deepEqual(applied, [['assign', 't7']]);
+
+  // AC-03/AC-05 (#168): per-chat order touches only that tab; a missing chat is acked without effect.
+  async function runtime(commandsToServe, tabIds) {
+    const st = { factoryControlLanCommandsEnabled: true, factoryControlLanOriginV1: 'http://127.0.0.1:8777',
+      factoryControlLanAgentKeyV1: 'abcdefghijklmnop', factoryControlLocalInstanceId: 'af-test-inst-1' };
+    const calls = [];
+    const rt = commands.createBrowserCommandRuntime({
+      storage: { get: async d => ({ ...d, ...st }), set: async c => { calls.push(['set', Object.keys(c)]); Object.assign(st, c); } },
+      permissions: { contains: async () => true },
+      tabs: { query: async () => tabIds.map(id => ({ id })),
+        sendMessage: async (id, m) => { calls.push(['msg', id, m.type, m.enabled]); return { ok: true, enabled: m.enabled }; } },
+      fetch: async (u, o) => {
+        calls.push([o.method, u.includes('/ack') ? 'ack' : 'commands']);
+        if (o.method === 'POST') return { ok: true, headers: { get: () => 'application/json' }, text: async () => '{"ok":true}' };
+        return { ok: true, headers: { get: k => (k === 'content-type' ? 'application/json' : '100') },
+          text: async () => JSON.stringify({ commands: commandsToServe }) };
+      },
+      now: () => Date.now()
+    });
+    const result = await rt.tick();
+    return { result, calls };
+  }
+  const one = await runtime([{ id: 71, chat_id: 't12', want: 'stop' }], [11, 12, 13]);
+  assert.equal(one.result, 'handled');
+  const msgs = one.calls.filter(c => c[0] === 'msg');
+  assert.deepEqual(msgs, [['msg', 12, 'autopilot:set-enabled', false]], 'only the addressed tab is paused');
+  assert.equal(one.calls.some(c => c[0] === 'set' && c[1].includes('masterEnabled')), false, 'global masterEnabled is untouched');
+  assert.equal(one.calls.filter(c => c[1] === 'ack').length, 1);
+  const missing = await runtime([{ id: 72, chat_id: 't999', want: 'stop' }], [11, 12]);
+  assert.equal(missing.result, 'handled');
+  assert.equal(missing.calls.filter(c => c[0] === 'msg').length, 0, 'missing chat has no effect');
+  assert.equal(missing.calls.filter(c => c[1] === 'ack').length, 1, 'missing chat is still acknowledged');
+  console.log('per-chat order: isolated, idempotent and acked');
   console.log('ok');
 })().catch(e => { console.error(e); process.exit(1); });
