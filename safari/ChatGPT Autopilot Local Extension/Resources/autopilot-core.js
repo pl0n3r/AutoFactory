@@ -66,7 +66,10 @@
         || node.getAttribute('aria-disabled') === 'true') return false;
       const style = doc.defaultView?.getComputedStyle?.(node);
       if (style && (style.display === 'none' || style.visibility === 'hidden'
-        || style.visibility === 'collapse' || style.pointerEvents === 'none'
+        || style.visibility === 'collapse'
+        // pointer-events is inherited but children may re-enable it (wrapper overlays):
+        // only the element itself decides.
+        || (node === element && style.pointerEvents === 'none')
         || Number.parseFloat(style.opacity) === 0)) return false;
     }
     return typeof element.checkVisibility !== 'function'
