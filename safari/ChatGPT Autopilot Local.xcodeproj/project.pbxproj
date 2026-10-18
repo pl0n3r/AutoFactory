@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 110;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -193,6 +193,7 @@
 				73FBAA7130632CAE005B721E /* Sources */,
 				73FBAA7230632CAE005B721E /* Frameworks */,
 				73FBAA7330632CAE005B721E /* Resources */,
+				A122A122A122A122A122A122 /* Copiar todos los assets declarados de la extensión */,
 			);
 			buildRules = (
 			);
@@ -268,6 +269,28 @@
 			);
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A122A122A122A122A122A122 /* Copiar todos los assets declarados de la extensión */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copiar todos los assets declarados de la extensión";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nsrc=\"$SRCROOT/ChatGPT Autopilot Local Extension/Resources/\"\ndst=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/\"\n/usr/bin/rsync -a \"$src\" \"$dst\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		73FBAA5630632CAC005B721E /* Sources */ = {
@@ -434,6 +457,7 @@
 		73FBAA8030632CAE005B721E /* Debug configuration for PBXNativeTarget "ChatGPT Autopilot Local Extension" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10;
 				ENABLE_APP_SANDBOX = YES;
@@ -468,6 +492,7 @@
 		73FBAA8130632CAE005B721E /* Release configuration for PBXNativeTarget "ChatGPT Autopilot Local Extension" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10;
 				ENABLE_APP_SANDBOX = YES;
