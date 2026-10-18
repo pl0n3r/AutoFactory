@@ -2,6 +2,11 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.30 — 2026-10-17
+
+- El estado «generando» solo se publica si el chat realmente está respondiendo (esperando respuesta o con botón de parar); un chat dirigido ocioso se publica como «esperando_envio».
+- La fase «bloqueado» también se reconoce cuando la respuesta empieza por «Worked for …» seguido de BLOQUEADO/BLOQUEO.
+
 ## 1.7.29 — 2026-10-17
 
 - Safari: el bundle ahora incluye todos los assets declarados (antes solo 11 de 28) y el proyecto Xcode usa un formato que abre el Xcode de CI; las pruebas del emparejamiento funcionan con Node de Homebrew (AF #122).
