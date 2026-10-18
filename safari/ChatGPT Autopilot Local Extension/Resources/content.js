@@ -435,7 +435,7 @@
     const text = full.slice(-1200);
     if (!text) return 'desconocido';
     // Agents open a blocked answer with «BLOQUEADO — …» / «BLOQUEO EXTERNO — …»: check the head first.
-    if (/^\W*(bloqueado|bloqueo|parado)\b/.test(full.slice(0, 40))) return 'bloqueado';
+    if (/^\W*((worked for|trabajó durante) [0-9a-z ]{0,16}?\s*)?(bloqueado|bloqueo|parado)\b/.test(full.slice(0, 70))) return 'bloqueado';
     if (/(esperando|debo esperar|aguardando|espero)[^.]{0,80}(ci|checks?|revisi|workflow|merge|fusi)/.test(text)) return 'esperando_externo';
     if (/(bloquead|no puedo continuar|requiere (que )?(el due|tu ))/.test(text)) return 'bloqueado';
     if (/(fusionad|merged|terminad|completad|cerrad)/.test(text)) return 'termino';
@@ -1407,7 +1407,8 @@
     }
     if (message?.type === 'autopilot:get-status') {
       reply({ enabled: state.enabled, status: state.status,
-        directed: isDirected(), phase: replyPhase() });
+        directed: isDirected(), phase: replyPhase(),
+        busy: Boolean(state.waiting || core.stopButton(document)) });
     } else reply({ ok: true, enabled: state.enabled, status: state.status });
   });
 
