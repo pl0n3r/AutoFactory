@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.32 — 2026-10-18
+
+- Un chat con el piloto detenido (STOP) se publica como «detenido», no como «esperando_envio»: el orquestador no cuenta como libre un chat que no puede enviar.
+
 ## 1.7.31 — 2026-10-17
 
 - Cada chat publica los números de issue/PR que menciona su última respuesta (enteros acotados, sin texto) para que el orquestador lo envíe al bloqueador que el propio agente nombró.
