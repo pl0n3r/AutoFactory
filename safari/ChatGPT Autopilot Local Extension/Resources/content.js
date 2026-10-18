@@ -397,10 +397,11 @@
   function probeComposer() {
     if (Date.now() - lastProbeAt < 60000) return;
     lastProbeAt = Date.now();
-    const el = document.querySelector('#prompt-textarea');
+    const el = document.querySelector('#prompt-textarea') || document.querySelector('[contenteditable="true"]');
     let reason = 0;
     if (el) {
-      if (el.disabled) reason = 9;
+      if (el.closest('[data-message-author-role]')) reason = 11;
+      else if (el.disabled) reason = 9;
       else if (el.readOnly || el.getAttribute('aria-readonly') === 'true') reason = 10;
       else {
         for (let n = el; n?.nodeType === 1 && !reason; n = n.parentElement) {
