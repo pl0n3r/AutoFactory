@@ -84,6 +84,15 @@
         usableFields.add(field);
       }
     }
+    if (usableFields.size === 0) {
+      // New ChatGPT UI: the composer can be a lone contenteditable with no id/role/label
+      // (diagnostics: #prompt-textarea=0, textarea=0, contenteditable=1). Accept it only when
+      // it is the single usable editable field outside the message history.
+      const loose = [...doc.querySelectorAll('[contenteditable="true"]')].filter(field =>
+        !field.closest('[data-message-author-role]') && !field.closest('fieldset[disabled]')
+        && field.getAttribute('aria-readonly') !== 'true' && isVisible(field, doc));
+      if (loose.length === 1) return loose[0];
+    }
     if (usableFields.size > 1) {
       // Ambiguous (e.g. an «edit message» box beside the main composer): trust the
       // canonical #prompt-textarea only when exactly one such usable element exists.

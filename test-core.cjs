@@ -80,6 +80,10 @@ const sendButtonScopeCases = {
       '<form><textarea placeholder="ChatGPT"></textarea>' +
       '<button aria-label="Enviar mensaje">Enviar</button></form>');
     assert.equal(core.composer(ambiguousEditors), null);
+    const loneEditable = page('<main><div data-message-author-role="assistant" contenteditable="true">hola</div><form><div id="x" contenteditable="true"></div></form></main>');
+    assert.equal(core.composer(loneEditable)?.id, 'x');
+    const twoLoose = page('<form><div contenteditable="true"></div><div contenteditable="true"></div></form>');
+    assert.equal(core.composer(twoLoose), null);
     assert.equal(core.sendButton(ambiguousEditors), null);
     const unrelated = page(
       '<form><textarea placeholder="ChatGPT"></textarea></form>' +
