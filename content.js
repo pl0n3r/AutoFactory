@@ -413,7 +413,7 @@
             const st = getComputedStyle(n);
             if (st.display === 'none') reason = 5;
             else if (st.visibility === 'hidden' || st.visibility === 'collapse') reason = 6;
-            else if (st.pointerEvents === 'none') reason = 7;
+            else if (st.pointerEvents === 'none') reason = n === el ? 7 : 17;
             else if (Number.parseFloat(st.opacity) === 0) reason = 8;
           }
         }

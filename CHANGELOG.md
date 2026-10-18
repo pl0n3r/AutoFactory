@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.26 — 2026-10-17
+
+- Visibilidad del campo de escritura: «pointer-events: none» solo cuenta en el propio elemento (un contenedor puede tenerlo y el campo seguir activo). Causa de «interfaz no disponible» en todas las pestañas.
+
 ## 1.7.25 — 2026-10-17
 
 - Diagnóstico: la sonda también analiza el único contenteditable cuando no hay #prompt-textarea.
