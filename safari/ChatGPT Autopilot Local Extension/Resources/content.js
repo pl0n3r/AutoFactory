@@ -427,6 +427,20 @@
     });
   }
 
+  // Only issue/PR numbers mentioned in the last reply (bounded integers, no text): the orchestrator
+  // uses them to send a blocked chat to the blocker the agent itself named.
+  function replyRefs() {
+    const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
+    const last = messages[messages.length - 1];
+    const text = String(last?.innerText || last?.textContent || '').slice(0, 4000);
+    const seen = [];
+    for (const match of text.matchAll(/#(\d{1,6})\b/g)) {
+      const n = Number(match[1]);
+      if (n > 0 && !seen.includes(n)) seen.push(n);
+      if (seen.length >= 6) break;
+    }
+    return seen;
+  }
   function replyPhase() {
     if (state.waiting) return 'trabajando';
     const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
@@ -1408,7 +1422,8 @@
     if (message?.type === 'autopilot:get-status') {
       reply({ enabled: state.enabled, status: state.status,
         directed: isDirected(), phase: replyPhase(),
-        busy: Boolean(state.waiting || core.stopButton(document)) });
+        busy: Boolean(state.waiting || core.stopButton(document)),
+        refs: replyRefs() });
     } else reply({ ok: true, enabled: state.enabled, status: state.status });
   });
 

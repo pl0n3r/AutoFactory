@@ -46,6 +46,7 @@
         chat.current_task = item.current_task;
       }
       chat.phase = PHASES.includes(item.phase) ? item.phase : 'desconocido';
+      chat.refs = Array.isArray(item.refs) ? item.refs.filter(n => Number.isSafeInteger(n) && n > 0 && n < 1000000).slice(0, 6) : [];
       chat.directed = item.directed === true;
       out.push(Object.freeze(chat));
     }
@@ -195,7 +196,7 @@
         // No free text, URLs or account details from content scripts are read.
         const flag = typeof signal?.enabled === 'boolean' ? signal.enabled : null;
         const text = typeof signal?.status === 'string' ? signal.status.toLowerCase() : '';
-        chats.push({ chat_id: 't' + tab.id, phase: signal?.phase, directed: signal?.directed === true,
+        chats.push({ chat_id: 't' + tab.id, phase: signal?.phase, refs: signal?.refs, directed: signal?.directed === true,
           state: flag === null ? 'desconocido' : /dirigido: esperando orden/.test(text) || (signal?.directed === true && signal?.busy === false && !/no disponible|recuperaci[oó]n|protecci[oó]n activa|no encontrado|recarga|l[ií]mite|sesi[oó]n/.test(text)) ? 'esperando_envio' : /no disponible|recuperaci[oó]n|protecci[oó]n activa|no encontrado|recarga/.test(text) ? 'error' : /l[ií]mite/.test(text) ? 'limite'
             : /sesi[oó]n/.test(text) ? 'sesion_cerrada' : flag ? 'generando' : 'detenido' });
         return flag;

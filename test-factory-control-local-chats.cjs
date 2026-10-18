@@ -99,5 +99,10 @@ const publisher = require('./factory-control-local-publisher.js');
   assert.equal(missing.calls.filter(c => c[0] === 'msg').length, 0, 'missing chat has no effect');
   assert.equal(missing.calls.filter(c => c[1] === 'ack').length, 1, 'missing chat is still acknowledged');
   console.log('per-chat order: isolated, idempotent and acked');
+  // refs: bounded integers only
+  const withRefs = publisher.payloadFrom({ instance_id: 'af-test-1', label: 'AutoFactory', state: 'activo',
+    chats_open: 1, idle_reason: 'activo',
+    chats: [{ chat_id: 't1', state: 'detenido', refs: [424, 472, -1, 'x', 1e9, 7, 8, 9, 10, 11] }] });
+  assert.deepEqual(withRefs.chats[0].refs, [424, 472, 7, 8, 9, 10]);
   console.log('ok');
 })().catch(e => { console.error(e); process.exit(1); });
