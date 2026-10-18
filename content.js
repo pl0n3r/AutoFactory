@@ -862,7 +862,8 @@
       // refresh (hard limit: 90 extra minutes past due, then refresh anyway).
       const overdueMs = Date.now() - state.lastPeriodicReloadAt - currentConfig.periodicReloadMinutes * 60000;
       const deferForLiveResponse = isDirected() && Boolean(core.stopButton(document)) && overdueMs < 90 * 60000;
-      const periodicReloadDue = currentConfig.periodicReload && overdueMs >= 0 && !deferForLiveResponse;
+      // Directed chats are never reloaded on a timer: reloading a /c/ page can leave it «Could not load».
+      const periodicReloadDue = currentConfig.periodicReload && !isDirected() && overdueMs >= 0 && !deferForLiveResponse;
       if (periodicReloadDue) {
         state.lastPeriodicReloadAt = Date.now();
         sessionStorage.setItem('chatgpt-autopilot-last-periodic-reload', String(state.lastPeriodicReloadAt));
@@ -908,6 +909,13 @@
           || Number(previous.retryAt) !== plan.retryAt;
         const attempts = plan.attempts;
         const defaultAction = plan.action === 'new-chat' ? 'open_replacement_chat' : plan.action;
+        if (isDirected() && defaultAction !== 'retry') {
+          // Only the Retry button is safe: reloading or opening replacement chats is the
+          // orchestrator's / the owner's call. Do nothing else for this tab.
+          setStatus('Dirigido: conversación no disponible; sin recargar ni abrir chats', 'error');
+          state.nextSendAt = Date.now() + 30000;
+          return;
+        }
         const recoveryConfig = await config();
         const decision = adaptiveRecovery?.chooseRecovery({
           problemCode: signal.code, interfaceState: 'error', isResponding: generationAtSignal,
