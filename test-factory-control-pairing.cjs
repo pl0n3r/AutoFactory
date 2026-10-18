@@ -785,7 +785,7 @@ function fixture(overrides = {}) {
       // Never forward caller-controlled PATH, secrets or executable overrides.
       // Ubuntu runner's system Node/Python binaries are under fixed root-owned
       // directories; the nested acceptance tests need only this loop guard.
-      env: { PATH: '/usr/local/bin:/usr/bin:/bin', FACTORY_PAIRING_PYTHON_CHILD: '1' },
+      env: { PATH: require('node:path').dirname(process.execPath) + ':/usr/local/bin:/usr/bin:/bin', FACTORY_PAIRING_PYTHON_CHILD: '1' },
       encoding: 'utf8',
       timeout: 30000
     });

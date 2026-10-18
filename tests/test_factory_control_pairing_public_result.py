@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import unittest
 
@@ -13,9 +14,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_pairing_contract() -> str:
-    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "FACTORY_PAIRING_PYTHON_CHILD": "1"}
+    # Resolve the running Node once (Homebrew on macOS lives outside the fixed system PATH);
+    # the child still gets a sanitized environment, never the caller's PATH or secrets.
+    node = shutil.which("node") or "node"
+    node_dir = os.path.dirname(node) if os.path.isabs(node) else ""
+    path = ":".join(p for p in (node_dir, "/usr/local/bin", "/usr/bin", "/bin") if p)
+    env = {"PATH": path, "FACTORY_PAIRING_PYTHON_CHILD": "1"}
     result = subprocess.run(
-        ["node", "test-factory-control-pairing.cjs"],
+        [node, "test-factory-control-pairing.cjs"],
         cwd=ROOT, env=env, capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode != 0:

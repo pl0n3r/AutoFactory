@@ -4,6 +4,7 @@ Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante
 
 ## 1.7.29 — 2026-10-17
 
+- Safari: el bundle ahora incluye todos los assets declarados (antes solo 11 de 28) y el proyecto Xcode usa un formato que abre el Xcode de CI; las pruebas del emparejamiento funcionan con Node de Homebrew (AF #122).
 - La fase «bloqueado» se detecta cuando la respuesta empieza con «BLOQUEADO» o «BLOQUEO»; así el orquestador reasigna al chat en vez de insistir con un issue bloqueado.
 
 ## 1.7.28 — 2026-10-17
