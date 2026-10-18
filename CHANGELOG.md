@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.29 — 2026-10-17
+
+- La fase «bloqueado» se detecta cuando la respuesta empieza con «BLOQUEADO» o «BLOQUEO»; así el orquestador reasigna al chat en vez de insistir con un issue bloqueado.
+
 ## 1.7.28 — 2026-10-17
 
 - El prompt de asignación pide no programar tareas/recordatorios de ChatGPT para esperar (un chat quedó 28 min esperando una «revisión» agendada).

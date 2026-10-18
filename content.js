@@ -431,8 +431,11 @@
     if (state.waiting) return 'trabajando';
     const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
     const last = messages[messages.length - 1];
-    const text = core.normalize(last?.innerText || last?.textContent || '').slice(-1200).toLowerCase();
+    const full = core.normalize(last?.innerText || last?.textContent || '').toLowerCase();
+    const text = full.slice(-1200);
     if (!text) return 'desconocido';
+    // Agents open a blocked answer with «BLOQUEADO — …» / «BLOQUEO EXTERNO — …»: check the head first.
+    if (/^\W*(bloqueado|bloqueo|parado)\b/.test(full.slice(0, 40))) return 'bloqueado';
     if (/(esperando|debo esperar|aguardando|espero)[^.]{0,80}(ci|checks?|revisi|workflow|merge|fusi)/.test(text)) return 'esperando_externo';
     if (/(bloquead|no puedo continuar|requiere (que )?(el due|tu ))/.test(text)) return 'bloqueado';
     if (/(fusionad|merged|terminad|completad|cerrad)/.test(text)) return 'termino';
