@@ -32,7 +32,7 @@ const publisher = require('./factory-control-local-publisher.js');
   assert.equal(out.chats.length, 12);
   assert.equal(JSON.stringify(out).includes('SECRETO'), false);
   assert.equal(JSON.stringify(out).includes('https'), false);
-  assert.deepEqual(Object.keys(out.chats[0]).sort(), ['chat_id', 'directed', 'phase', 'state']);
+  assert.deepEqual(Object.keys(out.chats[0]).sort(), ['chat_id', 'directed', 'phase', 'refs', 'state']);
   // Assign: fixed template only.
   assert.deepEqual(commands.globalCommand({ id: 9, chat_id: 't3', want: 'assign', issue: 'Condor#410' }),
     { id: 9, chat_id: 't3', want: 'assign', issue: 'Condor#410' });
