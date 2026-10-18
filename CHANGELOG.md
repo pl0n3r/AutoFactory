@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.25 — 2026-10-17
+
+- Diagnóstico: la sonda también analiza el único contenteditable cuando no hay #prompt-textarea.
+
 ## 1.7.24 — 2026-10-17
 
 - Reconoce el campo de escritura cuando es el único contenteditable visible, sin id ni rol (la interfaz actual de ChatGPT); antes todas las pestañas quedaban en «interfaz no disponible».
