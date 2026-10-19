@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.34 — 2026-10-18
+
+- Prompt de asignación: CodeRabbit solo para la revisión final (una vez, con el PR definitivo y el CI en verde); nada de revisiones incrementales.
+
 ## 1.7.33 — 2026-10-18
 
 - Prompt de asignación: la tarea es desbloquear, no reportar bloqueos; la respuesta termina con «Hecho:» y «Siguiente:», y solo se admite «Parada legítima:» tras agotar lo permitido.
