@@ -891,7 +891,42 @@ async function ac23() {
   runtime.stop();
 }
 
-const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20,ac21,ac22,ac23};
+async function ac24() {
+  // A full receipt ledger (512) must not block every later order for ever:
+  // the oldest receipts are dropped and the new per-chat order is still applied.
+  const origin=lan('127.0.0.1:8777');
+  const flag='factoryControlLanCommandsEnabled',host='factoryControlLanOriginV1',
+    key='factoryControlLanAgentKeyV1',instance='factoryControlLocalInstanceId',
+    ledger='factoryControlLanReceiptsV1';
+  const full=Object.create(null);
+  for (let i=1;i<=512;i++) full[origin+'|agent-a|'+i]=true;
+  const state={[flag]:true,[host]:origin,[key]:'local-secret-012345',
+    [instance]:'agent-a',[ledger]:full,masterEnabled:true};
+  const sent=[];
+  const storage={
+    async get(d){return {...d,...state};},
+    async set(v){Object.assign(state,v);}
+  };
+  const runtime=api.createBrowserCommandRuntime({
+    storage,permissions:{contains:async()=>true},
+    tabs:{query:async()=>[{id:5}],sendMessage:async(id,msg)=>{sent.push({id,msg});return {ok:true,assigned:true};}},
+    now:()=>100000,
+    fetch:async (url,opts)=>{
+      if(opts.method==='GET') {
+        return {ok:true,headers:{get:k=>k==='content-type'?'application/json':null},
+          text:async()=>JSON.stringify({commands:[{id:100000,chat_id:'t5',want:'assign',issue:'Condor#1'}]})};
+      }
+      return {ok:true};
+    }
+  });
+  assert.equal(await runtime.tick(),'handled');
+  assert.equal(sent.length>=1,true,'order must reach the tab even with a full ledger');
+  assert.equal(Object.keys(state[ledger]).length<=257,true,'ledger must be pruned');
+  assert.equal(state[ledger][origin+'|agent-a|100000'],true);
+  runtime.stop();
+}
+
+const cases={ac01,ac02,ac03,ac04,ac05,ac06,ac07,ac08,ac09,ac10,ac11,ac12,ac13,ac14,ac15,ac16,ac17,ac18,ac19,ac20,ac21,ac22,ac23,ac24};
 (async()=>{
   const selected=process.argv[2]?[process.argv[2]]:Object.keys(cases);
   for (const key of selected) if (!Object.hasOwn(cases,key)) throw new Error('unknown case');

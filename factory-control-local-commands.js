@@ -380,9 +380,19 @@
       const key = receiptKey(id);
       if (!key) return false;
       const prev = await receipts();
-      if (Object.keys(prev).length >= 512 ||
-          prev[key] === true || prev[String(id)] === true) return false;
-      const next = Object.assign(Object.create(null), prev, { [key]: true });
+      if (prev[key] === true || prev[String(id)] === true) return false;
+      // The ledger is bounded (512). When it fills up, keep only the 256 newest
+      // receipts instead of rejecting every later order for ever. IDs are
+      // monotonic, so the dropped ones are the oldest and can no longer be replayed.
+      const ordered = Object.keys(prev);
+      let kept = prev;
+      if (ordered.length >= 400) {
+        const idOf = k => Number(k.slice(k.lastIndexOf('|') + 1));
+        ordered.sort((x, y) => idOf(x) - idOf(y));
+        kept = Object.create(null);
+        for (const k of ordered.slice(ordered.length - 256)) kept[k] = true;
+      }
+      const next = Object.assign(Object.create(null), kept, { [key]: true });
       await storage.set({ [RECEIPTS]: next });
       return (await receipts())[key] === true;
     }

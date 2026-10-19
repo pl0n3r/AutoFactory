@@ -62,6 +62,9 @@ class FactoryControlLocalCommandsTests(unittest.TestCase):
     def test_ac23_hung_tab_discovery_fails_closed(self):
         self.case("ac23")
 
+    def test_ac24_full_receipt_ledger_prunes_oldest(self):
+        self.case("ac24")
+
 
 if __name__ == "__main__":
     unittest.main()
