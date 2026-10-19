@@ -766,6 +766,66 @@ function fixture(overrides = {}) {
     assert.equal(JSON.stringify(noConfirmation.journal).includes('credential-001'), false);
   }
 
+  // AF129 AC-01: every challenge field must be own enumerable data.
+  // A hostile getter cannot run, consume a code, or issue a credential.
+  {
+    const sample = () => ({
+      challengeId: 'challenge-001', profileAlias: 'perfil-1',
+      expiresAt: NOW + 60_000, revoked: false, used: false
+    });
+    for (const field of Object.keys(sample())) {
+      const challenge = sample();
+      let getterCalls = 0, consumed = 0, issued = 0;
+      Object.defineProperty(challenge, field, {
+        enumerable: true,
+        get() { getterCalls++; throw new Error('synthetic secret getter'); }
+      });
+      const { contract } = fixture({
+        loadVerifiedChallenge: async () => challenge,
+        consumeVerifiedChallenge: async () => { consumed++; return 'consumed'; },
+        issueOpaqueCredential: async () => { issued++; return {}; }
+      });
+      const result = await contract.pair({ profileAlias: 'perfil-1', code: '123456' });
+      assert.deepEqual(result, { ok: false, code: 'failed' }, field);
+      assert.equal(getterCalls, 0, field);
+      assert.equal(consumed, 0, field);
+      assert.equal(issued, 0, field);
+      assert.equal(JSON.stringify(result).includes('secret'), false);
+    }
+  }
+
+  // AF129 AC-02: the adapter may mutate its original challenge during await.
+  // Consumption and credential issuance must use the same validated snapshot.
+  {
+    const challenge = {
+      challengeId: 'challenge-001', profileAlias: 'perfil-1',
+      expiresAt: NOW + 60_000, revoked: false, used: false
+    };
+    const ids = [];
+    const { contract } = fixture({
+      loadVerifiedChallenge: async () => challenge,
+      consumeVerifiedChallenge: async ({ challengeId }) => {
+        ids.push(challengeId);
+        challenge.challengeId = 'challenge-999';
+        challenge.profileAlias = 'otro';
+        challenge.used = true;
+        return 'consumed';
+      },
+      issueOpaqueCredential: async ({ challengeId, profileAlias }) => {
+        ids.push(challengeId);
+        assert.equal(profileAlias, 'perfil-1');
+        return { credentialId: 'credential-001', profileAlias,
+          expiresAt: NOW + 3_600_000 };
+      }
+    });
+    assert.deepEqual(
+      await contract.pair({ profileAlias: 'perfil-1', code: '123456' }),
+      { ok: true, code: 'paired' }
+    );
+    assert.deepEqual(ids, ['challenge-001', 'challenge-001']);
+  }
+  console.log('AF129 challenge-snapshot AC-01..03: ok');
+
   // AC-04: legacy pairing, replay/persistence and explicit revoke assertions
   // above continue to execute in the same Node/CI suite unchanged.
   console.log('pairing-postissue AC-01..04: ok');

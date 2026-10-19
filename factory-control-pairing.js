@@ -61,19 +61,30 @@
   }
 
   function checkedChallenge(value, profileAlias, nowMs) {
+    // Snapshot the untrusted adapter's own data fields once. Accessors could
+    // change challengeId after consumption, before credential issuance.
     const fields = ['challengeId', 'profileAlias', 'expiresAt', 'revoked', 'used'];
-    if (!exactKeys(value, fields) ||
-        !validId(value.challengeId) ||
-        value.profileAlias !== profileAlias ||
-        !Number.isSafeInteger(value.expiresAt) ||
-        typeof value.revoked !== 'boolean' ||
-        typeof value.used !== 'boolean') {
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+        Reflect.ownKeys(value).length !== fields.length) {
       throw new TypeError('Invalid verified pairing challenge');
     }
-    if (value.expiresAt > nowMs + MAX_CHALLENGE_FUTURE_MS) {
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (!fields.every(field => Object.hasOwn(descriptors, field) &&
+        descriptors[field].enumerable && Object.hasOwn(descriptors[field], 'value'))) {
       throw new TypeError('Invalid verified pairing challenge');
     }
-    return value;
+    const challengeId = descriptors.challengeId.value;
+    const alias = descriptors.profileAlias.value;
+    const expiresAt = descriptors.expiresAt.value;
+    const revoked = descriptors.revoked.value;
+    const used = descriptors.used.value;
+    if (!validId(challengeId) || alias !== profileAlias ||
+        !Number.isSafeInteger(expiresAt) ||
+        typeof revoked !== 'boolean' || typeof used !== 'boolean' ||
+        expiresAt > nowMs + MAX_CHALLENGE_FUTURE_MS) {
+      throw new TypeError('Invalid verified pairing challenge');
+    }
+    return Object.freeze({ challengeId, profileAlias: alias, expiresAt, revoked, used });
   }
 
   function checkedCredential(value, profileAlias, nowMs) {
