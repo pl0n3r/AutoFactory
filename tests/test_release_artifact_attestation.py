@@ -63,7 +63,7 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
             "version": VERSION,
             "permissions": ["activeTab", "storage", "tabs", "alarms"],
             "host_permissions": ["https://chatgpt.com/*"],
-            "optional_host_permissions": ["http://127.0.0.1:8777/*"],
+            "optional_host_permissions": ["http://127.0.0.1:8777/*", "http://*/*"],
             "action": {
                 "default_popup": "popup.html",
                 "default_icon": {

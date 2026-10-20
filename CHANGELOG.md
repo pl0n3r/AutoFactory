@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.36 — 2026-10-20
+
+- Conexión por red local: el manifiesto ahora declara `http://*/*` como permiso **opcional**. Sin eso Chrome rechazaba cualquier dirección distinta de 127.0.0.1 («Permiso denegado») y un navegador de otro equipo no podía conectarse al orquestador. No se concede al instalar: Chrome lo pide en el clic del usuario y el código solo lo solicita para una IPv4 privada ya validada.
+
 ## 1.7.35 — 2026-10-19
 
 - Órdenes del orquestador: el libro de recibos (512) ya no se llena para siempre. Al llegar a 400 se descartan los más viejos y se conservan los 256 más nuevos; antes, al llenarse, el perfil rechazaba en silencio todas las órdenes nuevas y sus chats quedaban ociosos.

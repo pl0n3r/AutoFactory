@@ -8,7 +8,8 @@ const SAFARI_RESOURCES = [
 ];
 const EXPECTED_PERMISSIONS = ['activeTab', 'alarms', 'storage', 'tabs'];
 const EXPECTED_HOSTS = ['https://chatgpt.com/*'];
-const EXPECTED_OPTIONAL_HOSTS = ['http://127.0.0.1:8777/*'];
+// «http://*/*» no se concede al instalar: el popup lo pide en el clic del usuario y solo para una IPv4 privada (privateOrigin).
+const EXPECTED_OPTIONAL_HOSTS = ['http://127.0.0.1:8777/*', 'http://*/*'];
 
 function fail(reason) {
   throw new TypeError('Extension preflight: ' + reason);
