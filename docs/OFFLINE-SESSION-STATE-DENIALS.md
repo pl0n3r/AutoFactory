@@ -8,6 +8,7 @@ Primera hoja de QA aprobada explícitamente por el propietario en AutoFactory #2
 
 - factory-control-session-keepalive.js::evaluate deniega propuestas de reenganche si la sesión está cerrada, el presupuesto agotado, el interruptor pausado o la observación es desconocida/caducada; una respuesta pendiente solo permite esperar.
 - factory-control-account-state.js reduce señales inconsistentes o caducadas a unknown y trata un límite observado como limit.
+- El observador real `createProviderAccountStateObserver` verifica el borde de frescura (1.000 ms), rechaza observaciones anteriores al límite, timestamps futuros y campos extra identificables; todos los casos usan señales sintéticas.
 - Los diagnósticos resultantes exponen únicamente métricas no identificables. Las propiedades sintéticas adicionales con texto de conversación, correo, token e identificador nunca se exportan.
 
 Los tests llaman a los módulos JS reales desde Python unittest mediante node -e, sin servidor, navegador, API, cuenta, PII, sesión, cookies, claves ni paquetes externos.
