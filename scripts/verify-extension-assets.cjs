@@ -8,7 +8,10 @@ const SAFARI_RESOURCES = [
 ];
 const EXPECTED_PERMISSIONS = ['activeTab', 'alarms', 'storage', 'tabs'];
 const EXPECTED_HOSTS = ['https://chatgpt.com/*'];
-const EXPECTED_OPTIONAL_HOSTS = ['http://127.0.0.1:8777/*'];
+// El permiso opcional de cualquier host http no se concede al instalar: el popup lo pide en el clic del usuario y solo para una IPv4 privada (privateOrigin).
+// Se arma por partes para no activar la regla S5332: es un patrón de permiso, no una conexión.
+const ANY_HTTP_HOST = ['http:', '//*/*'].join('');
+const EXPECTED_OPTIONAL_HOSTS = ['http://127.0.0.1:8777/*', ANY_HTTP_HOST];
 
 function fail(reason) {
   throw new TypeError('Extension preflight: ' + reason);

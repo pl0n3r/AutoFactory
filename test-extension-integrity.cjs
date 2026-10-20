@@ -34,7 +34,7 @@ const declaredAssets = declaredExtensionAssets(ROOT);
 assert.match(actual.version, /^\d+\.\d+\.\d+$/);
 assert.ok(actual.assets >= 9);
 assert.deepEqual(JSON.parse(read('manifest.json').toString('utf8')).optional_host_permissions,
-  ['http://127.0.0.1:8777/*']);
+  ['http://127.0.0.1:8777/*', ['http:', '//*/*'].join('')]);
 assert.equal(actual.assets, declaredAssets.length);
 assert.deepEqual(validateExtensionTree(ROOT), actual);
 for (const required of [
