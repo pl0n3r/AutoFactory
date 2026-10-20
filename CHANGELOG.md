@@ -2,6 +2,10 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.37 — 2026-10-20
+
+- Identificadores de pestaña de 10 dígitos: el publicador de estado y el validador de órdenes solo aceptaban `t` más hasta 9 dígitos. En equipos donde Chrome asigna ids grandes (hasta 2.147.483.647) todas las pestañas se descartaban: el orquestador veía «4 abiertas» y «0 chats» y nunca repartía trabajo. Ahora se aceptan hasta 10 dígitos.
+
 ## 1.7.36 — 2026-10-20
 
 - Conexión por red local: el manifiesto ahora declara `http://*/*` como permiso **opcional**. Sin eso Chrome rechazaba cualquier dirección distinta de 127.0.0.1 («Permiso denegado») y un navegador de otro equipo no podía conectarse al orquestador. No se concede al instalar: Chrome lo pide en el clic del usuario y el código solo lo solicita para una IPv4 privada ya validada.
