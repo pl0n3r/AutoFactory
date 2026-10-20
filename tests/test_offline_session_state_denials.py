@@ -13,7 +13,8 @@ NODE_HARNESS = r"""
 'use strict';
 const assert = require('node:assert/strict');
 const { evaluate } = require('./factory-control-session-keepalive.js');
-const { classifyAccountState, classifyProviderPageSignal } =
+const { classifyAccountState, classifyProviderPageSignal,
+        createProviderAccountStateObserver } =
   require('./factory-control-account-state.js');
 const NOW = 10000;
 function snapshot() {
@@ -32,7 +33,7 @@ function snapshot() {
     history: { retries_s: [] }
   };
 }
-function denial() {
+async function denial() {
   assert.equal(evaluate(snapshot(), NOW).action, 'reenganchar');
   const denials = [
     [s => { s.controls.session_closed = true; }, 'sesion_cerrada'],
@@ -76,6 +77,37 @@ function denial() {
   assert.equal(classifyProviderPageSignal({
     signalCode: 'ready', alertText: 'stale UI signal'
   }, clock).state, 'unknown');
+
+  // A stale observation of the *account* must not authorize recovery just
+  // because its last signal said ready. Exercise the real freshness wrapper.
+  const accountNow = 1_000_000;
+  const observer = (signal) => createProviderAccountStateObserver({
+    readProviderSignal: async () => signal,
+    now: () => accountNow,
+    maxAgeMs: 1000
+  });
+  assert.deepEqual(await observer({
+    signalCode: 'rate-limit', alertText: null, observedAt: accountNow - 1000
+  }).read(), {
+    state: 'limit', resetAt: null,
+    observedAt: accountNow - 1000, freshness: 'fresh'
+  });
+  assert.deepEqual(await observer({
+    signalCode: 'ready', alertText: null, observedAt: accountNow - 1001
+  }).read(), {
+    state: 'unknown', resetAt: null, observedAt: null, freshness: 'stale'
+  });
+  assert.deepEqual(await observer({
+    signalCode: 'ready', alertText: null, observedAt: accountNow + 1
+  }).read(), {
+    state: 'unknown', resetAt: null, observedAt: null, freshness: 'unknown'
+  });
+  assert.deepEqual(await observer({
+    signalCode: 'ready', alertText: null, observedAt: accountNow,
+    conversation_id: 'SYNTHETIC_CHAT_ID_NEVER_ECHO'
+  }).read(), {
+    state: 'unknown', resetAt: null, observedAt: null, freshness: 'unknown'
+  });
 }
 function diagnostics() {
   const candidate = snapshot();
@@ -116,7 +148,10 @@ function diagnostics() {
   }
 }
 const mode = process.argv[1];
-if (mode === 'denial') denial();
+if (mode === 'denial') denial().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
 else if (mode === 'diagnostics') diagnostics();
 else throw new Error('Unexpected acceptance criterion');
 """
