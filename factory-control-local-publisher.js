@@ -38,7 +38,7 @@
     const out = [];
     for (const item of list.slice(0, 12)) {
       if (!plain(item) || typeof item.chat_id !== 'string' ||
-          !/^t[0-9]{1,9}$/.test(item.chat_id)) continue;
+          !/^t[0-9]{1,10}$/.test(item.chat_id)) continue;
       const chat = { chat_id: item.chat_id,
         state: CHAT_STATES.includes(item.state) ? item.state : 'desconocido' };
       if (typeof item.current_task === 'string' &&

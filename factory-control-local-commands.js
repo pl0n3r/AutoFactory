@@ -52,7 +52,7 @@
     }
     if (!Number.isSafeInteger(values.id) || values.id < 1 ||
         !(values.chat_id === null ||
-          (typeof values.chat_id === 'string' && /^t[0-9]{1,9}$/.test(values.chat_id))) ||
+          (typeof values.chat_id === 'string' && /^t[0-9]{1,10}$/.test(values.chat_id))) ||
         !['stop', 'start', 'assign'].includes(values.want)) return null;
     if (values.want === 'assign') {
       // Fixed templates only: an opaque chat plus a Repo#N reference or one of
