@@ -75,7 +75,12 @@ assert.throws(() => verify(workflow.replace("github.ref != 'refs/heads/main'",
   'false')));
 console.log('CI workflow security: SHA pins, token scope and cancellation policy verified');
 
-require('node:child_process').execFileSync('/usr/bin/python3', [
+// An absolute interpreter prevents PATH lookup. Local macOS development may
+// opt in to an explicit Python 3 path (e.g. /opt/homebrew/bin/python3).
+const pythonExecutable = process.env.AUTOFACTORY_PYTHON_EXECUTABLE || '/usr/bin/python3';
+assert.match(pythonExecutable, /^\/(?:[A-Za-z0-9_.+-]+\/)+python3(?:\.\d+)?$/,
+  'Python interpreter must be an absolute python3 executable path');
+require('node:child_process').execFileSync(pythonExecutable, [
   '-m', 'unittest', 'discover', '-s', 'tests',
   '-p', 'test_observador_reservas_consumidor.py',
 ], {stdio: 'inherit'});

