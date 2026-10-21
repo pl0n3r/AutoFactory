@@ -505,6 +505,15 @@
     saveLearning('error', 0, signal);
   }
 
+  // Una recarga cada 10 minutos por pestaña para la pantalla de error de carga (nunca en bucle).
+  function loadErrorReloadAllowed() {
+    const KEY = 'autofactory-load-error-reload-at';
+    let last = 0;
+    try { last = Number(sessionStorage.getItem(KEY)) || 0; } catch (_e) { /* ignore */ }
+    if (Date.now() - last < 10 * 60000) return false;
+    try { sessionStorage.setItem(KEY, String(Date.now())); } catch (_e) { /* ignore */ }
+    return true;
+  }
   async function openFreshConversation(button) {
     if (button) {
       const href = button.getAttribute?.('href');
@@ -926,9 +935,12 @@
           || Number(previous.retryAt) !== plan.retryAt;
         const attempts = plan.attempts;
         const defaultAction = plan.action === 'new-chat' ? 'open_replacement_chat' : plan.action;
-        if (isDirected() && defaultAction !== 'retry') {
+        if (isDirected() && defaultAction !== 'retry'
+            && !(defaultAction === 'reload' && !generationAtSignal && core.conversationLoadFailed(document)
+                 && loadErrorReloadAllowed())) {
           // Only the Retry button is safe: reloading or opening replacement chats is the
           // orchestrator's / the owner's call. Do nothing else for this tab.
+          // Excepción: la pantalla «No se pudo cargar esta conversación» no tiene nada que perder.
           setStatus('Dirigido: conversación no disponible; sin recargar ni abrir chats', 'error');
           state.nextSendAt = Date.now() + 30000;
           return;
@@ -1178,6 +1190,14 @@
         && !respondingToOurSend
         && !directedHold
         && Date.now() - state.contentLoadedAt > 15000;
+      if (signal.code === 'interface-missing' && directedHold && !generating
+          && Date.now() - state.contentLoadedAt > 60000
+          && core.conversationLoadFailed(document) && loadErrorReloadAllowed()) {
+        setStatus('La conversación no cargó; recargando (una vez cada 10 min)', 'error');
+        log('recovery', { code: 'conversation-load-failed', action: 'reload' });
+        location.reload();
+        return;
+      }
       if (signal.code === 'interface-missing' && !interfaceMissingLongEnough) {
         setStatus(directedHold ? 'Dirigido: interfaz no disponible; sin recargar' : 'Esperando que ChatGPT termine de cargar la interfaz');
         return;
