@@ -27,10 +27,12 @@ class ObservadorReservasConsumidorTests(unittest.TestCase):
     def test_events_and_reusable_exact_v1(self):
         text = CALLER.read_text(encoding="utf-8")
         self._verify_events(text)
+        wrong_ref = text.replace("@v1", "@main")
+        wrong_event = text.replace("  workflow_dispatch:", "  pull_request:")
         with self.assertRaises(AssertionError):
-            self._verify_events(text.replace("@v1", "@main"))
+            self._verify_events(wrong_ref)
         with self.assertRaises(AssertionError):
-            self._verify_events(text.replace("  workflow_dispatch:", "  pull_request:"))
+            self._verify_events(wrong_event)
 
     def _verify_read_only(self, text):
         self.assertEqual(2, len(re.findall(r"(?m)^(?:permissions:|    permissions:)$", text)))
