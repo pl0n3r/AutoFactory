@@ -1,4 +1,4 @@
-"""Regresiones locales de adopción de README Contract v1 para AutoFactory."""
+"""Regresiones locales de adopción de README Contract v2 para AutoFactory."""
 from __future__ import annotations
 
 import json
@@ -42,36 +42,38 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         self.assertEqual(metadata["phase"], "construction")
         self.assertEqual(metadata["role"], "local/manual tool")
 
-    def test_readme_has_contract_v1_anatomy(self):
+    def test_readme_is_contract_v2_without_unknown_blocks(self):
         readme = self.readme()
-        for heading in REQUIRED_SECTIONS:
-            self.assertEqual(readme.count(f"## {heading}"), 1, heading)
         self.assertTrue(readme.startswith("# ChatGPT Autopilot Local"))
+        # Hero plus ten ordered sections = eleven contract surfaces.
+        positions = []
+        for heading in REQUIRED_SECTIONS:
+            needle = f"## {heading}"
+            self.assertEqual(readme.count(needle), 1, heading)
+            positions.append(readme.index(needle))
+        self.assertEqual(positions, sorted(positions))
         self.assertIn("## Instalación y uso", readme)
         self.assertIn("## Log de diagnóstico", readme)
-
-    def test_derived_blocks_fail_closed_without_evidence(self):
-        readme = self.readme()
-        self.assertEqual(readme.count("<!-- factory:status:start -->"), 1)
-        self.assertEqual(readme.count("<!-- factory:status:end -->"), 1)
-        self.assertEqual(readme.count("<!-- factory:progress-readiness:start -->"), 1)
-        self.assertEqual(readme.count("<!-- factory:progress-readiness:end -->"), 1)
-        status = readme.split("<!-- factory:status:start -->", 1)[1].split(
-            "<!-- factory:status:end -->", 1
-        )[0]
-        for label in (
-            "main SHA", "versión", "CI", "release", "health", "smoke/observer",
-            "quality/security", "Issue activo", "PR activo", "último release",
+        for forbidden in (
+            "UNKNOWN", "<!-- factory:status:", "<!-- factory:progress-readiness:",
+            "Progress + Readiness", "| main SHA |", "| Readiness |",
         ):
-            self.assertIn(f"| {label} | UNKNOWN |", status)
-        self.assertNotIn("| CI | GREEN |", status)
-        self.assertNotIn("| smoke/observer | GREEN |", status)
-        progress = readme.split(
-            "<!-- factory:progress-readiness:start -->", 1
-        )[1].split("<!-- factory:progress-readiness:end -->", 1)[0]
-        self.assertIn("| Target | UNKNOWN |", progress)
-        self.assertIn("| Progress | UNKNOWN |", progress)
-        self.assertIn("| Readiness | UNKNOWN |", progress)
+            self.assertNotIn(forbidden, readme)
+
+        cockpit = readme.split("## Operational Cockpit", 1)[1].split("## Estado de la versión publicada", 1)[0]
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/actions/workflows/validate.yml", cockpit)
+        self.assertIn("/badge.svg?branch=main", cockpit)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/releases", cockpit)
+        self.assertIn("https://img.shields.io/github/v/release/pl0n3r/AutoFactory", cockpit)
+        self.assertIn("https://control.condorapp.com.co/", cockpit)
+        self.assertNotIn("| Señal | Estado |", cockpit)
+
+    def test_readme_v2_separates_release_from_real_smoke(self):
+        readme = self.readme()
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.37", readme)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/122", readme)
+        self.assertIn("sin asumir pairing", readme)
+        self.assertIn("D-061", readme)
 
     def test_consumer_workflow_uses_factory_v1(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -86,7 +88,7 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         queue = readme.split("## Work Queue", 1)[1].split("\n## ", 1)[0]
         for lane in ("NOW", "NEXT", "LATER", "BLOCKED"):
             self.assertIn(f"**{lane}:**", queue)
-        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/58", queue)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/230", queue)
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/1", queue)
 
     def test_factory_map_preserves_roles(self):
