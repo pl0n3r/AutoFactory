@@ -74,3 +74,8 @@ assert.throws(() => verify(workflow.replace('timeout-minutes: 20', 'timeout-minu
 assert.throws(() => verify(workflow.replace("github.ref != 'refs/heads/main'",
   'false')));
 console.log('CI workflow security: SHA pins, token scope and cancellation policy verified');
+
+require('node:child_process').execFileSync('python3', [
+  '-m', 'unittest', 'discover', '-s', 'tests',
+  '-p', 'test_observador_reservas_consumidor.py',
+], {stdio: 'inherit'});
