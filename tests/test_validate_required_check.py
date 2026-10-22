@@ -94,8 +94,9 @@ class ValidateRequiredCheckTests(unittest.TestCase):
         for before, after in variants:
             with self.subTest(injection=after):
                 self.assertIn(before, job)
+                mutated_job = job.replace(before, after, 1)
                 with self.assertRaises(AssertionError):
-                    self.assert_critical_steps_are_blocking(job.replace(before, after, 1))
+                    self.assert_critical_steps_are_blocking(mutated_job)
 
 
 if __name__ == "__main__":
