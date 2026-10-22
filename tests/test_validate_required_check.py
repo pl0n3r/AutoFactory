@@ -40,6 +40,7 @@ class ValidateRequiredCheckTests(unittest.TestCase):
         self.assertIn("persist-credentials: false", job)
         self.assertIn("npm ci --ignore-scripts", job)
         self.assertIn("      - run: npm test\n", job)
+        self.assertIn("- run: python3 -m unittest discover -s tests -p 'test_validate_required_check.py' -v", job)
         self.assertIn(
             "name: Real Chrome MV3 extension-load smoke (non-release checkout)",
             job,
