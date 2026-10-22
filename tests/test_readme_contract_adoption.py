@@ -49,13 +49,13 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         positions = []
         for heading in REQUIRED_SECTIONS:
             needle = f"## {heading}"
-            self.assertEqual(readme.count(needle), 1, heading)
-            positions.append(readme.index(needle))
+            self.assertEqual(readme.splitlines().count(needle), 1, heading)
+            positions.append(readme.index(needle + "\n"))
         self.assertEqual(positions, sorted(positions))
         self.assertIn("## Instalación y uso", readme)
         self.assertIn("## Log de diagnóstico", readme)
         for forbidden in (
-            "UNKNOWN", "<!-- factory:status:", "<!-- factory:progress-readiness:",
+            "UNKNOWN", "factory:status", "factory:progress-readiness",
             "Progress + Readiness", "| main SHA |", "| Readiness |",
         ):
             self.assertNotIn(forbidden, readme)
@@ -67,6 +67,10 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         self.assertIn("https://img.shields.io/github/v/release/pl0n3r/AutoFactory", cockpit)
         self.assertIn("https://control.condorapp.com.co/", cockpit)
         self.assertNotIn("| Señal | Estado |", cockpit)
+        self.assertIn("v1.7.37", cockpit)
+        self.assertIn("CI no acredita instalación Chrome/Safari", cockpit)
+        self.assertIn("smoke real pendiente", cockpit)
+        self.assertIn("issues/122", cockpit)
 
     def test_readme_v2_separates_release_from_real_smoke(self):
         readme = self.readme()
@@ -85,7 +89,7 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
 
     def test_work_queue_links_canonical_roadmap(self):
         readme = self.readme()
-        queue = readme.split("## Work Queue", 1)[1].split("\n## ", 1)[0]
+        queue = readme.split("## Work Queue\n", 1)[1].split("\n## ", 1)[0]
         for lane in ("NOW", "NEXT", "LATER", "BLOCKED"):
             self.assertIn(f"**{lane}:**", queue)
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues?q=is%3Aissue", queue)
