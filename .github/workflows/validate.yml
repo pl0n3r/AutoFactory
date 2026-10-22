@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   test:
+    name: Validate / Pruebas y smoke Chrome
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -25,6 +26,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
+      - run: python3 -m unittest discover -s tests -p 'test_validate_required_check.py' -v
       - name: Real Chrome MV3 extension-load smoke (non-release checkout)
         run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"
       - run: node test-workflow-hardening.cjs
