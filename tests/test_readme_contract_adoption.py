@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
@@ -60,7 +62,7 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, readme)
 
-        cockpit = readme.split("## Operational Cockpit", 1)[1].split("## Estado de la versión publicada", 1)[0]
+        cockpit = readme.split("## Operational Cockpit\n", 1)[1].split("\n## ", 1)[0]
         self.assertIn("https://github.com/pl0n3r/AutoFactory/actions/workflows/validate.yml", cockpit)
         self.assertIn("/badge.svg?branch=main", cockpit)
         self.assertIn("https://github.com/pl0n3r/AutoFactory/releases", cockpit)
@@ -92,8 +94,21 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         queue = readme.split("## Work Queue\n", 1)[1].split("\n## ", 1)[0]
         for lane in ("NOW", "NEXT", "LATER", "BLOCKED"):
             self.assertIn(f"**{lane}:**", queue)
-        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues?q=is%3Aissue", queue)
-        self.assertIn("https://github.com/pl0n3r/AutoFactory/pulls?q=is%3Apr", queue)
+        now = queue.split("**NOW:**", 1)[1].split("\n", 1)[0]
+        urls = re.findall(
+            r"\((https://github\.com/pl0n3r/AutoFactory/(?:issues|pulls)\?[^)]+)\)",
+            now,
+        )
+        self.assertEqual(len(urls), 2)
+        issue_url = next(url for url in urls if "/issues?" in url)
+        pr_url = next(url for url in urls if "/pulls?" in url)
+        issue_query = parse_qs(urlparse(issue_url).query).get("q", [""])[0]
+        pr_query = parse_qs(urlparse(pr_url).query).get("q", [""])[0]
+        self.assertIn("is:issue", issue_query.split())
+        self.assertIn("is:open", issue_query.split())
+        self.assertIn('label:"prioridad: crítica"', issue_query)
+        self.assertIn("is:pr", pr_query.split())
+        self.assertIn("is:open", pr_query.split())
         self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/230", queue,
                          "El propio Issue se cierra con este PR y no puede figurar como NOW")
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/1", queue)
