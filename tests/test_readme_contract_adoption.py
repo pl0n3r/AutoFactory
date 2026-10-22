@@ -111,6 +111,10 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         self.assertIn("is:open", pr_query.split())
         self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/230", queue,
                          "El propio Issue se cierra con este PR y no puede figurar como NOW")
+        next_lane = queue.split("**NEXT:**", 1)[1].split("\n", 1)[0]
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/228", next_lane)
+        self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/226", next_lane,
+                         "Una dependencia ya completada no puede figurar en NEXT")
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/1", queue)
 
     def test_factory_map_preserves_roles(self):
