@@ -88,7 +88,10 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         queue = readme.split("## Work Queue", 1)[1].split("\n## ", 1)[0]
         for lane in ("NOW", "NEXT", "LATER", "BLOCKED"):
             self.assertIn(f"**{lane}:**", queue)
-        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/230", queue)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues?q=is%3Aissue", queue)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/pulls?q=is%3Apr", queue)
+        self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/230", queue,
+                         "El propio Issue se cierra con este PR y no puede figurar como NOW")
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/1", queue)
 
     def test_factory_map_preserves_roles(self):

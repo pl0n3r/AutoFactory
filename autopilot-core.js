@@ -207,9 +207,10 @@
   function recoveryButton(doc = document) {
     const allowed = new Set([
       'reintentar', 'retry', 'regenerar', 'regenerate',
-      'continuar generando', 'continue generating'
+      'continuar generando', 'continue generating',
+      'volver a intentar', 'try again'
     ]);
-    for (const button of doc.querySelectorAll('button')) {
+    for (const button of doc.querySelectorAll('button, [role="button"], a')) {
       const label = normalize(button.innerText || button.textContent || button.getAttribute('aria-label'));
       if (button.disabled || button.hidden || button.getAttribute?.('aria-hidden') === 'true'
           || !allowed.has(label.toLowerCase())) continue;
@@ -224,6 +225,13 @@
       return button;
     }
     return null;
+  }
+  const LOAD_FAILED_PATTERN = /no se pudo cargar esta conversaci[oó]n|unable to load (this )?conversation|couldn['’]?t load (this )?conversation/i;
+  // Pantalla de ChatGPT que no pudo cargar la conversación: sin campo de escritura, así que no hay nada que perder.
+  function conversationLoadFailed(doc = document) {
+    if (composer(doc)) return false;
+    const text = normalize(doc.body?.innerText || doc.body?.textContent || '');
+    return LOAD_FAILED_PATTERN.test(text.slice(0, 6000));
   }
   function buttonWithText(doc, labels) {
     const allowed = new Set(labels.map(value => value.toLowerCase()));
@@ -455,6 +463,7 @@
     STOP_SELECTORS,
     composer,
     interfaceSnapshot,
+    conversationLoadFailed,
     sendButton,
     sendControlSnapshot,
     stopButton,

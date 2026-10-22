@@ -22,7 +22,7 @@ La versión **1.7.37** corrige la admisión de identificadores de pestaña de ha
 
 ## Work Queue
 
-- **NOW:** [#230 — README Contract v2](https://github.com/pl0n3r/AutoFactory/issues/230), cambio documental reversible.
+- **NOW:** [Issues críticos abiertos](https://github.com/pl0n3r/AutoFactory/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22prioridad%3A%20cr%C3%ADtica%22) y [PRs abiertos](https://github.com/pl0n3r/AutoFactory/pulls?q=is%3Apr%20is%3Aopen). El estado actual lo determina GitHub, no este README.
 - **NEXT:** [#226 — estados de sesión offline](https://github.com/pl0n3r/AutoFactory/issues/226) y [#228 — paridad Chrome/Safari](https://github.com/pl0n3r/AutoFactory/issues/228), según dependencias y reservas.
 - **LATER:** [#134 — readiness del bridge](https://github.com/pl0n3r/AutoFactory/issues/134), sin anticipar go-live.
 - **BLOCKED:** [#219 — SonarCloud](https://github.com/pl0n3r/AutoFactory/issues/219), [#220 — required checks](https://github.com/pl0n3r/AutoFactory/issues/220) y [#1 — pairing real](https://github.com/pl0n3r/AutoFactory/issues/1).
