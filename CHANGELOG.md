@@ -2,6 +2,11 @@
 
 Este archivo conserva la evolución funcional de ChatGPT Autopilot Local durante su desarrollo. Las versiones anteriores a la adopción de Git se reconstruyeron a partir de los diagnósticos exportados, las compilaciones locales y las decisiones registradas durante las pruebas. El repositorio contiene el código fuente completo de la versión vigente; no se fabricaron snapshots históricos que ya no existían en disco.
 
+## 1.7.38 — 2026-10-21
+
+- Recuperación de pestañas dirigidas cuando ChatGPT presenta «No se pudo cargar esta conversación»: utilizar el botón «Volver a intentar» («Try again») para restablecer la vista, sin intentar enviar mensajes.
+- Si persiste la pantalla de error, se permite una única recarga cada 10 minutos, solo en pestañas dirigidas sin generación en curso ni campo de escritura activo. Corrección implementada en #233 / PR #234; la versión candidata no prueba instalación ni activación real.
+
 ## 1.7.37 — 2026-10-20
 
 - Identificadores de pestaña de 10 dígitos: el publicador de estado y el validador de órdenes solo aceptaban `t` más hasta 9 dígitos. En equipos donde Chrome asigna ids grandes (hasta 2.147.483.647) todas las pestañas se descartaban: el orquestador veía «4 abiertas» y «0 chats» y nunca repartía trabajo. Ahora se aceptan hasta 10 dígitos.
