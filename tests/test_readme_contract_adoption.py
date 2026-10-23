@@ -69,14 +69,14 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         self.assertIn("https://img.shields.io/github/v/release/pl0n3r/AutoFactory", cockpit)
         self.assertIn("https://control.condorapp.com.co/", cockpit)
         self.assertNotIn("| Señal | Estado |", cockpit)
-        self.assertIn("v1.7.37", cockpit)
+        self.assertIn("v1.7.38", cockpit)
         self.assertIn("CI no acredita instalación Chrome/Safari", cockpit)
         self.assertIn("smoke real pendiente", cockpit)
         self.assertIn("issues/122", cockpit)
 
     def test_readme_v2_separates_release_from_real_smoke(self):
         readme = self.readme()
-        self.assertIn("https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.37", readme)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.38", readme)
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/122", readme)
         self.assertIn("sin asumir pairing", readme)
         self.assertIn("D-061", readme)

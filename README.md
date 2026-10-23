@@ -12,13 +12,13 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 [![GitHub Releases](https://img.shields.io/github/v/release/pl0n3r/AutoFactory?display_name=tag)](https://github.com/pl0n3r/AutoFactory/releases)
 
 - **Pruebas:** [Validate sobre main](https://github.com/pl0n3r/AutoFactory/actions/workflows/validate.yml); éxito en CI no acredita instalación Chrome/Safari.
-- **Paquetes:** [Releases oficiales](https://github.com/pl0n3r/AutoFactory/releases), última versión comprobada: [v1.7.37](https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.37).
+- **Paquetes:** [Releases oficiales](https://github.com/pl0n3r/AutoFactory/releases), última versión comprobada: [v1.7.38](https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.38).
 - **Orquestador:** [ControlBot, consola privada](https://control.condorapp.com.co/). Este enlace no activa pairing ni tráfico real.
 - **Instalación Safari:** [#122 — smoke real pendiente](https://github.com/pl0n3r/AutoFactory/issues/122).
 
 ## Estado de la versión publicada
 
-La versión **1.7.37** corrige la admisión de identificadores de pestaña de hasta diez dígitos; **1.7.36** incorporó un permiso LAN opcional que Chrome solicita al usuario para direcciones IPv4 privadas validadas. Fuente: [CHANGELOG.md](CHANGELOG.md). Esas capacidades no autorizan por sí mismas el puente con ControlBot ni sustituyen la puerta legal D-061.
+La versión **1.7.38** incorpora recuperación conservadora de pestañas dirigidas ante «No se pudo cargar esta conversación»; **1.7.37** corrigió la admisión de identificadores de pestaña de hasta diez dígitos, y **1.7.36** incorporó un permiso LAN opcional que Chrome solicita al usuario para direcciones IPv4 privadas validadas. Fuente: [CHANGELOG.md](CHANGELOG.md). Esas capacidades no autorizan por sí mismas el puente con ControlBot ni sustituyen la puerta legal D-061.
 
 ## Work Queue
 
