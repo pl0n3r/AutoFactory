@@ -16,6 +16,13 @@ por Node.js, sin navegador, datos de usuario, emparejamiento ni conexión de red
   y runtime en ambos árboles. Sin grant verificado, ambos autorizadores
   rechazan una orden sintética; los runtimes no iniciados no ejecutan el
   puerto de comandos.
+- Se inicia una sesión **sintética activa** en cada runtime, con grant válido
+  de corta duración y contextos de pestaña permitidos. El *pump* offline
+  verifica readiness antes de proponer comandos; `limit`, `requires_login`,
+  `error`, `unknown`, `STALE` y tiempo futuro deben producir **cero propuestas**.
+  El control positivo comprueba que el grant no sea la causa del rechazo.
+  Esta prueba de integración simulada no acredita que el runtime productivo
+  haya conectado esa guarda ni autoriza tráfico real.
 - Ejecución: `python3 -m unittest tests.test_offline_browser_state_parity -v`
   y como parte de `npm test`; sin alterar otros tests ni flags.
 

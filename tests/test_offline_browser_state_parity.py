@@ -115,6 +115,65 @@ async function denials() {
     assert.deepEqual(await runtime.runCommands(), { ok: false, code: 'stopped' });
   }
   assert.equal(attemptedCommands, 0);
+  await activeSessionDenials();
+}
+// Exercise the same offline readiness boundary with an ACTIVE synthetic runtime
+// and a valid, short-lived grant. This is fixture wiring, never a live adapter.
+async function activeSessionDenials() {
+  const grant = {
+    profileAlias: 'synthetic-profile', expiresAt: NOW + 60000,
+    revoked: false, actions: ['send_message'], tabIds: [7], broadcast: false
+  };
+  const deniedCases = [
+    ...['limit', 'requires_login', 'error', 'unknown'].map(state => [state, NOW - 1000]),
+    ['ready', NOW - 180001], // STALE
+    ['ready', NOW + 1] // Future evidence is not current
+  ];
+  for (const [runtimeModule, authorization] of [
+    [chromeRuntime, chromeAuth], [safariRuntime, safariAuth]
+  ]) {
+    const authorizer = authorization.createCommandAuthorizer({
+      loadVerifiedGrant: async () => grant, now: () => NOW
+    });
+    // Positive control: the grant and command are valid. Denials below must
+    // come from the unsafe account evidence, not from a missing grant.
+    assert.equal((await authorizer.authorize(command, context)).action,
+      'send_message');
+    for (const [state, observedAt] of deniedCases) {
+      const readiness = report(state, observedAt);
+      assert.equal(readiness.ready, false, state + ':' + observedAt);
+      let proposed = 0;
+      const runtime = runtimeModule.createFactoryControlRuntime({
+        createHeartbeat: () => ({ tick: async () => 'sent', stop() {} }),
+        loadContext: async ({ profileAlias }) => ({
+          profileAlias, enabledTabIds: [7]
+        }),
+        pump: {
+          runOnce: async ({ context: activeContext }) => {
+            // Offline simulated integration contract: never call the
+            // authorizer or propose a command if readiness is not proven.
+            if (!readiness.ready) {
+              return { ok: true, code: 'empty', cursor: null };
+            }
+            const approved = await authorizer.authorize(command, activeContext);
+            proposed += 1;
+            return {
+              ok: true, code: 'handled', cursor: null,
+              commandId: approved.id, outcome: 'ok'
+            };
+          }
+        }
+      });
+      assert.deepEqual(
+        runtime.start({ profileAlias: context.profileAlias, cursor: null }),
+        { ok: true, code: 'started' }
+      );
+      assert.deepEqual(await runtime.runCommands(),
+        { ok: true, code: 'empty', cursor: null }, state);
+      assert.equal(proposed, 0, state + ' proposed an action');
+      assert.deepEqual(runtime.stop(), { ok: true, code: 'stopped' });
+    }
+  }
 }
 const mode = process.argv[1];
 if (mode === 'parity') parity();
