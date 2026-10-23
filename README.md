@@ -8,78 +8,36 @@ AutoFactory supervisa chats habilitados usando el DOM real de ChatGPT. No usa ca
 
 ## Operational Cockpit
 
-<!-- factory:status:start -->
-| Señal | Estado |
-| --- | --- |
-| main SHA | UNKNOWN |
-| versión | UNKNOWN |
-| CI | UNKNOWN |
-| release | UNKNOWN |
-| health | UNKNOWN |
-| smoke/observer | UNKNOWN |
-| quality/security | UNKNOWN |
-| Issue activo | UNKNOWN |
-| PR activo | UNKNOWN |
-| último release | UNKNOWN |
-<!-- factory:status:end -->
+[![CI Validate main](https://github.com/pl0n3r/AutoFactory/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/pl0n3r/AutoFactory/actions/workflows/validate.yml)
+[![GitHub Releases](https://img.shields.io/github/v/release/pl0n3r/AutoFactory?display_name=tag)](https://github.com/pl0n3r/AutoFactory/releases)
 
-### Progress + Readiness
+- **Pruebas:** [Validate sobre main](https://github.com/pl0n3r/AutoFactory/actions/workflows/validate.yml); éxito en CI no acredita instalación Chrome/Safari.
+- **Paquetes:** [Releases oficiales](https://github.com/pl0n3r/AutoFactory/releases), última versión comprobada: [v1.7.38](https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.38).
+- **Orquestador:** [ControlBot, consola privada](https://control.condorapp.com.co/). Este enlace no activa pairing ni tráfico real.
+- **Instalación Safari:** [#122 — smoke real pendiente](https://github.com/pl0n3r/AutoFactory/issues/122).
 
-<!-- factory:progress-readiness:start -->
-| Señal | Estado |
-| --- | --- |
-| Target | UNKNOWN |
-| Progress | UNKNOWN |
-| Readiness | UNKNOWN |
-| Evidence freshness | UNKNOWN |
-| Critical blockers | UNKNOWN |
-| Trend | UNKNOWN |
+## Estado de la versión publicada
 
-| Dimensión | Progress | Readiness |
-| --- | --- | --- |
-| UNKNOWN | UNKNOWN | UNKNOWN |
-<!-- factory:progress-readiness:end -->
-
-## Versión 1.7.0
-
-La memoria compartida con ControlBot está incluida en modo observación. AutoFactory conserva una cola local sanitizada, coordina recuperaciones entre pestañas y muestra política, muestras y rollback. El transporte remoto continúa bloqueado hasta aprobar consentimiento, seguridad y puerta legal.
-
-- Solo abre otro chat cuando existe una alerta visible de duración máxima y nunca si ya está en el chat nuevo.
-- Limpia la protección cuando ChatGPT confirma tarde el envío mediante una generación o respuesta real.
-- Reconoce y retoma el borrador propio aunque ChatGPT normalice su formato interno.
-- Usa el botón de envío vivo después del último render y detiene reintentos ambiguos durante cinco minutos.
-- Restaura de forma segura el mensaje si React reemplaza el compositor por uno vacío justo antes de enviarlo.
-- Evita falsos bloqueos durante la reconstrucción transitoria del compositor y valida el mensaje justo antes de enviarlo.
-- Mantiene el presupuesto compartido desactivado por defecto; puede activarse voluntariamente desde el popup.
-- Muestra en tiempo real la cuenta regresiva del presupuesto compartido y continúa automáticamente al liberarse el turno.
-- Detiene inmediatamente una generación cuando ChatGPT informa una conexión interrumpida; recarga solo si no se estabiliza en 30 segundos.
-- Recupera conversaciones inaccesibles rápidamente con un Retry, una recarga y, si el error persiste, un único chat nuevo con bloqueo contra duplicados.
-- Selecciona GPT-6 por defecto o GPT-5.6 Sol según configuración, y permite conservar el modelo actual.
-- Distingue el selector de razonamiento del selector general del modelo y, cuando es necesario, abre Thinking/Pensando antes de elegir Alto/High.
-
-> UNKNOWN/PENDING indica ausencia de evidencia canónica suficiente; nunca equivale a GREEN. En AutoFactory, CI verde no acredita por sí solo una extensión instalable ni un smoke Chrome/Safari.
+La versión **1.7.38** incorpora recuperación conservadora de pestañas dirigidas ante «No se pudo cargar esta conversación»; **1.7.37** corrigió la admisión de identificadores de pestaña de hasta diez dígitos, y **1.7.36** incorporó un permiso LAN opcional que Chrome solicita al usuario para direcciones IPv4 privadas validadas. Fuente: [CHANGELOG.md](CHANGELOG.md). Esas capacidades no autorizan por sí mismas el puente con ControlBot ni sustituyen la puerta legal D-061.
 
 ## Work Queue
 
-- **NOW:** [#58 — adoptar README Contract v1](https://github.com/pl0n3r/AutoFactory/issues/58).
-- **NEXT:** mantener [#1 — puente con Factory Control](https://github.com/pl0n3r/AutoFactory/issues/1) bloqueado hasta resolver runtime real, consentimiento, seguridad y D-061.
-- **LATER:** ampliar automatización local únicamente mediante Issues gobernados y sin eludir límites o controles de plataforma.
-- **BLOCKED:** pairing/tráfico real con ControlBot, endpoints reales y tratamientos personales permanecen bloqueados por D-061 y la puerta legal asociada.
+- **NOW:** [Issues críticos abiertos](https://github.com/pl0n3r/AutoFactory/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22prioridad%3A%20cr%C3%ADtica%22) y [PRs abiertos](https://github.com/pl0n3r/AutoFactory/pulls?q=is%3Apr%20is%3Aopen). El estado actual lo determina GitHub, no este README.
+- **NEXT:** [#228 — paridad Chrome/Safari](https://github.com/pl0n3r/AutoFactory/issues/228), tras completarse su dependencia #226; requiere reserva propia de Coordinación.
+- **LATER:** [#134 — readiness del bridge](https://github.com/pl0n3r/AutoFactory/issues/134), sin anticipar go-live.
+- **BLOCKED:** [#219 — SonarCloud](https://github.com/pl0n3r/AutoFactory/issues/219), [#220 — required checks](https://github.com/pl0n3r/AutoFactory/issues/220) y [#1 — pairing real](https://github.com/pl0n3r/AutoFactory/issues/1).
 
-Esta cola es un resumen operativo. Los Issues y `decisiones.yml` siguen siendo la planificación y decisiones canónicas; el README no reemplaza changelog ni roadmap.
+La cola real vive en los Issues; esta portada no calcula progreso, readiness ni capacidad operacional.
 
 ## Qué hace el producto
 
-AutoFactory mantiene trabajando pestañas de ChatGPT habilitadas:
+AutoFactory es una **extensión local/manual** de Chrome y Safari, no un servidor ni el plano de ejecución de Factory ([AGENTES.md](AGENTES.md), [manifest](manifest.json)).
 
-- espera mientras ChatGPT responde y continúa cuando la respuesta termina;
-- usa el compositor y botón reales del DOM, con validación del texto antes de enviar;
-- recupera errores mediante **Reintentar** o **Continuar generando** cuando la interfaz lo permite;
-- puede gestionar varias pestañas habilitadas con heartbeat local;
-- conserva diagnóstico minimizado sin texto de conversaciones, tokens ni IDs de chat identificables;
-- mantiene Chrome y Safari sobre el mismo núcleo web.
+- Observa únicamente las pestañas habilitadas y espera a que ChatGPT termine antes de continuar usando el DOM y el compositor reales ([autopilot-core.js](autopilot-core.js), [content.js](content.js)).
+- Gestiona estados transitorios, reintentos seguros y varias pestañas locales, con diagnóstico minimizado ([CHANGELOG.md](CHANGELOG.md)).
+- Conserva contratos offline para ControlBot, sin asumir pairing o transporte real, bajo [#1](https://github.com/pl0n3r/AutoFactory/issues/1) y [D-061](AGENTES.md).
 
-No autoriza compras, MFA, permisos, CAPTCHA, acciones destructivas ni cambios de cuenta. AutoFactory no decide prioridades de la fábrica y no sustituye a ControlBot ni FactoryRunner.
+No automatiza compras, permisos, MFA, CAPTCHA, acciones destructivas ni evasión de límites de la plataforma.
 
 ## Arquitectura en 60 segundos
 
@@ -87,27 +45,21 @@ No autoriza compras, MFA, permisos, CAPTCHA, acciones destructivas ni cambios de
 flowchart LR
     O[Owner] --> A[AutoFactory · herramienta local/manual]
     A --> C[ChatGPT DOM · Chrome/Safari]
-    F[Factory · governance/kit] --> A
-    CB[ControlBot · control plane] -. puente bloqueado D-061 .-> A
+    F[Factory · governance] --> A
+    CB[ControlBot · control plane] -. "D-061: no activado" .-> A
     CB --> R[FactoryRunner · execution plane]
 ```
 
-- **Factory** aporta gobernanza, contratos y workflows reutilizables.
-- **ControlBot** es el control plane y mantiene estado/dirección durable.
-- **FactoryRunner** es el execution plane para órdenes ya gobernadas.
-- **AutoFactory** permanece separado como herramienta local/manual operada por el dueño.
+- [Factory](https://github.com/pl0n3r/factory) aporta gobernanza; [ControlBot](https://github.com/pl0n3r/ControlBot) mantiene el control plane y [FactoryRunner](https://github.com/pl0n3r/FactoryRunner) es el ejecutor independiente.
+- Chrome utiliza [Manifest V3](manifest.json); el [proyecto Safari](safari/) comparte fuentes web, pero la instalación real necesita el [smoke #122](https://github.com/pl0n3r/AutoFactory/issues/122).
+- El puente AutoFactory ↔ ControlBot sigue declarativo hasta satisfacer [#129](https://github.com/pl0n3r/AutoFactory/issues/129) y las puertas legales.
 
 ## Stack e infraestructura
 
-- **Producto:** extensión Chrome + contenedor Safari/Xcode.
-- **Runtime web:** JavaScript / Node.js >=20 para pruebas.
-- **Chrome:** Manifest V3, service worker y content scripts.
-- **Safari:** proyecto nativo generado/sincronizado desde las mismas fuentes web.
-- **Persistencia:** almacenamiento local del navegador para configuración/diagnóstico minimizado.
-- **Release:** GitHub Releases mediante el kit Factory; no ZIPs ad hoc.
-- **Servidor/DB:** no presupuestos por defecto; AutoFactory no es una aplicación Hostinger ni requiere base de datos.
-
-La versión instalable debe mantener paridad entre `manifest.json`, `package.json`, `package-lock.json` y el manifiesto Safari cuando aplique un corte.
+- **Extensión:** JavaScript para [Chrome Manifest V3](manifest.json) y contenedor nativo [Safari/Xcode](safari/) ([AGENTES.md](AGENTES.md)).
+- **Pruebas:** Node.js ≥20 y [npm test](package.json). No existe backend Hostinger ni base de datos propios.
+- **Permiso LAN opcional:** [CHANGELOG 1.7.36](CHANGELOG.md); no equivale a autorización permanente de red.
+- **Releases:** [GitHub Releases](https://github.com/pl0n3r/AutoFactory/releases); paridad de manifiestos y rollback al paquete anterior antes de declararla instalable.
 
 ## Ciclo de entrega
 
@@ -129,16 +81,13 @@ Un merge o CI verde no equivale a producción VERDE de AutoFactory. La entrega i
 
 ## Roadmap y fuentes de verdad
 
-- Gobierno común: [pl0n3r/Factory](https://github.com/pl0n3r/Factory) y `PLAN-AGENTES.md`.
-- Trabajo propio: [AutoFactory Issues](https://github.com/pl0n3r/AutoFactory/issues).
-- Puente ControlBot: [AutoFactory #1](https://github.com/pl0n3r/AutoFactory/issues/1).
-- Decisiones vigentes: `decisiones.yml`.
-- Tratamiento de datos: `datos.yml`.
-- Contrato operativo: `AGENTES.md`.
-- Historial: [CHANGELOG.md](CHANGELOG.md).
-- Documentación profunda: `docs/`.
+- **Puente y alcance:** [roadmap #1](https://github.com/pl0n3r/AutoFactory/issues/1) y [readiness #134](https://github.com/pl0n3r/AutoFactory/issues/134).
+- **Ejecución y revisiones:** [Issues](https://github.com/pl0n3r/AutoFactory/issues) y [PRs](https://github.com/pl0n3r/AutoFactory/pulls).
+- **Decisiones y límites:** [decisiones.yml](decisiones.yml), [AGENTES.md](AGENTES.md), [datos.yml](datos.yml).
+- **Versiones reales:** [CHANGELOG.md](CHANGELOG.md) y [GitHub Releases](https://github.com/pl0n3r/AutoFactory/releases).
+- **Protocolo transversal:** [PLAN-AGENTES.md](https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md).
 
-Estas fuentes mandan sobre snapshots históricos del README.
+No inferir instalación, operación real, salud o consentimiento desde este README.
 
 ## Desarrollo local
 
