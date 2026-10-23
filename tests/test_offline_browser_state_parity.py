@@ -20,6 +20,9 @@ const chromeAuth = require('./factory-control-authorization.js');
 const safariAuth = require('./safari/ChatGPT Autopilot Local Extension/Resources/factory-control-authorization.js');
 const chromeRuntime = require('./factory-control-runtime.js');
 const safariRuntime = require('./safari/ChatGPT Autopilot Local Extension/Resources/factory-control-runtime.js');
+const executorModule = require('./factory-control-executor.js');
+const chromeLedger = require('./factory-control-ledger.js');
+const safariLedger = require('./safari/ChatGPT Autopilot Local Extension/Resources/factory-control-ledger.js');
 const { buildReadinessReport } = require('./factory-control-readiness-report.js');
 
 const NOW = 1800000000000;
@@ -116,6 +119,7 @@ async function denials() {
   }
   assert.equal(attemptedCommands, 0);
   await activeSessionDenials(command, context);
+  await realBoundaryDenials(command, context);
 }
 // Exercise the same offline readiness boundary with an ACTIVE synthetic runtime
 // and a valid, short-lived grant. This is fixture wiring, never a live adapter.
@@ -172,6 +176,58 @@ async function activeSessionDenials(command, context) {
         { ok: true, code: 'empty', cursor: null }, state);
       assert.equal(proposed, 0, state + ' proposed an action');
       assert.deepEqual(runtime.stop(), { ok: true, code: 'stopped' });
+    }
+  }
+}
+// Test an existing security boundary rather than a fixture-only pump guard.
+// A simulated gate decides which VERIFIED GRANT is supplied; the real
+// authorizer, executor and durable-ledger protocol must enforce the denial.
+async function realBoundaryDenials(command, context) {
+  const grant = {
+    profileAlias: 'synthetic-profile', expiresAt: NOW + 60000,
+    revoked: false, actions: ['send_message'], tabIds: [7], broadcast: false
+  };
+  for (const [authModule, ledgerModule] of [
+    [chromeAuth, chromeLedger], [safariAuth, safariLedger]
+  ]) {
+    for (const [state, observedAt] of [
+      ...['limit', 'requires_login', 'error', 'unknown']
+        .map(state => [state, NOW - 1000]),
+      ['ready', NOW - 180001], ['ready', NOW + 1], ['ready', NOW - 1000]
+    ]) {
+      const diagnostic = report(state, observedAt);
+      const allowed = diagnostic.ready;
+      let receipts = [];
+      const ledger = ledgerModule.createLedger({
+        load: async () => receipts.map(item => ({ ...item })),
+        save: async items => {
+          receipts = items.map(item => ({ ...item }));
+          return true;
+        }
+      });
+      const auth = authModule.createCommandAuthorizer({
+        loadVerifiedGrant: async () => allowed ? grant : null,
+        now: () => NOW
+      });
+      let applied = 0;
+      const effects = Object.fromEntries(executorModule.ACTIONS.map(action =>
+        [action, async () => {
+          applied += 1; // NOT a browser action or HTTP request
+          return { ok: true, code: 'ok' };
+        }]
+      ));
+      const executor = executorModule.createCommandExecutor({
+        ledger, authorizer: auth, effects,
+        auditStore: { append: async () => true }
+      });
+      // Unlike the simulated pump, even unsafe states ENTER the executor.
+      const ack = await executor.execute(command, context);
+      assert.equal(ack.code, allowed ? 'ok' : 'unauthorized', state);
+      assert.equal(ack.ok, allowed, state);
+      assert.equal(applied, allowed ? 1 : 0, state);
+      const replay = await executor.execute(command, context);
+      assert.equal(replay.code, 'already_handled', state);
+      assert.equal(applied, allowed ? 1 : 0, state);
     }
   }
 }

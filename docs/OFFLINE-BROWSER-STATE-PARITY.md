@@ -23,6 +23,14 @@ por Node.js, sin navegador, datos de usuario, emparejamiento ni conexión de red
   El control positivo comprueba que el grant no sea la causa del rechazo.
   Esta prueba de integración simulada no acredita que el runtime productivo
   haya conectado esa guarda ni autoriza tráfico real.
+- Además se invoca el **ejecutor real** con ledger y autorizador reales de
+  Chrome/Safari bajo fixtures sin red. Incluso cuando el estado denegado intenta
+  ejecutar el comando, el autorizador debe responder `unauthorized` y mantener
+  **cero efectos**; el control positivo `ready` causa exactamente un efecto
+  contador (sin navegador) y el replay queda en `already_handled`. El informe
+  de readiness que suministra/retira el grant es **solo un fixture**: no prueba
+  cableado productivo ni autoriza tráfico real. Safari comparte el ejecutor de
+  prueba, pero usa su autorizador y ledger espejados.
 - Ejecución: `python3 -m unittest tests.test_offline_browser_state_parity -v`
   y como parte de `npm test`; sin alterar otros tests ni flags.
 
