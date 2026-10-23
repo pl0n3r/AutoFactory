@@ -76,7 +76,11 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
 
     def test_readme_v2_separates_release_from_real_smoke(self):
         readme = self.readme()
-        self.assertIn("https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.38", readme)
+        cockpit = readme.split("## Operational Cockpit\n", 1)[1].split("\n## ", 1)[0]
+        self.assertIn(
+            "(https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.38)",
+            cockpit,
+        )
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/122", readme)
         self.assertIn("sin asumir pairing", readme)
         self.assertIn("D-061", readme)
