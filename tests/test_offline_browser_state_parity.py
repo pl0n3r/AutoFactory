@@ -115,11 +115,11 @@ async function denials() {
     assert.deepEqual(await runtime.runCommands(), { ok: false, code: 'stopped' });
   }
   assert.equal(attemptedCommands, 0);
-  await activeSessionDenials();
+  await activeSessionDenials(command, context);
 }
 // Exercise the same offline readiness boundary with an ACTIVE synthetic runtime
 // and a valid, short-lived grant. This is fixture wiring, never a live adapter.
-async function activeSessionDenials() {
+async function activeSessionDenials(command, context) {
   const grant = {
     profileAlias: 'synthetic-profile', expiresAt: NOW + 60000,
     revoked: false, actions: ['send_message'], tabIds: [7], broadcast: false
