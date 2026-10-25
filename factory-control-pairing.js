@@ -398,9 +398,6 @@
     async function revoke(input) {
       const request = snapshotInput(input, [['profileAlias', validAlias], ['credentialId', validId]]);
       if (!request) return safeResult(false, 'invalid');
-      // Drop the caller-owned reference. The variable used by the downstream
-      // revocation contract now points only to our immutable primitive copy.
-      input = request;
       // Audit must be durable before a remote revocation is attempted. The
       // audit events never contain a profile, pairing code, or credential handle.
       if (!auditStore || typeof auditStore.append !== 'function') {
@@ -414,7 +411,7 @@
         }));
         if (intentRecorded !== true) return safeResult(false, 'failed');
 
-        const result = checkedPairingResult(await pairing.revoke(input));
+        const result = checkedPairingResult(await pairing.revoke(request));
         if (!['revoked', 'not_found'].includes(result.code)) return result;
 
         const removed = await credentialStore.remove({

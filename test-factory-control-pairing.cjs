@@ -916,6 +916,44 @@ function fixture(overrides = {}) {
     assert.deepEqual(revoked, [{ profileAlias: 'perfil-1', credentialId: 'credential-001' }]);
     assert.deepEqual(removed, [{ profileAlias: 'perfil-1', id: 'credential-001' }]);
   }
+  // #244: persisted invalid requests are rejected before audit/remote effects.
+  {
+    let getters = 0, auditEffects = 0, remoteEffects = 0;
+    const { contract } = fixture({
+      loadVerifiedChallenge: async () => {
+        remoteEffects++; throw new Error('not reached');
+      },
+      revokeOpaqueCredential: async () => {
+        remoteEffects++; throw new Error('not reached');
+      }
+    });
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async () => { remoteEffects++; return true; },
+        remove: async () => { remoteEffects++; return true; }
+      },
+      auditStore: { append: async () => { auditEffects++; return true; } }
+    });
+    for (const [operation, key] of [
+      ['pair', 'profileAlias'], ['pair', 'code'],
+      ['revoke', 'profileAlias'], ['revoke', 'credentialId']
+    ]) {
+      const request = operation === 'pair'
+        ? { profileAlias: 'perfil-1', code: '123456' }
+        : { profileAlias: 'perfil-1', credentialId: 'credential-001' };
+      Object.defineProperty(request, key, {
+        enumerable: true,
+        get() { getters++; throw new Error('never execute input accessors'); }
+      });
+      assert.deepEqual(await persisted[operation](request),
+        { ok: false, code: 'invalid' });
+    }
+    assert.equal(getters, 0);
+    assert.equal(auditEffects, 0);
+    assert.equal(remoteEffects, 0);
+  }
+
   console.log('pairing-input-snapshot #244: ok');
 
   console.log('AF129 challenge-snapshot AC-01..03: ok');
