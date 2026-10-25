@@ -130,6 +130,8 @@
       }
       return Object.freeze(snapshot);
     } catch (_error) {
+      // Descriptor/proxy traps belong to untrusted input. Fail closed and
+      // conceal exception details rather than contacting any adapter.
       return null;
     }
   }

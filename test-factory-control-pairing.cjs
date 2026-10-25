@@ -829,25 +829,25 @@ function fixture(overrides = {}) {
   {
     let getterCalls = 0, effects = 0;
     const { contract } = fixture({
-      loadVerifiedChallenge: async () => { effects++; throw Error('unexpected challenge'); },
-      revokeOpaqueCredential: async () => { effects++; throw Error('unexpected revoke'); }
+      loadVerifiedChallenge: async () => { effects++; throw new Error('unexpected challenge'); },
+      revokeOpaqueCredential: async () => { effects++; throw new Error('unexpected revoke'); }
     });
-    for (const field of ['profileAlias', 'code']) {
+    await Promise.all(['profileAlias', 'code'].map(async field => {
       const input = { profileAlias: 'perfil-1', code: '123456' };
       Object.defineProperty(input, field, {
         enumerable: true,
-        get() { getterCalls++; throw Error('getter must not execute'); }
+        get() { getterCalls++; throw new Error('getter must not execute'); }
       });
       assert.deepEqual(await contract.pair(input), { ok: false, code: 'invalid' });
-    }
-    for (const field of ['profileAlias', 'credentialId']) {
+    }));
+    await Promise.all(['profileAlias', 'credentialId'].map(async field => {
       const input = { profileAlias: 'perfil-1', credentialId: 'credential-001' };
       Object.defineProperty(input, field, {
         enumerable: true,
-        get() { getterCalls++; throw Error('getter must not execute'); }
+        get() { getterCalls++; throw new Error('getter must not execute'); }
       });
       assert.deepEqual(await contract.revoke(input), { ok: false, code: 'invalid' });
-    }
+    }));
     assert.equal(getterCalls, 0);
     assert.equal(effects, 0);
   }
@@ -935,10 +935,10 @@ function fixture(overrides = {}) {
       },
       auditStore: { append: async () => { auditEffects++; return true; } }
     });
-    for (const [operation, key] of [
+    await Promise.all([
       ['pair', 'profileAlias'], ['pair', 'code'],
       ['revoke', 'profileAlias'], ['revoke', 'credentialId']
-    ]) {
+    ].map(async ([operation, key]) => {
       const request = operation === 'pair'
         ? { profileAlias: 'perfil-1', code: '123456' }
         : { profileAlias: 'perfil-1', credentialId: 'credential-001' };
@@ -948,7 +948,7 @@ function fixture(overrides = {}) {
       });
       assert.deepEqual(await persisted[operation](request),
         { ok: false, code: 'invalid' });
-    }
+    }));
     assert.equal(getters, 0);
     assert.equal(auditEffects, 0);
     assert.equal(remoteEffects, 0);
