@@ -824,6 +824,100 @@ function fixture(overrides = {}) {
     );
     assert.deepEqual(ids, ['challenge-001', 'challenge-001']);
   }
+
+  // #244: input getters must not run before validation or reach adapters.
+  {
+    let getterCalls = 0, effects = 0;
+    const { contract } = fixture({
+      loadVerifiedChallenge: async () => { effects++; throw Error('unexpected challenge'); },
+      revokeOpaqueCredential: async () => { effects++; throw Error('unexpected revoke'); }
+    });
+    for (const field of ['profileAlias', 'code']) {
+      const input = { profileAlias: 'perfil-1', code: '123456' };
+      Object.defineProperty(input, field, {
+        enumerable: true,
+        get() { getterCalls++; throw Error('getter must not execute'); }
+      });
+      assert.deepEqual(await contract.pair(input), { ok: false, code: 'invalid' });
+    }
+    for (const field of ['profileAlias', 'credentialId']) {
+      const input = { profileAlias: 'perfil-1', credentialId: 'credential-001' };
+      Object.defineProperty(input, field, {
+        enumerable: true,
+        get() { getterCalls++; throw Error('getter must not execute'); }
+      });
+      assert.deepEqual(await contract.revoke(input), { ok: false, code: 'invalid' });
+    }
+    assert.equal(getterCalls, 0);
+    assert.equal(effects, 0);
+  }
+
+  // #244: persisted pair/revoke snapshots survive async changes to callers.
+  {
+    const pairingInput = { profileAlias: 'perfil-1', code: '123456' };
+    const consumed = [], saved = [], audit = [];
+    const { contract } = fixture({
+      loadVerifiedChallenge: async ({ profileAlias }) => ({
+        challengeId: 'challenge-001', profileAlias,
+        expiresAt: NOW + 60_000, revoked: false, used: false
+      }),
+      consumeVerifiedChallenge: async request => {
+        consumed.push(request);
+        return 'consumed';
+      }
+    });
+    const persisted = createPersistedPairingContract({
+      pairing: contract,
+      credentialStore: {
+        save: async row => { saved.push(row); return true; },
+        remove: async () => true
+      },
+      auditStore: {
+        append: async row => {
+          audit.push(row);
+          pairingInput.profileAlias = 'perfil-extraño';
+          pairingInput.code = '000000';
+          return true;
+        }
+      }
+    });
+    assert.deepEqual(await persisted.pair(pairingInput), { ok: true, code: 'paired' });
+    assert.equal(consumed.length, 1);
+    assert.equal(consumed[0].profileAlias, 'perfil-1');
+    assert.equal(consumed[0].code, '123456');
+    assert.equal(saved.length, 1);
+    assert.equal(saved[0].profileAlias, 'perfil-1');
+    assert.equal(JSON.stringify(audit).includes('perfil-1'), false);
+    assert.equal(JSON.stringify(audit).includes('123456'), false);
+
+    const revokeInput = { profileAlias: 'perfil-1', credentialId: 'credential-001' };
+    const revoked = [], removed = [];
+    const { contract: revokeContract } = fixture({
+      revokeOpaqueCredential: async request => {
+        revoked.push(request);
+        return true;
+      }
+    });
+    const persistedRevocation = createPersistedPairingContract({
+      pairing: revokeContract,
+      credentialStore: {
+        save: async () => true,
+        remove: async request => { removed.push(request); return true; }
+      },
+      auditStore: {
+        append: async () => {
+          revokeInput.profileAlias = 'otro-perfil';
+          revokeInput.credentialId = 'credential-999';
+          return true;
+        }
+      }
+    });
+    assert.deepEqual(await persistedRevocation.revoke(revokeInput), { ok: true, code: 'revoked' });
+    assert.deepEqual(revoked, [{ profileAlias: 'perfil-1', credentialId: 'credential-001' }]);
+    assert.deepEqual(removed, [{ profileAlias: 'perfil-1', id: 'credential-001' }]);
+  }
+  console.log('pairing-input-snapshot #244: ok');
+
   console.log('AF129 challenge-snapshot AC-01..03: ok');
 
   // AC-04: legacy pairing, replay/persistence and explicit revoke assertions

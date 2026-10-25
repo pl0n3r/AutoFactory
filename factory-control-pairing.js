@@ -111,6 +111,29 @@
     return Object.freeze({ id, expiresAt: expiry });
   }
 
+  // Snapshot request primitives before any await. Accessors and extra own
+  // keys are not a trusted input: never invoke request getters after validation.
+  function snapshotInput(input, fields) {
+    try {
+      if (!input || typeof input !== 'object' || Array.isArray(input) ||
+          Reflect.ownKeys(input).length !== fields.length) return null;
+      const descriptors = Object.getOwnPropertyDescriptors(input);
+      const snapshot = {};
+      for (const [field, validate] of fields) {
+        const descriptor = descriptors[field];
+        if (!descriptor || !descriptor.enumerable ||
+            !Object.hasOwn(descriptor, 'value') ||
+            !validate(descriptor.value)) return null;
+        Object.defineProperty(snapshot, field, {
+          value: descriptor.value, enumerable: true, writable: false
+        });
+      }
+      return Object.freeze(snapshot);
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function createPairingContract({
     loadVerifiedChallenge,
     consumeVerifiedChallenge,
@@ -167,11 +190,8 @@
     }
 
     async function pair(input, auditContext = null) {
-      if (!exactKeys(input, ['profileAlias', 'code']) ||
-          !validAlias(input.profileAlias) ||
-          !validCode(input.code)) {
-        return safeResult(false, 'invalid');
-      }
+      const request = snapshotInput(input, [['profileAlias', validAlias], ['code', validCode]]);
+      if (!request) return safeResult(false, 'invalid');
 
       let issuanceAttempted = false;
       let issuedValue = null;
@@ -180,8 +200,8 @@
         if (!Number.isSafeInteger(nowMs)) return safeResult(false, 'failed');
 
         const challenge = checkedChallenge(
-          await loadVerifiedChallenge({ profileAlias: input.profileAlias }),
-          input.profileAlias,
+          await loadVerifiedChallenge({ profileAlias: request.profileAlias }),
+          request.profileAlias,
           nowMs
         );
 
@@ -191,8 +211,8 @@
 
         const consumed = await consumeVerifiedChallenge({
           challengeId: challenge.challengeId,
-          profileAlias: input.profileAlias,
-          code: input.code
+          profileAlias: request.profileAlias,
+          code: request.code
         });
         if (!['consumed', 'invalid', 'expired', 'replayed', 'revoked'].includes(consumed)) {
           return safeResult(false, 'failed');
@@ -202,19 +222,19 @@
         issuanceAttempted = true;
         issuedValue = await issueOpaqueCredential({
           challengeId: challenge.challengeId,
-          profileAlias: input.profileAlias
+          profileAlias: request.profileAlias
         });
         const credentialNowMs = now();
         if (!Number.isSafeInteger(credentialNowMs)) throw new TypeError('Invalid post-issue clock');
         const credential = checkedCredential(
           issuedValue,
-          input.profileAlias,
+          request.profileAlias,
           credentialNowMs
         );
         return safeResult(true, 'paired', credential, owner);
       } catch (_error) {
         if (issuanceAttempted) {
-          await compensatePostIssue(issuedValue, input.profileAlias, auditContext);
+          await compensatePostIssue(issuedValue, request.profileAlias, auditContext);
         }
         // Never expose an issued handle, clock value or adapter exception.
         return safeResult(false, 'failed');
@@ -222,15 +242,12 @@
     }
 
     async function revoke(input) {
-      if (!exactKeys(input, ['profileAlias', 'credentialId']) ||
-          !validAlias(input.profileAlias) ||
-          !validId(input.credentialId)) {
-        return safeResult(false, 'invalid');
-      }
+      const request = snapshotInput(input, [['profileAlias', validAlias], ['credentialId', validId]]);
+      if (!request) return safeResult(false, 'invalid');
       try {
         const revoked = await revokeOpaqueCredential({
-          profileAlias: input.profileAlias,
-          credentialId: input.credentialId
+          profileAlias: request.profileAlias,
+          credentialId: request.credentialId
         });
         if (revoked === true) return safeResult(true, 'revoked');
         if (revoked === false) return safeResult(false, 'not_found');
@@ -318,10 +335,8 @@
     }
 
     async function pair(input) {
-      if (!exactKeys(input, ['profileAlias', 'code']) ||
-          !validAlias(input.profileAlias) || !validCode(input.code)) {
-        return safeResult(false, 'invalid');
-      }
+      const request = snapshotInput(input, [['profileAlias', validAlias], ['code', validCode]]);
+      if (!request) return safeResult(false, 'invalid');
       // Reserve a sanitized compensating-action record BEFORE issuing a
       // credential; otherwise a failed local save could require an unlogged
       // remote revocation. Missing audit fails closed without issuing.
@@ -345,16 +360,16 @@
             }))
           );
           try {
-            result = checkedPairingResult(await pairing.pair(input, context), trustedOwner);
+            result = checkedPairingResult(await pairing.pair(request, context), trustedOwner);
           } finally {
             internalPostIssueAudit.delete(context);
           }
         } else {
-          result = checkedPairingResult(await pairing.pair(input), trustedOwner);
+          result = checkedPairingResult(await pairing.pair(request), trustedOwner);
         }
         if (result.code !== 'paired') return result;
         const row = {
-          profileAlias: input.profileAlias,
+          profileAlias: request.profileAlias,
           id: result.credential.id,
           expiresAt: result.credential.expiresAt
         };
@@ -368,7 +383,7 @@
         }
         if (saved !== true) {
           await recordCompensation({
-            profileAlias: input.profileAlias,
+            profileAlias: request.profileAlias,
             credentialId: result.credential.id
           }, auditId);
           return safeResult(false, 'failed');
@@ -381,10 +396,8 @@
     }
 
     async function revoke(input) {
-      if (!exactKeys(input, ['profileAlias', 'credentialId']) ||
-          !validAlias(input.profileAlias) || !validId(input.credentialId)) {
-        return safeResult(false, 'invalid');
-      }
+      const request = snapshotInput(input, [['profileAlias', validAlias], ['credentialId', validId]]);
+      if (!request) return safeResult(false, 'invalid');
       // Audit must be durable before a remote revocation is attempted. The
       // audit events never contain a profile, pairing code, or credential handle.
       if (!auditStore || typeof auditStore.append !== 'function') {
@@ -398,12 +411,12 @@
         }));
         if (intentRecorded !== true) return safeResult(false, 'failed');
 
-        const result = checkedPairingResult(await pairing.revoke(input));
+        const result = checkedPairingResult(await pairing.revoke(request));
         if (!['revoked', 'not_found'].includes(result.code)) return result;
 
         const removed = await credentialStore.remove({
-          profileAlias: input.profileAlias,
-          id: input.credentialId
+          profileAlias: request.profileAlias,
+          id: request.credentialId
         });
         if (removed !== true) return safeResult(false, 'failed');
 
