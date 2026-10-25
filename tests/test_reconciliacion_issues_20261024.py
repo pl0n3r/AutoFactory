@@ -62,6 +62,23 @@ class ReconciliacionIssuesTests(unittest.TestCase):
         self.assertSetEqual(EXPECTED_OPEN, seen)
         self.assertIn("[#240](https://github.com/pl0n3r/AutoFactory/issues/240)", report)
         self.assertIn("falta Validate como requerido", report)
+
+        # El workflow debe ejecutar AC-01 sobre el commit del autor del PR,
+        # no sobre el merge ref sintético que Actions instala por defecto.
+        workflow = (ROOT / ".github/workflows/validate.yml").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn(
+            "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
+            workflow,
+        )
+        self.assertIn("path: .acceptance-head", workflow)
+        self.assertIn("working-directory: .acceptance-head", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" =', workflow)
+        self.assertIn(
+            "python3 -m unittest -v tests.test_reconciliacion_issues_20261024.ReconciliacionIssuesTests.test_acceptance",
+            workflow,
+        )
         self.assertIn("no", report.lower())
 
 
