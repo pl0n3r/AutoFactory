@@ -27,7 +27,7 @@ function test_no_progress_requires_threshold_and_stable_fingerprint() {
     'recent activity must reset the threshold even with a stable digest');
   for (const changes of [
     { thresholdMs: 0 }, { thresholdMs: -1 }, { thresholdMs: Infinity },
-    { thresholdMs: 60.5 }, { nowMs: NaN }, { nowMs: -1 },
+    { thresholdMs: 60.5 }, { nowMs: Number.NaN }, { nowMs: -1 },
     { lastActivityAtMs: 1_000_001 },
     { fingerprintStableSinceMs: 1_000_001 },
     { fingerprint: '' }, { fingerprint: 'plaintext chat' },
@@ -40,6 +40,41 @@ function test_no_progress_requires_threshold_and_stable_fingerprint() {
   for (const bad of [null, undefined, [], 4, '', {}]) {
     assert.equal(classifyTabProgress(bad), STATES.UNKNOWN);
   }
+
+  // Technical accessors must not run, even if they return a well-typed value.
+  for (const field of [
+    'nowMs', 'lastActivityAtMs', 'fingerprintStableSinceMs', 'thresholdMs',
+    'previousFingerprint', 'fingerprint', 'activityObserved'
+  ]) {
+    let reads = 0;
+    const input = fixture();
+    Object.defineProperty(input, field, {
+      get() {
+        reads += 1;
+        throw new Error(`untrusted getter: ${field}`);
+      }
+    });
+    assert.equal(classifyTabProgress(input), STATES.UNKNOWN,
+      `accessor on ${field} must fail closed`);
+    assert.equal(reads, 0, `accessor on ${field} must never be invoked`);
+  }
+  const inherited = fixture();
+  delete inherited.nowMs;
+  let inheritedReads = 0;
+  Object.setPrototypeOf(inherited, Object.defineProperty({}, 'nowMs', {
+    get() { inheritedReads += 1; throw new Error('inherited getter'); }
+  }));
+  assert.equal(classifyTabProgress(inherited), STATES.UNKNOWN);
+  assert.equal(inheritedReads, 0, 'inherited accessor must not be invoked');
+
+  const proxy = new Proxy(fixture(), {
+    getOwnPropertyDescriptor(target, field) {
+      if (field === 'nowMs') throw new Error('untrusted Proxy descriptor trap');
+      return Reflect.getOwnPropertyDescriptor(target, field);
+    }
+  });
+  assert.equal(classifyTabProgress(proxy), STATES.UNKNOWN,
+    'throwing Proxy descriptor trap must fail closed');
 }
 
 function test_fresh_activity_resets_state_and_excludes_chat_payload() {
@@ -48,6 +83,10 @@ function test_fresh_activity_resets_state_and_excludes_chat_payload() {
   assert.equal(classifyTabProgress(fixture({ lastActivityAtMs: 999_999 })), STATES.ACTIVE);
   const input = Object.freeze(fixture());
   assert.equal(classifyTabProgress(input), STATES.NO_PROGRESS);
+  const optional = fixture();
+  delete optional.activityObserved;
+  assert.equal(classifyTabProgress(optional), STATES.NO_PROGRESS,
+    'omitted optional activity flag retains the default false value');
 
   const sensitive = fixture();
   for (const property of ['chatText', 'conversationId', 'cookie', 'token']) {

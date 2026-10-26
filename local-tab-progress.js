@@ -7,6 +7,10 @@ const STATES = Object.freeze({
   UNKNOWN: 'UNKNOWN'
 });
 const OPAQUE_DIGEST = /^[a-f0-9]{64}$/;
+const TECHNICAL_FIELDS = Object.freeze([
+  'nowMs', 'lastActivityAtMs', 'fingerprintStableSinceMs', 'thresholdMs',
+  'previousFingerprint', 'fingerprint', 'activityObserved'
+]);
 
 function validTime(value) {
   return Number.isSafeInteger(value) && value >= 0;
@@ -17,7 +21,25 @@ function classifyTabProgress(input) {
     return STATES.UNKNOWN;
   }
 
-  // Deliberately whitelist technical fields. Never read arbitrary chat payload.
+  // Inspect only own data descriptors; never invoke untrusted getters or read chat data.
+  const values = Object.create(null);
+  try {
+    for (const field of TECHNICAL_FIELDS) {
+      const descriptor = Object.getOwnPropertyDescriptor(input, field);
+      if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+        if (field === 'activityObserved' && !descriptor) {
+          values[field] = false;
+          continue;
+        }
+        return STATES.UNKNOWN;
+      }
+      values[field] = descriptor.value;
+    }
+  } catch {
+    // A Proxy may throw while describing a whitelisted field: fail closed.
+    return STATES.UNKNOWN;
+  }
+
   const {
     nowMs,
     lastActivityAtMs,
@@ -25,8 +47,8 @@ function classifyTabProgress(input) {
     thresholdMs,
     previousFingerprint,
     fingerprint,
-    activityObserved = false
-  } = input;
+    activityObserved
+  } = values;
 
   if (!validTime(nowMs) || !validTime(lastActivityAtMs) ||
       !validTime(fingerprintStableSinceMs) ||
