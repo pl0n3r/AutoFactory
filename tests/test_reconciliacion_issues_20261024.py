@@ -67,6 +67,10 @@ class ReconciliacionIssuesTests(unittest.TestCase):
         self.assertIn("CLOSED/completed", report)
         self.assertIn("issuecomment-6419013464", report)
         self.assertIn("15 issues OPEN inventariados", report)
+        self.assertIn("20 objetos incluyendo 5 PR", report)
+        self.assertIn("[PR #248](https://github.com/pl0n3r/AutoFactory/pull/248)", report)
+        self.assertIn("PR sin Issue de trabajo verificable", report)
+        self.assertIn("test-workflow-hardening.cjs", report)
         self.assertIn("falta Validate como requerido", report)
 
         # El workflow debe ejecutar AC-01 sobre el commit del autor del PR,
