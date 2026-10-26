@@ -1,9 +1,11 @@
-"""Regresiones locales de adopción de README Contract v1 para AutoFactory."""
+"""Regresiones locales de adopción de README Contract v2 para AutoFactory."""
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
@@ -26,6 +28,7 @@ REQUIRED_SECTIONS = (
     "Roadmap y fuentes de verdad",
     "Desarrollo local",
     "Mapa de la fábrica",
+    "Instalación y uso",
 )
 
 class ReadmeContractAdoptionTests(unittest.TestCase):
@@ -42,36 +45,45 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         self.assertEqual(metadata["phase"], "construction")
         self.assertEqual(metadata["role"], "local/manual tool")
 
-    def test_readme_has_contract_v1_anatomy(self):
+    def test_readme_is_contract_v2_without_unknown_blocks(self):
         readme = self.readme()
-        for heading in REQUIRED_SECTIONS:
-            self.assertEqual(readme.count(f"## {heading}"), 1, heading)
         self.assertTrue(readme.startswith("# ChatGPT Autopilot Local"))
-        self.assertIn("## Instalación y uso", readme)
+        # Verify all contractual and installation headings in canonical order.
+        positions = []
+        for heading in REQUIRED_SECTIONS:
+            needle = f"## {heading}"
+            self.assertEqual(readme.splitlines().count(needle), 1, heading)
+            positions.append(readme.index(needle + "\n"))
+        self.assertEqual(positions, sorted(positions))
         self.assertIn("## Log de diagnóstico", readme)
-
-    def test_derived_blocks_fail_closed_without_evidence(self):
-        readme = self.readme()
-        self.assertEqual(readme.count("<!-- factory:status:start -->"), 1)
-        self.assertEqual(readme.count("<!-- factory:status:end -->"), 1)
-        self.assertEqual(readme.count("<!-- factory:progress-readiness:start -->"), 1)
-        self.assertEqual(readme.count("<!-- factory:progress-readiness:end -->"), 1)
-        status = readme.split("<!-- factory:status:start -->", 1)[1].split(
-            "<!-- factory:status:end -->", 1
-        )[0]
-        for label in (
-            "main SHA", "versión", "CI", "release", "health", "smoke/observer",
-            "quality/security", "Issue activo", "PR activo", "último release",
+        for forbidden in (
+            "UNKNOWN", "factory:status", "factory:progress-readiness",
+            "Progress + Readiness", "| main SHA |", "| Readiness |",
         ):
-            self.assertIn(f"| {label} | UNKNOWN |", status)
-        self.assertNotIn("| CI | GREEN |", status)
-        self.assertNotIn("| smoke/observer | GREEN |", status)
-        progress = readme.split(
-            "<!-- factory:progress-readiness:start -->", 1
-        )[1].split("<!-- factory:progress-readiness:end -->", 1)[0]
-        self.assertIn("| Target | UNKNOWN |", progress)
-        self.assertIn("| Progress | UNKNOWN |", progress)
-        self.assertIn("| Readiness | UNKNOWN |", progress)
+            self.assertNotIn(forbidden, readme)
+
+        cockpit = readme.split("## Operational Cockpit\n", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/actions/workflows/validate.yml", cockpit)
+        self.assertIn("/badge.svg?branch=main", cockpit)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/releases", cockpit)
+        self.assertIn("https://img.shields.io/github/v/release/pl0n3r/AutoFactory", cockpit)
+        self.assertIn("https://control.condorapp.com.co/", cockpit)
+        self.assertNotIn("| Señal | Estado |", cockpit)
+        self.assertIn("v1.7.38", cockpit)
+        self.assertIn("CI no acredita instalación Chrome/Safari", cockpit)
+        self.assertIn("smoke real pendiente", cockpit)
+        self.assertIn("issues/122", cockpit)
+
+    def test_readme_v2_separates_release_from_real_smoke(self):
+        readme = self.readme()
+        cockpit = readme.split("## Operational Cockpit\n", 1)[1].split("\n## ", 1)[0]
+        self.assertIn(
+            "(https://github.com/pl0n3r/AutoFactory/releases/tag/v1.7.38)",
+            cockpit,
+        )
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/122", readme)
+        self.assertIn("sin asumir pairing", readme)
+        self.assertIn("D-061", readme)
 
     def test_consumer_workflow_uses_factory_v1(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -83,11 +95,44 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
 
     def test_work_queue_links_canonical_roadmap(self):
         readme = self.readme()
-        queue = readme.split("## Work Queue", 1)[1].split("\n## ", 1)[0]
+        queue = readme.split("## Work Queue\n", 1)[1].split("\n## ", 1)[0]
         for lane in ("NOW", "NEXT", "LATER", "BLOCKED"):
             self.assertIn(f"**{lane}:**", queue)
-        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/58", queue)
+        now = queue.split("**NOW:**", 1)[1].split("\n", 1)[0]
+        urls = re.findall(
+            r"\((https://github\.com/pl0n3r/AutoFactory/(?:issues|pulls)\?[^)]+)\)",
+            now,
+        )
+        self.assertEqual(len(urls), 2)
+        issue_url = next(url for url in urls if "/issues?" in url)
+        pr_url = next(url for url in urls if "/pulls?" in url)
+        issue_query = parse_qs(urlparse(issue_url).query).get("q", [""])[0]
+        pr_query = parse_qs(urlparse(pr_url).query).get("q", [""])[0]
+        self.assertIn("is:issue", issue_query.split())
+        self.assertIn("is:open", issue_query.split())
+        self.assertIn('label:"prioridad: crítica"', issue_query)
+        self.assertIn("is:pr", pr_query.split())
+        self.assertIn("is:open", pr_query.split())
+        self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/230", now,
+                         "El propio Issue se cierra con este PR y no puede figurar como NOW")
+        next_lane = queue.split("**NEXT:**", 1)[1].split("\n", 1)[0]
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/228", next_lane)
+        self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/226", next_lane,
+                         "Una dependencia ya completada no puede figurar en NEXT")
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/1", queue)
+
+    def test_readme_does_not_advertise_unreleased_tab_health_ui(self):
+        readme = self.readme()
+        status = readme.split("## Estado local por pestaña", 1)[1].split("## Log de diagnóstico", 1)[0]
+        self.assertIn("todavía no está integrada en el popup", status)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/246", status)
+        self.assertIn("contrato puro offline", status)
+        self.assertNotIn("El popup muestra una tarjeta", status)
+        self.assertNotIn("El badge de la extensión muestra", status)
+        self.assertIn("▶ PLAY · ACTIVAR", readme)
+        self.assertIn("■ STOP · PAUSAR", readme)
+        self.assertIn("**COPIAR DIAGNÓSTICO** produce", readme)
+        self.assertNotIn("Pulsa **ACTIVAR TODAS**", readme)
 
     def test_factory_map_preserves_roles(self):
         readme = self.readme()
