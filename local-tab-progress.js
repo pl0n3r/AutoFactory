@@ -17,7 +17,13 @@ function validTime(value) {
 }
 
 function classifyTabProgress(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+  if (!input || typeof input !== 'object') {
+    return STATES.UNKNOWN;
+  }
+  try {
+    if (Array.isArray(input)) return STATES.UNKNOWN;
+  } catch {
+    // Array.isArray throws for revoked Proxies: fail closed on malformed inputs.
     return STATES.UNKNOWN;
   }
 

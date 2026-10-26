@@ -75,6 +75,12 @@ function test_no_progress_requires_threshold_and_stable_fingerprint() {
   });
   assert.equal(classifyTabProgress(proxy), STATES.UNKNOWN,
     'throwing Proxy descriptor trap must fail closed');
+
+  // Array.isArray itself throws on revoked Proxies, before descriptor checks.
+  const { proxy: revoked, revoke } = Proxy.revocable(fixture(), {});
+  revoke();
+  assert.equal(classifyTabProgress(revoked), STATES.UNKNOWN,
+    'revoked Proxy must fail closed without throwing');
 }
 
 function test_fresh_activity_resets_state_and_excludes_chat_payload() {
