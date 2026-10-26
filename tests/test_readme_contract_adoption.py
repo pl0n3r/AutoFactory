@@ -121,6 +121,19 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
                          "Una dependencia ya completada no puede figurar en NEXT")
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/1", queue)
 
+    def test_readme_does_not_advertise_unreleased_tab_health_ui(self):
+        readme = self.readme()
+        status = readme.split("## Estado local por pestaña", 1)[1].split("## Log de diagnóstico", 1)[0]
+        self.assertIn("todavía no está integrada en el popup", status)
+        self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/246", status)
+        self.assertIn("contrato puro offline", status)
+        self.assertNotIn("El popup muestra una tarjeta", status)
+        self.assertNotIn("El badge de la extensión muestra", status)
+        self.assertIn("▶ PLAY · ACTIVAR", readme)
+        self.assertIn("■ STOP · PAUSAR", readme)
+        self.assertIn("**COPIAR DIAGNÓSTICO** produce", readme)
+        self.assertNotIn("Pulsa **ACTIVAR TODAS**", readme)
+
     def test_factory_map_preserves_roles(self):
         readme = self.readme()
         factory_map = readme.split("## Mapa de la fábrica", 1)[1]

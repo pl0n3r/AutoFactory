@@ -138,7 +138,7 @@ Chrome y Safari comparten el mismo núcleo y selectores DOM. `build-safari.sh` s
 
 ### Usar
 
-Pulsa **ACTIVAR TODAS** una vez. Las pestañas habilitadas trabajan de forma independiente y **PAUSAR TODAS** detiene el piloto global.
+En el popup actual, pulsa **▶ PLAY · ACTIVAR** para iniciar. Las pestañas habilitadas trabajan de forma independiente y **■ STOP · PAUSAR** detiene el piloto global.
 
 La extensión escribe en `#prompt-textarea`, relee el mensaje exacto y solo pulsa el botón real `#composer-submit-button` / `data-testid="send-button"`. Si no encuentra esos elementos, no envía nada.
 
@@ -154,14 +154,13 @@ El seguimiento visual usa desplazamiento progresivo de contenedores relevantes y
 
 ## Estado local por pestaña
 
-El popup muestra una tarjeta **Estado de pestañas** con el alias local de cuenta, último envío, última respuesta, límite temporal, pausa y señal **SIN AVANCE**. El umbral es configurable y parte de 30 minutos.
+La señal **SIN AVANCE** todavía no está integrada en el popup ni en el badge de la extensión. La [hoja #246](https://github.com/pl0n3r/AutoFactory/issues/246) y su [PR #247](https://github.com/pl0n3r/AutoFactory/pull/247) desarrollan únicamente un **contrato puro offline** de estados de actividad, sin interfaz, timers, almacenamiento ni integración runtime, y aún no están fusionados.
 
-**SIN AVANCE** significa una de dos cosas: no llegó respuesta después del umbral o varias respuestas consecutivas conservaron la misma huella hash durante ese periodo. No implica por sí solo un fallo de ChatGPT. Abre la pestaña indicada, revisa si está pausada o en límite y, si hace falta, reanuda o corrige el trabajo desde la propia conversación.
+En el `main` actual, el popup presenta un estado global junto a **▶ PLAY · ACTIVAR** y **■ STOP · PAUSAR**, no una tarjeta «Estado de pestañas» ni contador por pestaña. No dar por disponible ni certificado un diagnóstico por pestaña hasta que exista implementación y validación real.
 
-El badge de la extensión muestra cuántas pestañas están en **SIN AVANCE**. El registro de salud conserva como máximo 200 eventos y solo guarda marcas de tiempo, estado, identificador local de pestaña y huellas hash; nunca texto de conversación.
 
 ## Log de diagnóstico
 
-El service worker conserva un historial local acotado de eventos técnicos. No guarda mensajes ni contenido del chat; las rutas se anonimizan por categoría y se excluyen identificadores de conversación. **COPIAR LOG** produce una salida sanitizada y **BORRAR LOG** elimina la copia local.
+El service worker conserva un historial local acotado de eventos técnicos. No guarda mensajes ni contenido del chat; las rutas se anonimizan por categoría y se excluyen identificadores de conversación. **COPIAR DIAGNÓSTICO** produce una salida sanitizada y **BORRAR LOG** elimina la copia local.
 
 Consulta [CHANGELOG.md](CHANGELOG.md) para el detalle histórico de versiones y cambios.
