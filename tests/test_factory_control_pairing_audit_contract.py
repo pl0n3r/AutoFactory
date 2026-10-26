@@ -52,8 +52,13 @@ class FactoryControlPairingAuditContractTests(unittest.TestCase):
         self.assertIn("if (outcomeRecorded !== true)", source)
         persisted = source.split("function createPersistedPairingContract", 1)[1]
         explicit_revoke = persisted.split("    async function revoke(input) {", 1)[1]
+        # The static contract checks the validated immutable snapshot,
+        # rather than the former mutable caller-owned input object.
+        self.assertIn("const request = snapshotInput(input,", explicit_revoke)
+        self.assertLess(explicit_revoke.index("const request = snapshotInput(input,"),
+                        explicit_revoke.index("if (intentRecorded !== true)"))
         self.assertLess(explicit_revoke.index("if (intentRecorded !== true)"),
-                        explicit_revoke.index("const result = checkedPairingResult(await pairing.revoke(input))"))
+                        explicit_revoke.index("const result = checkedPairingResult(await pairing.revoke(request))"))
 
 
     # Factory #154: Node scenarios execute the real JavaScript with synthetic
