@@ -113,7 +113,7 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         self.assertIn('label:"prioridad: crítica"', issue_query)
         self.assertIn("is:pr", pr_query.split())
         self.assertIn("is:open", pr_query.split())
-        self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/230", queue,
+        self.assertNotIn("https://github.com/pl0n3r/AutoFactory/issues/230", now,
                          "El propio Issue se cierra con este PR y no puede figurar como NOW")
         next_lane = queue.split("**NEXT:**", 1)[1].split("\n", 1)[0]
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/228", next_lane)
