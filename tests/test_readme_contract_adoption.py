@@ -28,6 +28,7 @@ REQUIRED_SECTIONS = (
     "Roadmap y fuentes de verdad",
     "Desarrollo local",
     "Mapa de la fábrica",
+    "Instalación y uso",
 )
 
 class ReadmeContractAdoptionTests(unittest.TestCase):
@@ -47,14 +48,13 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
     def test_readme_is_contract_v2_without_unknown_blocks(self):
         readme = self.readme()
         self.assertTrue(readme.startswith("# ChatGPT Autopilot Local"))
-        # Hero plus ten ordered sections = eleven contract surfaces.
+        # Verify all contractual and installation headings in canonical order.
         positions = []
         for heading in REQUIRED_SECTIONS:
             needle = f"## {heading}"
             self.assertEqual(readme.splitlines().count(needle), 1, heading)
             positions.append(readme.index(needle + "\n"))
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("## Instalación y uso", readme)
         self.assertIn("## Log de diagnóstico", readme)
         for forbidden in (
             "UNKNOWN", "factory:status", "factory:progress-readiness",
