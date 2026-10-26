@@ -1,6 +1,6 @@
 """AutoFactory #240: aceptación del inventario documental fechado y fail-closed.
 
-No realiza llamadas a GitHub ni declara GREEN: comprueba que las 14 filas
+No realiza llamadas a GitHub ni declara GREEN: comprueba que las 13 filas
 abiertas en el corte observado tienen decisión, evidencia enlazada y dueño del
 desbloqueo. Cualquier cambio en el inventario requiere otro corte verificado.
 """
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs" / "reconciliacion-issues-20261024.md"
 EXPECTED_OPEN = frozenset({
     1, 122, 129, 130, 131, 132, 133, 134,
-    216, 219, 228, 230, 240, 246,
+    216, 219, 228, 240, 246,
 })
 ISSUE_LINK = re.compile(
     r"^\[#(?P<number>\d+)\]\(https://github\.com/pl0n3r/AutoFactory/"
@@ -30,7 +30,7 @@ class ReconciliacionIssuesTests(unittest.TestCase):
 
         self.assertIn("26-oct-2026", report)
         self.assertIn(
-            "6eadd42aa234ed453e11d6518cb43d238427fecd", report,
+            "be1fd22db635cbe483d5bc201170f7c82900b10a", report,
             "Corte documental debe declarar su base exacta",
         )
         self.assertIn("fotografía", report.lower())
@@ -67,10 +67,12 @@ class ReconciliacionIssuesTests(unittest.TestCase):
         self.assertIn("CLOSED/completed", report)
         self.assertIn("issuecomment-6428266817", report)
         self.assertNotIn(220, seen)
+        self.assertNotIn(230, seen)
+        self.assertIn("PR #232 está MERGED", report)
         self.assertIn("PR #239, #241 y #247 están OPEN/no DRAFT", report)
         self.assertIn("issuecomment-6419013464", report)
-        self.assertIn("14 issues OPEN inventariados", report)
-        self.assertIn("19 objetos incluyendo 5 PR", report)
+        self.assertIn("13 issues OPEN inventariados", report)
+        self.assertIn("17 objetos incluyendo 4 PR", report)
         self.assertIn("[PR #248](https://github.com/pl0n3r/AutoFactory/pull/248)", report)
         self.assertIn("PR sin Issue de trabajo verificable", report)
         self.assertIn("test-workflow-hardening.cjs", report)
