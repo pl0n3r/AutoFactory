@@ -1,6 +1,6 @@
 """AutoFactory #240: aceptación del inventario documental fechado y fail-closed.
 
-No realiza llamadas a GitHub ni declara GREEN: comprueba que las 14 filas
+No realiza llamadas a GitHub ni declara GREEN: comprueba que las 15 filas
 abiertas en el corte observado tienen decisión, evidencia enlazada y dueño del
 desbloqueo. Cualquier cambio en el inventario requiere otro corte verificado.
 """
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs" / "reconciliacion-issues-20261024.md"
 EXPECTED_OPEN = frozenset({
     1, 122, 129, 130, 131, 132, 133, 134,
-    216, 219, 220, 228, 230, 240,
+    216, 219, 220, 228, 230, 240, 246,
 })
 ISSUE_LINK = re.compile(
     r"^\[#(?P<number>\d+)\]\(https://github\.com/pl0n3r/AutoFactory/"
@@ -60,11 +60,13 @@ class ReconciliacionIssuesTests(unittest.TestCase):
             self.assertNotIn("PENDIENTE DE INVESTIGAR", pending.upper())
 
         self.assertSetEqual(EXPECTED_OPEN, seen)
+        self.assertIn("[#246](https://github.com/pl0n3r/AutoFactory/issues/246)", report)
+        self.assertIn("[PR #247](https://github.com/pl0n3r/AutoFactory/pull/247)", report)
         self.assertIn("[#240](https://github.com/pl0n3r/AutoFactory/issues/240)", report)
         self.assertIn("[#243](https://github.com/pl0n3r/AutoFactory/issues/243)", report)
         self.assertIn("CLOSED/completed", report)
         self.assertIn("issuecomment-6419013464", report)
-        self.assertIn("14 issues OPEN inventariados", report)
+        self.assertIn("15 issues OPEN inventariados", report)
         self.assertIn("falta Validate como requerido", report)
 
         # El workflow debe ejecutar AC-01 sobre el commit del autor del PR,
