@@ -58,11 +58,11 @@ class PermisosExtensionAuditoriaTests(unittest.TestCase):
         for group, entries in EXPECTED.items():
             for entry in entries:
                 with self.subTest(group=group, entry=entry):
-                    self.assertIn("| " + group + " | \`" + entry + "\` |", doc)
-        self.assertIn("| content_scripts.matches | \`https://chatgpt.com/*\` |", doc)
+                    self.assertIn("| " + group + " | `" + entry + "` |", doc)
+        self.assertIn("| content_scripts.matches | `https://chatgpt.com/*` |", doc)
         for source in ("popup.js", "background.js", "factory-control-chrome-storage.js"):
             self.assertTrue((ROOT / source).is_file())
-            self.assertIn("\`" + source + "\`", doc)
+            self.assertIn("`" + source + "`", doc)
         self.assertIn("tabs.query", (ROOT / "popup.js").read_text(encoding="utf-8"))
         self.assertIn("alarms.create", (ROOT / "background.js").read_text(encoding="utf-8"))
 
