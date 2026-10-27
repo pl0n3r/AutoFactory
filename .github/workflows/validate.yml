@@ -80,7 +80,22 @@ jobs:
             test -f tests/test_permisos_extension_auditoria.py
             python3 -m unittest -v tests.test_permisos_extension_auditoria
           fi
-          python3 -m unittest -v tests.test_ci_pending_acceptance
+      - name: Obtener merge sintético de PR para autocontrol de CI
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: .ci-merge-acceptance
+      - name: Autocontrol de wiring de aceptación (merge PR o push)
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            test -f .ci-merge-acceptance/tests/test_ci_pending_acceptance.py
+            (cd .ci-merge-acceptance && python3 -m unittest -v tests.test_ci_pending_acceptance)
+          else
+            python3 -m unittest -v tests.test_ci_pending_acceptance
+          fi
       - name: Real Chrome MV3 extension-load smoke (non-release checkout)
         run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"
       - name: Verificar presentación local SIN AVANCE (AC-01/02/04)

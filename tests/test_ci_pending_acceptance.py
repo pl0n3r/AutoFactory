@@ -33,7 +33,14 @@ class PendingAcceptanceCITests(unittest.TestCase):
             self.assertIn(f"test -f {doc}", script)
             self.assertIn(f"test -f {test}", script)
             self.assertIn(f"python3 -m unittest -v {module}", script)
-        self.assertIn("python3 -m unittest -v tests.test_ci_pending_acceptance", script)
+        self.assertNotIn("python3 -m unittest -v tests.test_ci_pending_acceptance", script)
+        workflow = VALIDATE.read_text(encoding="utf-8")
+        self.assertIn("if: github.event_name == 'pull_request'", workflow)
+        self.assertIn("ref: ${{ github.sha }}", workflow)
+        self.assertIn("path: .ci-merge-acceptance", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("(cd .ci-merge-acceptance && python3 -m unittest -v tests.test_ci_pending_acceptance)", workflow)
+        self.assertIn("python3 -m unittest -v tests.test_ci_pending_acceptance", workflow)
 
         # The GitHub expression is evaluated by Actions; exercise the
         # branching with disposable files and a recording python3 stub.
@@ -66,14 +73,18 @@ class PendingAcceptanceCITests(unittest.TestCase):
                 self.assertEqual(run.returncode == 0, should_pass, run.stderr)
                 observed = trace.read_text(encoding="utf-8").splitlines() if trace.exists() else []
                 expected = [f"-m unittest -v {name}" for name in triggered]
-                if should_pass:
-                    expected.append("-m unittest -v tests.test_ci_pending_acceptance")
                 self.assertEqual(observed, expected)
 
     def test_core_ci_and_permissions_unchanged(self):
         text = VALIDATE.read_text(encoding="utf-8")
         self.assertEqual(text.count("name: Validate / Pruebas y smoke Chrome"), 1)
         self.assertIn("  contents: read", text)
+        write_scope = r"(?mi)^[ \\t]*[\\w-]+:[ \\t]*write(?:-all)?[ \\t]*(?:#.*)?$"
+        self.assertNotRegex(text, write_scope)
+        for extra in ("  actions: write\\n", "  contents: write\\n", "permissions: write-all\\n"):
+            with self.subTest(extra=extra):
+                modified = text.replace("  contents: read\\n", "  contents: read\\n" + extra, 1)
+                self.assertRegex(modified, write_scope)
         self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", text)
         self.assertIn("npm ci --ignore-scripts", text)
         self.assertIn("- run: npm test", text)
