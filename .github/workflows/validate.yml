@@ -28,6 +28,15 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: python3 -m unittest discover -s tests -p 'test_validate_required_check.py' -v
+      - name: Ejecutar aceptación #258 y regresiones CI #267
+        run: |
+          set -euo pipefail
+          if [ -f docs/lista-salida-produccion.md ] || [ -f tests/test_lista_salida_produccion.py ]; then
+            test -f docs/lista-salida-produccion.md
+            test -f tests/test_lista_salida_produccion.py
+            python3 -m unittest -v tests.test_lista_salida_produccion
+          fi
+          python3 -m unittest -v tests.test_ci_salida_quality
       - name: Exigir checkout del HEAD exacto del autor para aceptación #240
         run: |
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}" || {
