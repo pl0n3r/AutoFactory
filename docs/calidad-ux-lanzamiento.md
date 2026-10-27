@@ -38,4 +38,6 @@ Para pasar los estados **PENDIENTE_REAL** deben observarse Chrome MV3 instalado,
 
 Los tests estáticos no acreditan foco dinámico ni interacción real, estados con gradientes ni compatibilidad de reflow/zoom. Conservar `UNKNOWN` hasta prueba física de cada navegador y su extensión, en particular Safari GUI [#122](https://github.com/pl0n3r/AutoFactory/issues/122). El puente con ControlBot permanece bloqueado por D-061/#242/B; esta hoja no activa nada, no libera secretos, no publica release, no toca datos reales y no demuestra `VALIDATED_IN_PRODUCTION`.
 
-Reversión: squash-revert del documento y del test. El workflow de aceptación se agregará únicamente tras ampliación V3 autenticada con PR abierto.
+**Workflow offline autorizado:** `.github/workflows/qa-popup-offline.yml` ejecuta exclusivamente las 3 AC Python contra el SHA exacto, con `permissions: contents: read`, sin instalar extensiones ni navegar; su éxito no certifica Safari/Chrome instalados.
+
+**Reversión:** squash-revert de los tres archivos (documento, test y workflow QA offline), incorporados bajo reserva V3 auténtica renovada. No cambia popup, background, CI compartido ni runtime.
