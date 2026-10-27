@@ -1,0 +1,43 @@
+name: QA popup offline acceptance
+
+on:
+  pull_request:
+    paths:
+      - "docs/calidad-ux-lanzamiento.md"
+      - "tests/test_calidad_ux_lanzamiento.py"
+      - ".github/workflows/qa-popup-offline.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/calidad-ux-lanzamiento.md"
+      - "tests/test_calidad_ux_lanzamiento.py"
+      - ".github/workflows/qa-popup-offline.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-popup-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  acceptance:
+    name: QA popup / Aceptación offline AC-01-03
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact HEAD
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Evaluar las tres AC en Python sin browser ni red
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test -f docs/calidad-ux-lanzamiento.md
+          test -f tests/test_calidad_ux_lanzamiento.py
+          python3 -m unittest -v \
+            tests.test_calidad_ux_lanzamiento.CalidadUxLanzamientoTests.test_matriz_y_umbrales_reproducibles \
+            tests.test_calidad_ux_lanzamiento.CalidadUxLanzamientoTests.test_negativos_foco_tamano_y_latencia \
+            tests.test_calidad_ux_lanzamiento.CalidadUxLanzamientoTests.test_deuda_safari_y_limitaciones_reales
