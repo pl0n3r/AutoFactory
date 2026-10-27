@@ -79,11 +79,11 @@ class PendingAcceptanceCITests(unittest.TestCase):
         text = VALIDATE.read_text(encoding="utf-8")
         self.assertEqual(text.count("name: Validate / Pruebas y smoke Chrome"), 1)
         self.assertIn("  contents: read", text)
-        write_scope = r"(?mi)^[ \\t]*[\\w-]+:[ \\t]*write(?:-all)?[ \\t]*(?:#.*)?$"
+        write_scope = r"(?mi)^[ \t]*[\w-]+:[ \t]*write(?:-all)?[ \t]*(?:#.*)?$"
         self.assertNotRegex(text, write_scope)
-        for extra in ("  actions: write\\n", "  contents: write\\n", "permissions: write-all\\n"):
+        for extra in ("  actions: write\n", "  contents: write\n", "permissions: write-all\n"):
             with self.subTest(extra=extra):
-                modified = text.replace("  contents: read\\n", "  contents: read\\n" + extra, 1)
+                modified = text.replace("  contents: read\n", "  contents: read\n" + extra, 1)
                 self.assertRegex(modified, write_scope)
         self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", text)
         self.assertIn("npm ci --ignore-scripts", text)
