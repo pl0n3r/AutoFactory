@@ -1,0 +1,44 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  scan:
+    name: CodeQL / Análisis JS y Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout HEAD exacto
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
+        with:
+          languages: javascript-typescript,python
+      - name: Analizar a SARIF local sin subir datos
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
+        with:
+          output: codeql-results
+          upload: never
+          upload-database: false
+      - name: Recuperar parser de seguridad Factory fijado a commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: pl0n3r/factory
+          ref: 9c12107bd64ef4bbc45b3baf4f961a6ce6f14664
+          path: .factory
+          persist-credentials: false
+      - name: Fallar cerrado ante SARIF inválido o vulnerabilidades graves
+        run: python3 .factory/scripts/codeql_sarif_summary.py --fail-severity 7.0
