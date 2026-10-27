@@ -46,6 +46,6 @@ En `main` ya existen módulos aislados `factory-control-pairing.js`, `factory-co
 
 ## Evidencia mínima y criterio de cierre de #281
 
-El test `tests/test_particion_roadmaps_puente.py` valida las 12 filas del snapshot (una hoja offline más su gate real por roadmap), URLs reales de issues y PRs fusionados, dependencias correctas, ausencia de activación y clasificación fail-closed. `python3 -m unittest -v tests.test_particion_roadmaps_puente` valida la matriz **sin** red ni credenciales. Las pruebas de cada hoja #282–#287 se ejecutarán únicamente dentro de su propia V3/PR y no se consideran realizadas por la partición.
+La validación documental se realiza **sin conexión** a ControlBot, sin cuentas ni datos reales. El test `tests/test_particion_roadmaps_puente.py` valida las 12 filas del snapshot (una hoja offline más su gate real por roadmap), URLs reales de issues y PRs fusionados, dependencias correctas, ausencia de activación y clasificación fail-closed. `python3 -m unittest -v tests.test_particion_roadmaps_puente` valida la matriz **sin** red ni credenciales. Las pruebas de cada hoja #282–#287 se ejecutarán únicamente dentro de su propia V3/PR y no se consideran realizadas por la partición.
 
 Cierre de #281 = issues canónicos materializados + matriz y prueba de partición + CI `Validate / Pruebas y smoke Chrome` y seguridad en SHA exacto. **NO** implica cerrar #129–#134 ni #1, ni hacer pairing, tráfico o go-live.
