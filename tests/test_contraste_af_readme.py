@@ -89,8 +89,9 @@ class ContrasteTests(unittest.TestCase):
                 self.assertEqual("README.md", row[1].split(" — ", 1)[0])
                 self.assertIn(self.matrix[key][1], row[1])
                 self.assertIn(key, row[4])
+        duplicate = self.doc.replace("README-01-01 |", "README-01-02 |", 1)
         with self.assertRaisesRegex(ValueError, "repetido"):
-            read_report(self.doc.replace("README-01-01 |", "README-01-02 |", 1))
+            read_report(duplicate)
 
     def test_cubierto_enlaza_prueba_existente(self):
         verify(self.report, self.matrix)
