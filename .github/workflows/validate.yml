@@ -59,5 +59,11 @@ jobs:
           fi
       - name: Real Chrome MV3 extension-load smoke (non-release checkout)
         run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"
+      - name: Verificar presentación local SIN AVANCE (AC-01/02/04)
+        run: |
+          python3 -m unittest -v \
+            tests.test_local_progress_presentation.LocalProgressPresentationTests.test_offline_state_labels_without_chat_payload \
+            tests.test_local_progress_presentation.LocalProgressPresentationTests.test_unknown_and_disabled_without_runtime_or_network \
+            tests.test_local_progress_presentation.LocalProgressPresentationTests.test_popup_source_mirrors_safari
       - run: node test-workflow-hardening.cjs
       - run: node test-release-evidence.cjs

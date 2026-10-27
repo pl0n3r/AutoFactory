@@ -4,6 +4,25 @@ const SETTINGS_DEFAULT_VERSION = 2;
 const DEFAULTS = { prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION, settingsDefaultVersion: 0, delaySeconds: 15, masterEnabled: false, followScroll: true, scrollStepMin: 90, scrollStepMax: 320, scrollPollMs: 220, scrollStableChecks: 8, scrollMaxSeconds: 45, manualScrollPauseSeconds: 20, autoReload: true, reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'gpt-6', reasoningLevel: 'high', conversationMode: 'chat' };
 const extensionApi = globalThis.chrome || globalThis.browser;
 const $ = id => document.getElementById(id);
+// LOCAL_PROGRESS_VIEW_START
+const LOCAL_PROGRESS_LABELS = Object.freeze({
+  ACTIVA: 'ACTIVA · muestra sintética',
+  SIN_AVANCE: 'SIN_AVANCE · muestra sintética',
+  UNKNOWN: 'UNKNOWN · sin fuente conectada'
+});
+function renderLocalTabProgress(sample = 'UNKNOWN') {
+  const state = typeof sample === 'string' && Object.hasOwn(LOCAL_PROGRESS_LABELS, sample)
+    ? sample : 'UNKNOWN';
+  const target = $('local-progress-status');
+  if (!target) return 'UNKNOWN';
+  target.textContent = LOCAL_PROGRESS_LABELS[state];
+  target.dataset.state = state;
+  target.classList.toggle('active', state === 'ACTIVA');
+  target.classList.toggle('paused', state !== 'ACTIVA');
+  return state;
+}
+renderLocalTabProgress();
+// LOCAL_PROGRESS_VIEW_END
 const fields = { prompt: $('prompt'), delaySeconds: $('delay'), modelTarget: $('model-target'), reasoningLevel: $('reasoning-level'), followScroll: $('follow-scroll'), scrollStepMin: $('step-min'), scrollStepMax: $('step-max'), scrollPollMs: $('poll-ms'), scrollStableChecks: $('stable-checks'), scrollMaxSeconds: $('max-seconds'), manualScrollPauseSeconds: $('manual-pause'), autoReload: $('auto-reload'), reloadCooldownMinutes: $('reload-cooldown'), periodicReload: $('periodic-reload'), periodicReloadMinutes: $('periodic-reload-minutes') };
 const extensionVersion = extensionApi.runtime.getManifest().version;
 let selectedConversationMode = 'chat';
