@@ -73,6 +73,9 @@ async function message(payload) {
   });
 }
 function showStatus(text,enabled){const status=$('status');status.textContent=text;status.classList.toggle('active',enabled===true);status.classList.toggle('paused',enabled===false);}
+if (globalThis.ChatGPTAutopilotFactoryPairingPreview) {
+  globalThis.ChatGPTAutopilotFactoryPairingPreview.mountPreview(document);
+}
 const factoryControlBridgeStatus=$('factory-control-bridge-status');
 const factoryControlPair=$('factory-control-pair');
 const factoryControlRevoke=$('factory-control-revoke');
