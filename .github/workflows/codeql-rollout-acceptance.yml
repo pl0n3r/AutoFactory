@@ -1,0 +1,61 @@
+name: CodeQL rollout acceptance
+
+on:
+  pull_request:
+    paths:
+      - "docs/runbook-rollout-extension.md"
+      - "tests/test_runbook_rollout_extension.py"
+      - ".github/workflows/codeql-rollout-acceptance.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/runbook-rollout-extension.md"
+      - "tests/test_runbook_rollout_extension.py"
+      - ".github/workflows/codeql-rollout-acceptance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-rollout-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  scan:
+    name: CodeQL rollout / Aceptación y seguridad
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout HEAD exacto
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Ejecutar AC-01/02/03 de #262 (fail-closed)
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test -f docs/runbook-rollout-extension.md
+          test -f tests/test_runbook_rollout_extension.py
+          python3 -m unittest -v tests.test_runbook_rollout_extension
+      - name: Inicializar CodeQL JS y Python
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
+        with:
+          languages: javascript-typescript,python
+      - name: Analizar sin subir datos
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
+        with:
+          output: codeql-results
+          upload: never
+          upload-database: false
+      - name: Parser de seguridad Factory fijado a SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: pl0n3r/factory
+          ref: 9c12107bd64ef4bbc45b3baf4f961a6ce6f14664
+          path: .factory
+          persist-credentials: false
+      - name: Bloquear SARIF inválido o severidad >= 7.0
+        run: |
+          set -euo pipefail
+          python3 .factory/scripts/codeql_sarif_summary.py --fail-severity 7.0

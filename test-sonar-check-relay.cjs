@@ -4,6 +4,25 @@ const assert = require('node:assert/strict');
 const { plain, code, isSonarCheck, choosePR, render, runRelay } =
   require('./scripts/sonar-check-relay.cjs');
 
+// Regression #272: atomically escape untrusted Sonar annotations.
+const adversarial = '<svg>@all**[profile]' + '\r\n\t' + '&' + String.fromCharCode(96);
+const expected = '&lt;svg&gt;＠all\\*\\*\\[profile\\] &amp;' + String.fromCharCode(92, 96);
+assert.equal(plain(adversarial), expected);
+assert.equal(plain('\r\n\t'), ' ');
+assert.equal(plain('<&>'), '&lt;&amp;&gt;');
+assert.equal(plain('@everyone * _ [ ]'), '＠everyone \\* \\_ \\[ \\]');
+assert.ok(!plain('<script>@all</script>').includes('<script>'));
+assert.ok(!plain('[x](javascript:alert(1))').includes('[x]'));
+assert.ok(!plain('@all').includes('@all'));
+const sonarFixture = { id: 123, head_sha: 'a'.repeat(40),
+  name: 'SonarCloud Code Analysis', app: { slug: 'sonarqubecloud' },
+  status: 'completed', conclusion: 'failure' };
+const sanitized = render(sonarFixture, [
+  { path: '<svg>', start_line: 4, title: '@all <script>', message: '[X]*' }
+], 1);
+assert.ok(sanitized.includes('&lt;script&gt;'));
+assert.ok(!sanitized.includes('<script>'));
+
 const SHA = 'a'.repeat(40);
 const OTHER_SHA = 'b'.repeat(40);
 const REPO = 'pl0n3r/AutoFactory';

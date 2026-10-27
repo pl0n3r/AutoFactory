@@ -10,12 +10,24 @@ const MAX_PR_SCAN = 30;
 const MAX_ANNOTATIONS = 30;
 
 function plain(value, limit = 260) {
-  return String(value ?? '').slice(0, limit)
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/[<>&`*_[\]@]/g, character => ({
-      '<': '&lt;', '>': '&gt;', '&': '&amp;', '`': '\\`',
-      '*': '\\*', '_': '\\_', '[': '\\[', ']': '\\]', '@': '＠'
-    })[character] || character);
+  // Atomic character encoder; generated entities/escapes are never reparsed.
+  const escaped = {
+    '<': '&lt;', '>': '&gt;', '&': '&amp;',
+    '\u0060': '\u005c\u0060', '*': '\u005c*', '_': '\u005c_',
+    '[': '\u005c[', ']': '\u005c]', '@': '＠'
+  };
+  let out = '';
+  let control = false;
+  for (const ch of String(value ?? '').slice(0, limit)) {
+    if (ch === '\r' || ch === '\n' || ch === '\t') {
+      if (!control) out += ' ';
+      control = true;
+      continue;
+    }
+    control = false;
+    out += Object.prototype.hasOwnProperty.call(escaped, ch) ? escaped[ch] : ch;
+  }
+  return out;
 }
 function code(value, limit = 260) {
   return String(value ?? '').slice(0, limit)
