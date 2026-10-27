@@ -12,8 +12,8 @@ MATRIX = ROOT / "docs/matriz-cobertura.md"
 PREFIX = ("PROTO-", "DOC-", "AF1-AC-")
 SELF = "DOC-CONTRASTE-AF-PROTO-01"
 ARTIFACT = re.compile(r"`([^`]+)`; `([^`]+)`")
-MERGED = re.compile(r"https://github\\.com/pl0n3r/AutoFactory/pull/\\d+.*fusionad", re.I)
-LEAF = re.compile(r"https://github\\.com/pl0n3r/AutoFactory/issues/\\d+")
+MERGED = re.compile(r"https://github\.com/pl0n3r/AutoFactory/pull/\d+.*fusionad", re.I)
+LEAF = re.compile(r"https://github\.com/pl0n3r/AutoFactory/issues/\d+")
 
 
 def matrix_rows(contents: str) -> dict[str, list[str]]:
@@ -42,7 +42,7 @@ def report_rows(contents: str) -> dict[str, list[str]]:
         if not line.startswith("| "):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) != 5 or not re.fullmatch(r"(?:PROTO-\\d{2}|DOC-[A-Z0-9-]+|AF1-AC-\\d{2})", cells[0]):
+        if len(cells) != 5 or not re.fullmatch(r"(?:PROTO-\d{2}|DOC-[A-Z0-9-]+|AF1-AC-\d{2})", cells[0]):
             continue
         if cells[0] in result:
             raise ValueError("Veredicto repetido")
@@ -110,7 +110,7 @@ class ContrasteTests(unittest.TestCase):
         verify(self.report, self.matrix)
         for key, row in self.report.items():
             self.assertNotEqual("SIN_COBERTURA", row[3])
-            self.assertRegex(self.matrix[key][4], r"^\\[#\\d+\\]\\(https://github\\.com/pl0n3r/AutoFactory/issues/\\d+\\)$")
+            self.assertRegex(self.matrix[key][4], r"^\[#\d+\]\(https://github\.com/pl0n3r/AutoFactory/issues/\d+\)$")
         forged = {k: list(v) for k, v in self.report.items()}
         forged["PROTO-01"][3] = "SIN_COBERTURA"
         m = {k: list(v) for k, v in self.matrix.items()}
