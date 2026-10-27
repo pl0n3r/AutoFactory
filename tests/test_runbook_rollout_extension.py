@@ -20,7 +20,7 @@ def gates_from_document(source: str):
     if source.count(header) != 1 or source.count(separator) != 1:
         raise ValueError("Tabla de gates ausente o ambigua")
     table = source.split(header, 1)[1].split(separator, 1)[1]
-    table = table.split("\n## 3.", 1)[0].strip()
+    table = table.strip().split("\n\n", 1)[0]
     result = {}
     for line in table.splitlines():
         if not line.startswith("| ") or not line.endswith(" |"):
