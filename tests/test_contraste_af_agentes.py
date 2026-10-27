@@ -91,8 +91,9 @@ class ContrasteTests(unittest.TestCase):
         for key in expected:
             self.assertEqual("NO_VERIFICABLE", self.report[key][3])
             self.assertIn(key, self.matrix)
+        duplicado = self.report_text.replace("AGENTES-01-01", "AGENTES-01-02", 1)
         with self.assertRaises(ValueError):
-            report_rows(self.report_text.replace("AGENTES-01-01", "AGENTES-01-02", 1))
+            report_rows(duplicado)
 
     def test_cubierto_enlaza_prueba_existente(self):
         verify_coverage(self.report, self.matrix)
