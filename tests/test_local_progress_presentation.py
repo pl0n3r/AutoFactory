@@ -45,8 +45,8 @@ process.stdout.write(JSON.stringify({state, text:node.textContent, dataState:nod
         self.assertIn('id="local-progress-status"', markup)
         self.assertIn('aria-live="polite"', markup)
         self.assertIn('role="status"', markup)
-        self.assertNotIn('tabindex=', markup.split('id="local-progress-card"')[1].split('</section>',1)[0].lower())
-        for fixture, label in [("ACTIVA", "ACTIVA"), ("SIN_AVANCE", "SIN_AVANCE"), ("UNKNOWN", "UNKNOWN")]:
+        self.assertIn('tabindex="0"', markup.split('id="local-progress-card"')[1].split('</section>',1)[0].lower())
+        for fixture, label in [("ACTIVA", "ACTIVA"), ("SIN_AVANCE", "SIN AVANCE"), ("UNKNOWN", "UNKNOWN")]:
             with self.subTest(fixture=fixture):
                 result = self._render(fixture)
                 self.assertEqual(result["state"], fixture)
@@ -58,14 +58,14 @@ process.stdout.write(JSON.stringify({state, text:node.textContent, dataState:nod
         fragment = self._snippet()
         self.assertIn('textContent =', fragment)
         self.assertNotIn('innerHTML', fragment)
-        for forbidden in ('chrome.', '.tabs.', '.storage.', 'sendMessage', 'fetch(', 'cookie', 'conversation', 'localStorage'):
+        for forbidden in ('chrome.', '.tabs.', '.storage.', 'sendMessage', 'fetch(', 'cookie', 'conversation', 'localStorage', 'addEventListener', 'setTimeout', 'setInterval'):
             self.assertNotIn(forbidden, fragment)
 
     def test_unknown_and_disabled_without_runtime_or_network(self):
         markup = HTML.read_text(encoding="utf-8")
         self.assertIn('UNKNOWN · sin fuente conectada', markup)
         self.assertIn('Vista sintética, sin datos conectados', markup)
-        for value in (None, False, 0, [], {}, 'no-autorizado', ''):
+        for value in (None, False, 0, [], {}, ['ACTIVA', 'ACTIVA'], ['ACTIVA'], 'no-autorizado', ''):
             with self.subTest(value=value):
                 result = self._render(value)
                 self.assertEqual(result["state"], "UNKNOWN")

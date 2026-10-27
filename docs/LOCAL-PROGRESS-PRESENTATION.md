@@ -17,3 +17,5 @@ Los archivos popup.html y popup.js en la raíz y en safari/ChatGPT Autopilot Loc
 Comando: python3 -m unittest -v tests.test_local_progress_presentation
 
 El workflow Validate / Pruebas y smoke Chrome invoca los tres métodos nominales de aceptación, además de npm test y su smoke efímero de Chrome. No se cambia manifest, permisos, package version, release ni hosting. SonarCloud main #219 sigue con su fuente de hallazgos pendiente. D-061 y la decisión #242/B mantienen prohibido el puente real.
+
+El estado expone `tabindex="0"` para foco de teclado en Chrome y Safari. La pantalla muestra «SIN AVANCE» en español y preserva `SIN_AVANCE` como identificador interno.

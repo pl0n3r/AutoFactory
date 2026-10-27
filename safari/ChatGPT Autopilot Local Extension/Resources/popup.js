@@ -7,7 +7,7 @@ const $ = id => document.getElementById(id);
 // LOCAL_PROGRESS_VIEW_START
 const LOCAL_PROGRESS_LABELS = Object.freeze({
   ACTIVA: 'ACTIVA · muestra sintética',
-  SIN_AVANCE: 'SIN_AVANCE · muestra sintética',
+  SIN_AVANCE: 'SIN AVANCE · muestra sintética',
   UNKNOWN: 'UNKNOWN · sin fuente conectada'
 });
 function renderLocalTabProgress(sample = 'UNKNOWN') {
