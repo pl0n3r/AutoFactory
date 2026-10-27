@@ -87,8 +87,15 @@ class ReconciliacionIssuesTests(unittest.TestCase):
             "ref: ${{ github.event.pull_request.head.sha || github.sha }}",
             workflow,
         )
-        self.assertIn("path: .acceptance-head", workflow)
-        self.assertIn("working-directory: .acceptance-head", workflow)
+        # El checkout raíz debe apuntar al SHA autor; no tolerar un
+        # segundo checkout que el hardening compartido no inspeccionaría.
+        self.assertEqual(
+            1, workflow.count(
+                "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+            ),
+        )
+        self.assertNotIn("path: .acceptance-head", workflow)
+        self.assertNotIn("working-directory: .acceptance-head", workflow)
         self.assertIn('test "$(git rev-parse HEAD)" =', workflow)
         self.assertIn(
             "python3 -m unittest -v tests.test_reconciliacion_issues_20261024.ReconciliacionIssuesTests.test_acceptance",

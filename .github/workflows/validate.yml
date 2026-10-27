@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 20
@@ -27,14 +28,13 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: python3 -m unittest discover -s tests -p 'test_validate_required_check.py' -v
-      - name: Checkout del HEAD autor real para aceptación #240
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          path: .acceptance-head
-          persist-credentials: false
+      - name: Exigir checkout del HEAD exacto del autor para aceptación #240
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}" || {
+            echo "::error::La aceptación no está en HEAD exacto"
+            exit 1
+          }
       - name: Verificar aceptación del inventario #240 cuando esté presente
-        working-directory: .acceptance-head
         run: |
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}" || {
             echo "::error::La aceptación #240 no está en HEAD exacto"
@@ -48,7 +48,6 @@ jobs:
             python3 -m unittest -v tests.test_reconciliacion_issues_20261024.ReconciliacionIssuesTests.test_acceptance
           fi
       - name: Verificar aceptación offline SIN_AVANCE #246 cuando esté en el HEAD
-        working-directory: .acceptance-head
         run: |
           if [ -f local-tab-progress.js ] || [ -f test-local-tab-progress.cjs ] || [ -f tests/test_local_tab_progress.py ]; then
             test -f local-tab-progress.js && test -f test-local-tab-progress.cjs && test -f tests/test_local_tab_progress.py || {
