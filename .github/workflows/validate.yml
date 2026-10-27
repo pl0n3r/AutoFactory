@@ -80,7 +80,28 @@ jobs:
             test -f tests/test_permisos_extension_auditoria.py
             python3 -m unittest -v tests.test_permisos_extension_auditoria
           fi
-          python3 -m unittest -v tests.test_ci_pending_acceptance
+      - name: Preparar worktree del merge de PR con SHA autenticado
+        if: github.event_name == 'pull_request'
+        env:
+          MERGE_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          git fetch --no-tags --depth=1 origin "refs/pull/${PR_NUMBER}/merge"
+          test "$(git rev-parse FETCH_HEAD)" = "$MERGE_SHA"
+          git worktree add --detach .ci-merge-acceptance "$MERGE_SHA"
+          test "$(git -C .ci-merge-acceptance rev-parse HEAD)" = "$MERGE_SHA"
+      - name: Autocontrol de wiring de aceptación (merge PR o push)
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            test -f .ci-merge-acceptance/tests/test_ci_pending_acceptance.py
+            (cd .ci-merge-acceptance && python3 -m unittest -v tests.test_ci_pending_acceptance)
+          else
+            python3 -m unittest -v tests.test_ci_pending_acceptance
+          fi
       - name: Real Chrome MV3 extension-load smoke (non-release checkout)
         run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"
       - name: Verificar presentación local SIN AVANCE (AC-01/02/04)
