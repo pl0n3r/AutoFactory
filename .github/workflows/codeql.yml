@@ -41,4 +41,10 @@ jobs:
           path: .factory
           persist-credentials: false
       - name: Fallar cerrado ante SARIF inválido o vulnerabilidades graves
-        run: python3 .factory/scripts/codeql_sarif_summary.py --fail-severity 7.0
+        run: |
+          set -euo pipefail
+          if ! python3 .factory/scripts/codeql_sarif_summary.py --fail-severity 7.0; then
+            # Solo regla/severidad/ruta, nunca código fuente ni datos sensibles.
+            python3 -c 'import json; from pathlib import Path; p=Path("codeql-results/summary.json"); s=json.loads(p.read_text()) if p.is_file() else {}; [print("CodeQL: rule={} severity={} location={}".format(f.get("rule_id","?"), f.get("security_severity","?"), f.get("location","?"))) for f in s.get("findings",[])]'
+            exit 1
+          fi
