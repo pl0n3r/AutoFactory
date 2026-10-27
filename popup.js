@@ -73,6 +73,23 @@ async function message(payload) {
   });
 }
 function showStatus(text,enabled){const status=$('status');status.textContent=text;status.classList.toggle('active',enabled===true);status.classList.toggle('paused',enabled===false);}
+// Demo local: only hard-coded presentation, never a pairing command or credential.
+const previewLabels = Object.freeze({
+  desconectado: 'SIN CONEXIÓN · estado ficticio',
+  pendiente: 'PENDIENTE · estado ficticio',
+  denegado: 'DENEGADO · estado ficticio',
+  vencido: 'VENCIDO · estado ficticio',
+  revocado: 'REVOCADO · estado ficticio'
+});
+const previewSelector = $('factory-control-preview-state');
+const previewOutput = $('factory-control-preview-status');
+function renderPairingPreview() {
+  const state = previewSelector.value;
+  previewOutput.textContent = Object.hasOwn(previewLabels, state)
+    ? previewLabels[state] : 'UNKNOWN · simulación apagada';
+}
+previewSelector.addEventListener('change', renderPairingPreview);
+renderPairingPreview();
 const factoryControlBridgeStatus=$('factory-control-bridge-status');
 const factoryControlPair=$('factory-control-pair');
 const factoryControlRevoke=$('factory-control-revoke');
