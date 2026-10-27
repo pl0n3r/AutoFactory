@@ -55,18 +55,21 @@ class ParticionTests(unittest.TestCase):
         self.assertEqual(12, len(rows), "Se requiere hoja offline + gate real por roadmap")
         self.assertEqual(ROADMAPS, {record[0] for record in rows})
         self.assertEqual(
-            Counter((number, state) for number, _, state, _, _ in rows),
             Counter((number, state) for number in ROADMAPS for state in STATES),
+            Counter((number, state) for number, _, state, _, _ in rows),
         )
         self.assertIn("| Roadmap | Hoja | Estado | Dependencia | Issue |", document())
-        self.assertEqual(len(set((row[0], row[2]) for row in rows)), 12)
+        self.assertEqual(12, len(set((row[0], row[2]) for row in rows)))
         for number, name, state, dependency, issue in rows:
             with self.subTest(roadmap=number, state=state):
                 self.assertIn(state, STATES)
                 self.assertGreater(len(name), 15)
                 self.assertGreater(len(dependency), 12)
                 self.assertNotEqual("UNKNOWN", dependency.upper())
-                self.assertNotEqual(number, issue) if state == "DISPONIBLE_OFFLINE" else self.assertEqual(number, issue)
+                if state == "DISPONIBLE_OFFLINE":
+                    self.assertNotEqual(number, issue)
+                else:
+                    self.assertEqual(number, issue)
 
     def test_cada_hoja_tiene_issue_real(self) -> None:
         rows = records()
@@ -80,7 +83,7 @@ class ParticionTests(unittest.TestCase):
                     seen_leaves.add(issue)
                 else:
                     self.assertEqual(number, issue)
-        self.assertEqual(seen_leaves, set(LEAVES.values()))
+        self.assertEqual(set(LEAVES.values()), seen_leaves)
         # Historical slices are explicitly labeled merged, not inferred from
         # the check status of an unrelated PR or from CI of this partition.
         urls = {int(match.group("num")) for match in PR_LINK.finditer(document())}
