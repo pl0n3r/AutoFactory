@@ -38,7 +38,7 @@
 
 ## 4. Rollback reversible y post-rollback
 
-1. **Abortar y aislar:** detener nuevas instalaciones/cohortes y deshabilitar únicamente el rollout del canal afectado. No desactivar seguridad, no elevar permisos, no borrar versiones ni borrar assets existentes. El kill switch local/puente ControlBot no autoriza tráfico remoto: D-061 permanece vigente.
+1. **Abortar y aislar:** detener nuevas instalaciones/cohortes y deshabilitar únicamente el rollout del canal afectado. No desactivar seguridad, no elevar permisos, no borrar versiones y no borrar assets existentes. El kill switch local/puente ControlBot no autoriza tráfico remoto: D-061 permanece vigente.
 2. **Elegir versión anterior:** recuperar **artefacto anterior instalable** previamente conservado, mismo tag, digest SHA-256 y firma/distribución de canal aprobado; confirmar compatibilidad y la posibilidad de reinstalar sin modificar el estado real de la extensión. Si la plataforma no permite downgrade no destructivo, **NO_GO**, conservar instalación actual aislada y documentar incidente, sin forzar sobrescritura.
 3. **Conservar estado local:** no sobrescribir `chrome.storage`, preferencias, datos reales, tabs/chat, tokens ni rutas de conversación; no ejecutar una migración inversa destructiva ni eliminar backups. No exportar ni registrar datos de conversación o secretos. Futuros mecanismos de respaldo/restauración requieren hoja específica [#260](https://github.com/pl0n3r/AutoFactory/issues/260), no quedan acreditados aquí.
 4. **Reinstalación autorizada:** restaurar versión anterior usando Chrome Web Store/canal aprobado y contenedor Safari firmado, con consentimiento y procedimientos de cada plataforma. Si implica un cambio de permisos, pedir nueva aprobación; prohibido bypass de controles.
