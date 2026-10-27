@@ -1,5 +1,6 @@
 """AutoFactory #277: proof that CI runs the two pending Python acceptance suites."""
 from pathlib import Path
+import re
 import os
 import subprocess
 import tempfile
@@ -36,9 +37,15 @@ class PendingAcceptanceCITests(unittest.TestCase):
         self.assertNotIn("python3 -m unittest -v tests.test_ci_pending_acceptance", script)
         workflow = VALIDATE.read_text(encoding="utf-8")
         self.assertIn("if: github.event_name == 'pull_request'", workflow)
-        self.assertIn("ref: ${{ github.sha }}", workflow)
-        self.assertIn("path: .ci-merge-acceptance", workflow)
+        # The author HEAD is intentionally the only checkout: legacy #240
+        # enforces this and old PR HEADs lack this self-test module.
+        self.assertEqual(workflow.count("uses: actions/checkout@"), 1)
         self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("git fetch --no-tags --depth=1 origin", workflow)
+        self.assertIn('test "$(git rev-parse FETCH_HEAD)" = "$MERGE_SHA"', workflow)
+        self.assertIn('git worktree add --detach .ci-merge-acceptance "$MERGE_SHA"', workflow)
+        self.assertIn('test "$(git -C .ci-merge-acceptance rev-parse HEAD)" = "$MERGE_SHA"', workflow)
+        self.assertIn("test -f .ci-merge-acceptance/tests/test_ci_pending_acceptance.py", workflow)
         self.assertIn("(cd .ci-merge-acceptance && python3 -m unittest -v tests.test_ci_pending_acceptance)", workflow)
         self.assertIn("python3 -m unittest -v tests.test_ci_pending_acceptance", workflow)
 
@@ -75,16 +82,33 @@ class PendingAcceptanceCITests(unittest.TestCase):
                 expected = [f"-m unittest -v {name}" for name in triggered]
                 self.assertEqual(observed, expected)
 
+    def _assert_read_only_permissions(self, workflow):
+        scopes = re.findall(r"(?m)^permissions:\n((?:^  [^\n]+\n)+)", workflow)
+        self.assertEqual(len(scopes), 1, "El workflow debe declarar un solo permiso")
+        self.assertEqual(scopes[0].splitlines(), ["  contents: read"])
+        self.assertEqual(
+            len(re.findall(r"(?m)^\s*permissions:", workflow)), 1,
+            "Ningún job puede elevar permisos de GITHUB_TOKEN",
+        )
+        self.assertNotRegex(
+            workflow, r"(?mi)^\s*[\w-]+:\s*write(?:-all)?\s*(?:#.*)?$",
+        )
+
     def test_core_ci_and_permissions_unchanged(self):
         text = VALIDATE.read_text(encoding="utf-8")
         self.assertEqual(text.count("name: Validate / Pruebas y smoke Chrome"), 1)
-        self.assertIn("  contents: read", text)
-        write_scope = r"(?mi)^[ \t]*[\w-]+:[ \t]*write(?:-all)?[ \t]*(?:#.*)?$"
-        self.assertNotRegex(text, write_scope)
-        for extra in ("  actions: write\n", "  contents: write\n", "permissions: write-all\n"):
-            with self.subTest(extra=extra):
-                modified = text.replace("  contents: read\n", "  contents: read\n" + extra, 1)
-                self.assertRegex(modified, write_scope)
+        self._assert_read_only_permissions(text)
+        original = "permissions:\n  contents: read\n"
+        self.assertIn(original, text)
+        for broken in (
+            text.replace(original, "permissions:\n  contents: write\n", 1),
+            text.replace(original, "permissions:\n  contents: read\n  actions: write\n", 1),
+            text.replace(original, "permissions: write-all\n", 1),
+            text.replace("    steps:\n", "    permissions:\n      checks: write\n    steps:\n", 1),
+        ):
+            with self.subTest(broken=broken[:100]):
+                with self.assertRaises(AssertionError):
+                    self._assert_read_only_permissions(broken)
         self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", text)
         self.assertIn("npm ci --ignore-scripts", text)
         self.assertIn("- run: npm test", text)

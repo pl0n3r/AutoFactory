@@ -80,13 +80,19 @@ jobs:
             test -f tests/test_permisos_extension_auditoria.py
             python3 -m unittest -v tests.test_permisos_extension_auditoria
           fi
-      - name: Obtener merge sintético de PR para autocontrol de CI
+      - name: Preparar worktree del merge de PR con SHA autenticado
         if: github.event_name == 'pull_request'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-          ref: ${{ github.sha }}
-          path: .ci-merge-acceptance
+        env:
+          MERGE_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          [[ "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]
+          git fetch --no-tags --depth=1 origin "refs/pull/${PR_NUMBER}/merge"
+          test "$(git rev-parse FETCH_HEAD)" = "$MERGE_SHA"
+          git worktree add --detach .ci-merge-acceptance "$MERGE_SHA"
+          test "$(git -C .ci-merge-acceptance rev-parse HEAD)" = "$MERGE_SHA"
       - name: Autocontrol de wiring de aceptación (merge PR o push)
         run: |
           set -euo pipefail
