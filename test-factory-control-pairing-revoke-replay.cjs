@@ -5,6 +5,11 @@ const { simulateSyntheticRevokeReplay } =
 
 async function main() {
   const revoked = await simulateSyntheticRevokeReplay('revoked');
+  // Only public result codes and booleans: safe CI diagnostic, never handles.
+  console.log('revoke-replay fixture state: ' + JSON.stringify({
+    first: revoked.first, revocation: revoked.revocation,
+    before: revoked.before, after: revoked.after, replay: revoked.replay
+  }));
   assert.deepEqual(revoked.first, { ok: true, code: 'paired' });
   assert.deepEqual(revoked.revocation, { ok: true, code: 'revoked' });
   assert.equal(revoked.before.credentialStored, true);
