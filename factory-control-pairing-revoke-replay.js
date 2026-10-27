@@ -54,7 +54,7 @@ function syntheticSession(state) {
   });
 
   // The adapter models the already-merged credential store without Chrome APIs.
-  return createPersistedPairingContract({
+  const persisted = createPersistedPairingContract({
     pairing,
     credentialStore: {
       save: async row => {
@@ -74,6 +74,7 @@ function syntheticSession(state) {
     auditStore: { append: async entry =>
       ['pairing_compensation', 'pairing_revocation'].includes(entry.event) }
   });
+  return Object.freeze({ pairing, persisted });
 }
 
 /** Replay a fictitious challenge against a newly constructed pairing session. */
@@ -90,12 +91,12 @@ async function simulateSyntheticRevokeReplay(mode) {
   let first = null;
   let revocation = null;
   if (mode === 'revoked' || mode === 'consumed') {
-    first = await initial.pair({ profileAlias: PROFILE, code: PIN });
+    first = await initial.persisted.pair({ profileAlias: PROFILE, code: PIN });
   }
   const before = publicState(state);
 
   if (mode === 'revoked') {
-    revocation = await initial.revoke({ profileAlias: PROFILE, credentialId: HANDLE });
+    revocation = await initial.persisted.revoke({ profileAlias: PROFILE, credentialId: HANDLE });
   } else if (mode === 'expired') {
     state.expired = true;
   } else if (mode === 'unknown') {
@@ -105,10 +106,14 @@ async function simulateSyntheticRevokeReplay(mode) {
   // Simulated restart: only the *fictitious* durable backing store survives.
   state = structuredClone(state);
   const after = publicState(state);
-  const replay = await syntheticSession(state).pair({
-    profileAlias: PROFILE, code: PIN
-  });
-  return Object.freeze({ scenario: mode, before, after, first, revocation, replay });
+  const restarted = syntheticSession(state);
+  // Pairing yields the specific fixed revocation/replay code. The persisted
+  // public boundary may collapse an ambiguous/invalid result to 'failed';
+  // neither path may reissue a credential after revocation or reuse.
+  const replay = await restarted.pairing.pair({ profileAlias: PROFILE, code: PIN });
+  const persistedReplay = await restarted.persisted.pair({ profileAlias: PROFILE, code: PIN });
+  return Object.freeze({ scenario: mode, before, after, first, revocation,
+    replay, persistedReplay });
 }
 
 module.exports = Object.freeze({ simulateSyntheticRevokeReplay });
