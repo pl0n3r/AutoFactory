@@ -47,6 +47,17 @@ jobs:
             fi
             python3 -m unittest -v tests.test_reconciliacion_issues_20261024.ReconciliacionIssuesTests.test_acceptance
           fi
+      - name: Verificar aceptación offline SIN_AVANCE #246 cuando esté en el HEAD
+        working-directory: .acceptance-head
+        run: |
+          if [ -f local-tab-progress.js ] || [ -f test-local-tab-progress.cjs ] || [ -f tests/test_local_tab_progress.py ]; then
+            test -f local-tab-progress.js && test -f test-local-tab-progress.cjs && test -f tests/test_local_tab_progress.py || {
+              echo "::error::Contrato local #246 incompleto en HEAD"
+              exit 1
+            }
+            node test-local-tab-progress.cjs
+            python3 -m unittest -v tests.test_local_tab_progress.LocalTabProgressTests.test_no_progress_requires_threshold_and_stable_fingerprint tests.test_local_tab_progress.LocalTabProgressTests.test_fresh_activity_resets_state_and_excludes_chat_payload
+          fi
       - name: Real Chrome MV3 extension-load smoke (non-release checkout)
         run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"
       - run: node test-workflow-hardening.cjs
