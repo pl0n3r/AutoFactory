@@ -29,7 +29,7 @@ const popup = fs.readFileSync(path.join(root, 'popup.js'), 'utf8');
 const dom = new JSDOM(html, { url: 'https://extension.test/', runScripts: 'outside-only' });
 const { document, Event } = dom.window;
 assert.match(html, /SIMULACIÓN · OFF/);
-assert.match(html, /<script src="factory-control-pairing-preview\.js"><\/script><script src="popup\.js"><\/script>/);
+assert.match(html, /<script src="factory-control-pairing-preview\.js"><\/script><script src="factory-control-local-commands\.js"><\/script><script src="popup\.js"><\/script>/);
 assert.match(popup, /ChatGPTAutopilotFactoryPairingPreview\.mountPreview\(document\)/);
 assert.doesNotMatch(source, /\bfetch\s*\(|\bXMLHttpRequest\b|\bchrome\.runtime\b|\bstorage\b/);
 const select = document.getElementById('factory-control-preview-state');
