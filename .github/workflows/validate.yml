@@ -66,6 +66,21 @@ jobs:
             node test-local-tab-progress.cjs
             python3 -m unittest -v tests.test_local_tab_progress.LocalTabProgressTests.test_no_progress_requires_threshold_and_stable_fingerprint tests.test_local_tab_progress.LocalTabProgressTests.test_fresh_activity_resets_state_and_excludes_chat_payload
           fi
+      - name: Ejecutar aceptación offline #260 y #265 en checkout exacto
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          if [ -f docs/local-recovery.md ] || [ -f tests/test_local_recovery_contract.py ]; then
+            test -f docs/local-recovery.md
+            test -f tests/test_local_recovery_contract.py
+            python3 -m unittest -v tests.test_local_recovery_contract
+          fi
+          if [ -f docs/permisos-extension-auditoria.md ] || [ -f tests/test_permisos_extension_auditoria.py ]; then
+            test -f docs/permisos-extension-auditoria.md
+            test -f tests/test_permisos_extension_auditoria.py
+            python3 -m unittest -v tests.test_permisos_extension_auditoria
+          fi
+          python3 -m unittest -v tests.test_ci_pending_acceptance
       - name: Real Chrome MV3 extension-load smoke (non-release checkout)
         run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"
       - name: Verificar presentación local SIN AVANCE (AC-01/02/04)
