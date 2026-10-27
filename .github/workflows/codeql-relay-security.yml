@@ -1,0 +1,62 @@
+name: CodeQL relay security
+
+on:
+  pull_request:
+    paths:
+      - "scripts/sonar-check-relay.cjs"
+      - "test-sonar-check-relay.cjs"
+      - "tests/test_sonar_relay_sanitization.py"
+      - ".github/workflows/codeql-relay-security.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/sonar-check-relay.cjs"
+      - "test-sonar-check-relay.cjs"
+      - "tests/test_sonar_relay_sanitization.py"
+      - ".github/workflows/codeql-relay-security.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-relay-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  scan:
+    name: CodeQL relay / Seguridad JS y Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout de HEAD exacto
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exigir HEAD exacto y regresiones del relay
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          node test-sonar-check-relay.cjs
+          python3 -m unittest -v tests.test_sonar_relay_sanitization
+      - name: Inicializar CodeQL JS/Python
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
+        with:
+          languages: javascript-typescript,python
+      - name: Analizar sin subir SARIF ni base de datos
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370
+        with:
+          output: codeql-results
+          upload: never
+          upload-database: false
+      - name: Fijar el parser Factory de seguridad
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: pl0n3r/factory
+          ref: 9c12107bd64ef4bbc45b3baf4f961a6ce6f14664
+          path: .factory
+          persist-credentials: false
+      - name: Fallar cerrado ante SARIF inválido o severidad >= 7.0
+        run: |
+          set -euo pipefail
+          python3 .factory/scripts/codeql_sarif_summary.py --fail-severity 7.0
