@@ -17,9 +17,9 @@
 <section class="card" id="account-status-preview" aria-label="Estado sintético de cuenta">
   <div class="card-title">Estado de cuenta <span class="hint">SIMULACIÓN · OFF</span></div>
   <div class="hint">Ejemplos inventados · NO CONECTADO · no utiliza credenciales ni observa mensajes.</div>
-  <div class="details"><b>Ejemplo de límite</b> <output id="account-status-preview-limit" role="status" aria-live="polite">UNKNOWN · SIMULACIÓN · OFF</output></div>
-  <div class="details"><b>Ejemplo de sesión cerrada</b> <output id="account-status-preview-login" role="status" aria-live="polite">UNKNOWN · SIMULACIÓN · OFF</output></div>
-  <div class="details"><b>Sin evidencia</b> <output id="account-status-preview-unknown" role="status" aria-live="polite">UNKNOWN · SIMULACIÓN · OFF</output></div>
+  <div class="details"><b>Ejemplo de límite</b> <output id="account-status-preview-limit" aria-live="polite">UNKNOWN · SIMULACIÓN · OFF</output></div>
+  <div class="details"><b>Ejemplo de sesión cerrada</b> <output id="account-status-preview-login" aria-live="polite">UNKNOWN · SIMULACIÓN · OFF</output></div>
+  <div class="details"><b>Sin evidencia</b> <output id="account-status-preview-unknown" aria-live="polite">UNKNOWN · SIMULACIÓN · OFF</output></div>
   <p class="hint">Vista de prueba. No consulta cuentas reales, no solicita iniciar sesión y no envía órdenes.</p>
 </section>
 <section class="card"><div class="card-title">Recuperación de página</div><div class="toggle"><div><b>Recargar ante un bloqueo</b><div class="hint">Solo ante conexión o interfaz bloqueada</div></div><input id="auto-reload" type="checkbox"></div><label for="reload-cooldown">Intervalo mínimo entre recargas por error (minutos)</label><input id="reload-cooldown" type="number" min="1" max="60"><hr style="border:0;border-top:1px solid #263244;margin:14px 0"><div class="toggle"><div><b>Refresh periódico</b><div class="hint">Al vencer, espera la respuesta activa y luego recarga</div></div><input id="periodic-reload" type="checkbox"></div><label for="periodic-reload-minutes">Recargar cada (minutos)</label><input id="periodic-reload-minutes" type="number" min="5" max="1440"></section>

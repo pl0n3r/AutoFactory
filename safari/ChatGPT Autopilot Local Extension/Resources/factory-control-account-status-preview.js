@@ -15,7 +15,7 @@
   function evaluate(fixture, nowMs) {
     if (!Number.isSafeInteger(nowMs) || nowMs < 0 || !fixture ||
         typeof fixture !== 'object' || Array.isArray(fixture) ||
-        Object.keys(fixture).sort().join(',') !== FIELDS) return UNKNOWN;
+        Object.keys(fixture).sort((left, right) => left.localeCompare(right)).join(',') !== FIELDS) return UNKNOWN;
     const { kind, observedAt, validUntil, resetAt } = fixture;
     if (kind !== 'limit' && kind !== 'requires_login') return UNKNOWN;
     if (!Number.isSafeInteger(observedAt) || observedAt < 0 || observedAt > nowMs ||
