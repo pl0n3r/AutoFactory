@@ -206,9 +206,15 @@ class BrechasAutofactory28Tests(unittest.TestCase):
             with self.subTest(identifier=identifier):
                 self.assertEqual(UNKNOWN, classify(identifier, broken))
                 self.assertEqual(UNKNOWN, classify(identifier, {}))
+        wrong_decisions = dict(source)
+        decision_tree = json.loads(source["decisiones.yml"])
+        updated = [decision for decision in decision_tree["decisions"]
+                   if decision.get("id") == "D-061"]
+        self.assertEqual(1, len(updated))
+        updated[0]["status"] = "inactive"
+        wrong_decisions["decisiones.yml"] = json.dumps(decision_tree)
+        self.assertEqual(UNKNOWN, classify("README-09-03", wrong_decisions))
         for path, original, replacement, identifier in (
-            ("decisiones.yml", '"status": "active"', '"status": "inactive"',
-             "README-09-03"),
             ("datos.yml", '"phase": "construccion"', '"phase": "live"',
              "README-09-03"),
             ("CHANGELOG.md", "## 1.7.38 —", "## stale —",
