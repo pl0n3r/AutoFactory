@@ -273,7 +273,7 @@ class BrechasAutofactory10Tests(unittest.TestCase):
                 self.assertEqual(UNKNOWN, evidence_state(None))
         session = SESSION_DOC.read_text(encoding="utf-8")
         release = RELEASE_DOC.read_text(encoding="utf-8")
-        self.assertIn("no acredita", session)
+        self.assertIn("no activación", session)
         self.assertIn("not sufficient evidence", release)
         self.assertIn("not by themselves satisfy", release)
         self.assertIn("ControlBot#20", release)
