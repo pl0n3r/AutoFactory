@@ -142,7 +142,7 @@ def classify(identifier: str, source: dict[str, str]) -> str:
         elif identifier == "README-09-03":
             if (not active_decision(source["decisiones.yml"], "D-060")
                     or json.loads(source["datos.yml"]).get("phase") != "construccion"
-                    or "fuentes" not in source["AGENTES.md"].lower()):
+                    or "fuente de verdad" not in source["AGENTES.md"].lower()):
                 return UNKNOWN
         elif identifier == "README-09-04":
             release = re.search(
