@@ -44,7 +44,7 @@ CASES = {
         "factory-control-instance-transport.js",
         "test-factory-control-instance-transport.cjs",
         "factory-control local-agent transport boundary: ok",
-        ("checkedMetadata", "metadata.authenticated", "handleFrame"),
+        ("checkedMetadata", "value.authenticated", "handleFrame"),
     ),
     "PROTO-17": (
         "factory-control-instance-transport.js",
