@@ -225,7 +225,7 @@ class BrechasAutofactory21Tests(unittest.TestCase):
                                  if x.startswith("| " + identifier + " |"))
             for candidate in (
                 report.replace(contrast_line + "\n", "", 1),
-                report + "\n" + contrast_line,
+                report.replace(contrast_line, contrast_line + "\n" + contrast_line, 1),
                 report.replace(contrast_line, contrast_line.replace("NO_VERIFICABLE", "CUBIERTO"), 1),
             ):
                 with self.subTest(identifier=identifier), self.assertRaisesRegex(
