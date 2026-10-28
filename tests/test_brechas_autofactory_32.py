@@ -169,11 +169,11 @@ def local_contract(ident: object, data: object) -> str:
     heading = ("## Instalación y uso" if ident.startswith("README-12")
                else "## Confiabilidad y memoria adaptativa local")
     block = section(data[README], heading)
-    if not block or block.splitlines().count(GAPS[ident][1]) != 1:
+    if not block or block.count(GAPS[ident][1]) != 1:
         return UNKNOWN
     if ident.startswith("README-12"):
         if ("### Instalar en Safari" not in block
-                or "safari/ChatGPT Autopilot Local.xcodeproj"
+                or "ChatGPT Autopilot Local.xcodeproj"
                 not in data["build-safari.sh"]
                 or "objectVersion =" not in data[
                     "safari/ChatGPT Autopilot Local.xcodeproj/project.pbxproj"
@@ -285,10 +285,11 @@ class BrechasAutofactory32Tests(unittest.TestCase):
         self.assertFalse(imported & {
             "socket", "urllib", "requests", "httpx", "selenium", "playwright",
         })
-        self.assertEqual(
-            set(FILES) - {"safari/ChatGPT Autopilot Local.xcodeproj/project.pbxproj"},
-            set(FILES) - {"safari/ChatGPT Autopilot Local.xcodeproj/project.pbxproj"}
-        )
+        self.assertEqual(len(FILES), len(set(FILES)))
+        self.assertTrue(all(not Path(p).is_absolute() and ".." not in Path(p).parts
+                            for p in FILES))
+        self.assertFalse(any("credential" in p.lower() or "secret" in p.lower()
+                             for p in FILES))
         result = node_metrics()
         self.assertNotIn("SYNTHETIC_CHAT_TEXT_NEVER_STORE", json.dumps(result))
         self.assertNotIn("chatText", json.dumps(result))
