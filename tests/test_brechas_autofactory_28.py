@@ -197,8 +197,12 @@ class BrechasAutofactory28Tests(unittest.TestCase):
         for identifier in GAPS:
             broken = dict(source)
             original = REFERENCES[identifier][0]
-            self.assertIn(original, broken[README])
-            broken[README] = broken[README].replace(original, "broken", 1)
+            target = next(line for line in source[README].splitlines()
+                          if line.startswith(
+                              "- **" + GAPS[identifier][0] + ":**"))
+            self.assertIn(original, target)
+            broken[README] = source[README].replace(
+                target, target.replace(original, "broken", 1), 1)
             with self.subTest(identifier=identifier):
                 self.assertEqual(UNKNOWN, classify(identifier, broken))
                 self.assertEqual(UNKNOWN, classify(identifier, {}))
