@@ -222,7 +222,7 @@ class BrechasAutofactory24Tests(unittest.TestCase):
         for identifier, (path, original, replacement) in mutations.items():
             damaged = dict(sources)
             self.assertIn(original, damaged[path])
-            damaged[path] = damaged[path].replace(original, replacement, 1)
+            damaged[path] = damaged[path].replace(original, replacement)
             with self.subTest(identifier=identifier):
                 self.assertEqual(contract(identifier, damaged, NODE_MARKER), UNKNOWN)
         bad_legal = dict(sources)
