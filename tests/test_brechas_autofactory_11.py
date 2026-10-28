@@ -87,7 +87,7 @@ const result = {
       s.chat.last_reply_s = 9150;
       s.chat.last_activity_s = 9250;
     }),
-    unackedRetry:decide(s => s.history.retries_s = [9980]),
+    unackedRetry:decide(s => s.history.retries_s = [9800]),
     duplicateRetry:decide(s => s.history.retries_s = [9200, 9200]),
     invalidPacing:decide(s => s.controls.min_pacing_s = 59),
     budget:decide(s => s.account.msgs_hour = 32),
