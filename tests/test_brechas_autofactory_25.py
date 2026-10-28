@@ -173,10 +173,11 @@ class BrechasAutofactory25Tests(unittest.TestCase):
                 with self.subTest(identifier=identifier), self.assertRaisesRegex(
                         ValueError, "UNKNOWN"):
                     matrix_rows(damaged)
+        current_version = json.loads(sources["package.json"])["version"]
         changes = {
             "README-06-03": ("package.json", '"engines"', '"other"'),
             "README-06-04": ("manifest.json", '"http://*/*"', '"https://invalid.example/*"'),
-            "README-06-05": ("package.json", '"version": "1.7.38"', '"version": "0.0.0"'),
+            "README-06-05": ("package.json", f'"version": "{current_version}"', '"version": "0.0.0"'),
             "README-07-01": (".github/workflows/validate.yml", "      - run: npm test", "      - run: echo bypass"),
             "README-07-02": ("AGENTES.md", "sin inventar UUID", "inventar UUID"),
         }
