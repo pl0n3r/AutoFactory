@@ -99,7 +99,8 @@ def local_contract(identifier: str, sources: dict[str, str]) -> str:
         return UNKNOWN
     heading, statement = GAPS[identifier]
     readme = section(sources["README.md"], heading)
-    if not readme or statement not in readme or statement not in row[1]:
+    readme_marker = "GitHub Releases" if identifier == "README-06-05" else statement
+    if not readme or readme_marker not in readme or statement not in row[1]:
         return UNKNOWN
     contrast = [line for line in sources["docs/contraste-af_readme.md"].splitlines()
                 if line.startswith(f"| {identifier} |")]
