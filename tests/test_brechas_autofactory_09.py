@@ -72,7 +72,7 @@ def extract_rows(document: str) -> dict:
         if key not in GAPS:
             continue
         fields = [value.strip() for value in line.strip().strip("|").split("|")]
-        if len(fields) != 6 or not all(fields) or key in found:
+        if len(fields) != 5 or not all(fields) or key in found:
             raise ValueError(f"UNKNOWN: duplicate or malformed {key}")
         if first != f"{key} · {GAPS[key][0]}":
             raise ValueError(f"UNKNOWN: unexpected source for {key}")
