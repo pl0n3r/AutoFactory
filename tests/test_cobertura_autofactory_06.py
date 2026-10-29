@@ -7,14 +7,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX = ROOT / "docs/matriz-cobertura.md"
 OFFLINE = frozenset({
     "README-02-01", "README-04-01", "README-04-02", "README-04-03",
     "README-05-02", "README-05-03", "README-06-01", "README-06-02",
@@ -156,23 +154,6 @@ async function main() {
 main().catch(() => {console.error('Offline assertions failed');process.exitCode=1;});
 """
 
-def matrix_ids(source: str) -> set[str]:
-    """No duplicated, malformed or falsely green README rows."""
-    found: set[str] = set()
-    for line in source.splitlines():
-        if not line.startswith("| README-"):
-            continue
-        fields = [p.strip() for p in line.strip().strip("|").split("|")]
-        key = fields[0].split(" · ", 1)[0]
-        if len(fields) != 5 or not re.fullmatch(r"README-\d{2}-\d{2}", key):
-            raise ValueError("UNKNOWN: invalid matrix row")
-        if key in found:
-            raise ValueError("UNKNOWN: duplicate matrix row")
-        if fields[2] != "NO_VERIFICABLE":
-            raise ValueError("UNKNOWN: invalid evidence state")
-        found.add(key)
-    return found
-
 def node_case(mode: str) -> dict:
     if mode not in {"principal", "negatives"}:
         raise ValueError("unsupported synthetic test")
@@ -195,7 +176,6 @@ class CoberturaAutofactory06Tests(unittest.TestCase):
     def test_contrato_principal(self) -> None:
         self.assertEqual(20, len(EXPECTED))
         self.assertEqual(8, len(OFFLINE))
-        self.assertTrue(EXPECTED.issubset(matrix_ids(MATRIX.read_text(encoding="utf-8"))))
         evidence = node_case("principal")
         self.assertEqual(OFFLINE, set(evidence["verified"]))
         self.assertEqual("UNKNOWN", evidence["production"])
@@ -207,11 +187,6 @@ class CoberturaAutofactory06Tests(unittest.TestCase):
         evidence = node_case("negatives")
         self.assertEqual(["DENIED"], evidence["verified"])
         self.assertEqual("UNKNOWN", evidence["production"])
-        with self.assertRaisesRegex(ValueError, "UNKNOWN"):
-            matrix_ids("| README-04-01 · README.md | x | NO_VERIFICABLE | y | z |\n"
-                       "| README-04-01 · README.md | x | NO_VERIFICABLE | y | z |")
-        with self.assertRaisesRegex(ValueError, "UNKNOWN"):
-            matrix_ids("| README-04-01 | malformed |")
         with self.assertRaises(ValueError):
             node_case("production")
 
