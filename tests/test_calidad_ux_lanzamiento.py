@@ -123,7 +123,7 @@ class CalidadUxLanzamientoTests(unittest.TestCase):
         self.assertIn("parity", audit(self.html, self.sizes, SAMPLES,
                                       safari_html=self.mirror + " "))
         self.assertIn("contrast", audit(
-            self.html.replace("--muted:#94a3b8", "--muted:#333333"),
+            self.html.replace("--muted:#9aa4b0", "--muted:#333333"),
             self.sizes, SAMPLES))
 
     def test_deuda_safari_y_limitaciones_reales(self):
