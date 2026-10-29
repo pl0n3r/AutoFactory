@@ -216,7 +216,13 @@ class CoberturaAutofactory04Tests(unittest.TestCase):
             with self.subTest(denial=row):
                 case = next(item for item in CASES if item.row == row)
                 source = (ROOT / case.script).read_text(encoding="utf-8")
-                self.assertRegex(source, r"assert\.(?:throws|rejects)\(")
+                if row == "PROTO-10":
+                    # Pairing validates sanitized public result keys with
+                    # strict equal/deepEqual assertions rather than throws.
+                    self.assertIn("assert.deepEqual", source)
+                    self.assertIn("pairing-public AC-01..04: ok", source)
+                else:
+                    self.assertRegex(source, r"assert\.(?:throws|rejects)\(")
                 self.assertEqual(real_code_receipt(case, node=self.node), OFFLINE)
 
     def test_sin_datos_reales(self) -> None:
