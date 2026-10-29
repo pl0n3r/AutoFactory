@@ -24,6 +24,7 @@ ASSETS = (
     "background.js",
     "content.js",
     "factory-control-account-status-preview.js",
+    "factory-control-heartbeat-preview.js",
     "factory-control-authorization.js",
     "factory-control-instance-transport.js",
     "factory-control-local-commands.js",
@@ -116,7 +117,8 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
 
         self._mirror(
             "popup.html",
-            '<html><script src="factory-control-account-status-preview.js"></script>'
+            '<html><script src="factory-control-heartbeat-preview.js"></script>'
+            '<script src="factory-control-account-status-preview.js"></script>'
             '<script src="factory-control-local-commands.js"></script>'
             '<script src="popup.js"></script>'
             '<script src="popup-budget.js"></script></html>',
