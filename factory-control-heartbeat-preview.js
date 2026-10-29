@@ -8,11 +8,11 @@
   'use strict';
   const FRESH_MS = 60_000;
   const OFFLINE_MS = 180_000;
-  const UNKNOWN = Object.freeze({ state: 'UNKNOWN', ageSeconds: null, reason: 'Sin evidencia simulada verificable' });
+  const UNKNOWN = Object.freeze({ state: 'UNKNOWN', ageSeconds: null, confirmedAt: null, reason: 'Sin evidencia simulada verificable' });
   const KEYS = ['lastConfirmedAt', 'missedIntervals', 'observedAt', 'scope', 'sequence', 'state'];
 
   function safeTime(value) {
-    return Number.isSafeInteger(value) && value >= 0;
+    return Number.isSafeInteger(value) && value >= 0 && value <= 8_640_000_000_000_000;
   }
 
   function evaluate(fixture, nowMs, previousSequence = 0) {
@@ -34,6 +34,7 @@
         missedIntervals < 1 || missedIntervals > 2)) return UNKNOWN;
     if (state === 'offline' && (ageMs <= OFFLINE_MS || missedIntervals < 3)) return UNKNOWN;
     return Object.freeze({ state: state.toUpperCase(), ageSeconds: Math.floor(ageMs / 1000),
+      confirmedAt: new Date(lastConfirmedAt).toISOString(),
       reason: state === 'online' ? 'Latido ficticio reciente' :
         state === 'stale' ? 'Latido ficticio atrasado' : 'Sin latido ficticio reciente' });
   }
@@ -58,6 +59,7 @@
       const result = evaluate(key === 'unknown' ? null : fixtures[key], nowMs);
       output.textContent = result.state + ' · ' +
         (result.ageSeconds === null ? 'edad desconocida' : result.ageSeconds + ' s') +
+        ' · ' + (result.confirmedAt || 'fecha desconocida') +
         ' · ' + result.reason + ' · SIMULACIÓN · OFF';
     }
   }

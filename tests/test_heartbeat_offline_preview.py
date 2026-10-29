@@ -44,7 +44,10 @@ class HeartbeatOfflinePreviewTests(unittest.TestCase):
                 self.assertEqual(status, result["state"])
                 self.assertEqual(seconds, result["ageSeconds"])
                 self.assertIn("ficticio", result["reason"])
+                self.assertTrue(result["confirmedAt"].endswith("Z"))
+                self.assertIn("T", result["confirmedAt"])
         self.assertEqual("UNKNOWN", evaluate(None)["state"])
+        self.assertIsNone(evaluate(None)["confirmedAt"])
 
     def test_expired_missing_ambiguous_timestamp_is_unknown(self):
         good = fixture("online", 5000, 0, 1)
@@ -67,6 +70,7 @@ class HeartbeatOfflinePreviewTests(unittest.TestCase):
         self.assertEqual("UNKNOWN", evaluate(good, previous=1)["state"])
         self.assertEqual("UNKNOWN", evaluate(good, now=-1)["state"])
         self.assertEqual("UNKNOWN", evaluate(good, previous=-1)["state"])
+        self.assertEqual("UNKNOWN", evaluate(good, now=8_640_000_000_000_001)["state"])
 
     def test_never_emits_heartbeat_or_sensitive_payload(self):
         source = SOURCE.read_text(encoding="utf-8")
