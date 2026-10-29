@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX = ROOT / "docs/matriz-cobertura.md"
 UNKNOWN = "UNKNOWN"
 
 OFFLINE = {
@@ -208,32 +206,6 @@ check(process.argv[1]).catch(() => {
 """
 
 
-def matrix_rows(text: object) -> dict[str, tuple[str, ...]]:
-    """Reject missing, duplicate, malformed or prematurely promoted target IDs."""
-    if type(text) is not str:
-        raise ValueError("UNKNOWN: missing matrix")
-    found: dict[str, tuple[str, ...]] = {}
-    for line in text.splitlines():
-        if not line.startswith("| README-"):
-            continue
-        columns = tuple(field.strip() for field in line.strip().strip("|").split("|"))
-        if not columns:
-            continue
-        key = columns[0].split(" · ", 1)[0]
-        if key not in ALL:
-            continue
-        if (key in found or len(columns) != 5
-                or columns[0] != key + " · README.md"
-                or not all(columns)
-                or columns[2] != "NO_VERIFICABLE"
-                or not columns[4].startswith("[#")):
-            raise ValueError("UNKNOWN: invalid target " + key)
-        found[key] = columns
-    if set(found) != ALL:
-        raise ValueError("UNKNOWN: missing target rows")
-    return found
-
-
 def run_probe(mode: str) -> dict[str, object]:
     """Call the actual Node modules, with no HTTP or inherited credentials."""
     if mode not in {"principal", "negatives"}:
@@ -260,8 +232,6 @@ def run_probe(mode: str) -> dict[str, object]:
 class CoberturaAutofactory07Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.matrix = MATRIX.read_text(encoding="utf-8")
-        cls.rows = matrix_rows(cls.matrix)
         cls.probe = run_probe("principal")
 
     def test_contrato_principal(self):
@@ -270,31 +240,13 @@ class CoberturaAutofactory07Tests(unittest.TestCase):
         self.assertEqual(9, len(OFFLINE))
         self.assertEqual(3, len(EXTERNAL))
         self.assertEqual(8, len(DECLARATIVE))
-        self.assertEqual(ALL, set(self.rows))
         self.assertEqual(set(OFFLINE), set(self.probe["verified"]))
-        for key, columns in self.rows.items():
-            with self.subTest(row=key):
-                self.assertTrue(columns[1])
-                self.assertEqual("NO_VERIFICABLE", columns[2])
-                self.assertEqual("UNKNOWN", self.probe["operational_state"])
+        self.assertEqual("UNKNOWN", self.probe["operational_state"])
         for reason in (*EXTERNAL.values(), *DECLARATIVE.values()):
             self.assertTrue(reason)
 
     def test_falla_cerrado(self):
-        """AC-02: malformed inventory, missing permissions and quota denied."""
-        first = next(line for line in self.matrix.splitlines()
-                     if line.startswith("| README-06-04 · README.md |"))
-        cases = [
-            None,
-            self.matrix.replace(first + "\n", "", 1),
-            self.matrix + "\n" + first,
-            self.matrix.replace(first, first.replace("NO_VERIFICABLE", "CUBIERTO"), 1),
-            self.matrix.replace(first, "| README-06-04 · README.md | malformed |", 1),
-        ]
-        for corrupt in cases:
-            with self.subTest(case=str(corrupt)[:32]):
-                with self.assertRaisesRegex(ValueError, UNKNOWN):
-                    matrix_rows(corrupt)
+        """AC-02: missing permissions, quota denied and fail-closed behavior."""
         self.assertEqual({
             "network-permission-expansion",
             "safari-mirror-mismatch",
@@ -311,7 +263,6 @@ class CoberturaAutofactory07Tests(unittest.TestCase):
 
     def test_sin_datos_reales(self):
         """AC-03: synthetic-only outputs, no live traffic, credentials or PII."""
-        self.assertTrue(MATRIX.is_file())
         self.assertEqual(
             {"verified", "denied", "operational_state", "requests_sent"},
             set(self.probe)

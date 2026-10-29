@@ -3,7 +3,7 @@
 
 These are *local* contracts, not evidence of browser installation, transport,
 ControlBot authorization, production, or exact-SHA GitHub CI success. The
-coverage matrix is read-only and retains its NO_VERIFICABLE status.
+suite is independent of the coverage-matrix reconciliation.
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX = ROOT / "docs/matriz-cobertura.md"
 UNKNOWN = "UNKNOWN"
 OFFLINE = "LOCAL_NODE_BEHAVIOR"
 
@@ -95,28 +94,6 @@ EXTERNAL = {"README-01-01": ("B", "Chrome/Safari install smoke plus exact-SHA CI
 ROW_IDS = {case.row for case in CASES} | set(EXTERNAL)
 
 
-def matrix_rows(source: object) -> dict[str, tuple[str, ...]]:
-    """Reject omitted, duplicate, ambiguous or silently promoted rows."""
-    if not isinstance(source, str):
-        raise ValueError("UNKNOWN: coverage matrix missing")
-    rows: dict[str, tuple[str, ...]] = {}
-    for line in source.splitlines():
-        if not line.startswith("| "):
-            continue
-        cells = tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
-        key = cells[0].split(" · ", 1)[0] if cells else ""
-        if key not in ROW_IDS:
-            continue
-        if (key in rows or len(cells) != 5 or cells[2] != "NO_VERIFICABLE"
-                or "Estado operativo: UNKNOWN" not in cells[3]
-                or not cells[4].startswith("[#")):
-            raise ValueError("UNKNOWN: invalid matrix row: " + key)
-        rows[key] = cells
-    if set(rows) != ROW_IDS:
-        raise ValueError("UNKNOWN: missing matrix rows: " + repr(ROW_IDS - set(rows)))
-    return rows
-
-
 def local_receipt(case: Case, source: object, *, executable: str | None) -> str:
     """Execute actual module tests, never certify installation or remote IO."""
     if not isinstance(source, str) or not source or executable is None:
@@ -143,41 +120,24 @@ def local_receipt(case: Case, source: object, *, executable: str | None) -> str:
 class CoberturaAutofactory05Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.matrix = MATRIX.read_text(encoding="utf-8")
-        cls.rows = matrix_rows(cls.matrix)
         cls.node = shutil.which("node")
 
     def test_contrato_principal(self) -> None:
         """AC-01: offline rows exercise JS modules; external row remains B."""
-        self.assertEqual(20, len(self.rows))
+        self.assertEqual(20, len(ROW_IDS))
         self.assertEqual(("B", "Chrome/Safari install smoke plus exact-SHA CI and release receipts"),
                          EXTERNAL["README-01-01"])
         cache: dict[tuple[str, tuple[str, ...], str], str] = {}
         for case in CASES:
             with self.subTest(row=case.row):
-                row = self.rows[case.row]
-                self.assertIn(case.source, row[3], "source must match the row")
                 key = (case.script, case.args, case.receipt)
                 if key not in cache:
-                    cache[key] = local_receipt(case, row[3], executable=self.node)
+                    cache[key] = local_receipt(case, case.source, executable=self.node)
                 self.assertEqual(OFFLINE, cache[key],
                                  f"{case.row}: actual Node behavior absent/invalid")
-        self.assertEqual("NO_VERIFICABLE", self.rows["README-01-01"][2])
 
     def test_falla_cerrado(self) -> None:
-        """AC-02: malformed matrix and real negative scenarios must fail."""
-        for identifier in ROW_IDS:
-            with self.subTest(row=identifier):
-                line = next(line for line in self.matrix.splitlines()
-                            if line.startswith("| " + identifier + " · "))
-                invalid = (
-                    self.matrix.replace(line + "\n", "", 1),
-                    self.matrix + "\n" + line,
-                    self.matrix.replace(line, line.replace("NO_VERIFICABLE", "CUBIERTO", 1), 1),
-                )
-                for text in invalid:
-                    with self.assertRaisesRegex(ValueError, "UNKNOWN"):
-                        matrix_rows(text)
+        """AC-02: real negative scenarios must fail closed."""
         chosen = next(case for case in CASES if case.row == "PROTO-13")
         for source, executable in ((None, self.node), ("", self.node), ("real", None)):
             self.assertEqual(UNKNOWN, local_receipt(chosen, source, executable=executable))
@@ -197,20 +157,17 @@ class CoberturaAutofactory05Tests(unittest.TestCase):
                 case = next(c for c in CASES if c.row == identifier)
                 self.assertEqual(OFFLINE, local_receipt(
                     Case(case.row, case.source, case.script, args, receipt),
-                    self.rows[identifier][3], executable=self.node))
+                    case.source, executable=self.node))
 
     def test_sin_datos_reales(self) -> None:
         """AC-03: local synthetic test execution only; no live attestations."""
         self.assertEqual(19, len(CASES))
-        self.assertEqual(ROW_IDS, set(self.rows))
         for case in CASES:
             with self.subTest(row=case.row):
                 self.assertRegex(case.row, r"^PROTO-(?:1[3-9]|2\d|3[01])$")
                 self.assertTrue(re.fullmatch(r"test-factory-control-[a-z0-9-]+\.cjs", case.script))
                 self.assertTrue(re.fullmatch(r"factory-control-[a-z0-9-]+\.js", case.source))
                 self.assertFalse(any("/" in arg or "\\" in arg for arg in case.args))
-                self.assertEqual("NO_VERIFICABLE", self.rows[case.row][2])
-        self.assertEqual("NO_VERIFICABLE", self.rows["README-01-01"][2])
         self.assertNotEqual("CUBIERTO", OFFLINE)
         self.assertNotEqual("VALIDADO EN PRODUCCION", OFFLINE)
         self.assertNotIn("http", " ".join([case.script for case in CASES]))

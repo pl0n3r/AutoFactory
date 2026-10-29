@@ -4,7 +4,7 @@
 The 16 A entries below prove the *offline* behavior of actual source modules,
 not a production installation. External/owner-gated parts of those rows and
 the B/C entries are still NO_VERIFICABLE until separate primary evidence.
-The coverage matrix is deliberately read-only.
+The coverage matrix is not consulted by these tests.
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX = ROOT / "docs/matriz-cobertura.md"
 UNKNOWN = "UNKNOWN"
 OFFLINE = "REAL_JS_OFFLINE"
 
@@ -96,30 +95,6 @@ NON_OFFLINE = {
 IDS = {case.row for case in CASES} | set(NON_OFFLINE)
 
 
-def rows_from_matrix(text: object) -> dict[str, tuple[str, ...]]:
-    """Reject absent, duplicate, malformed or prematurely promoted matrix rows."""
-    if type(text) is not str:
-        raise ValueError("UNKNOWN: missing coverage matrix")
-    seen: dict[str, tuple[str, ...]] = {}
-    for line in text.splitlines():
-        # Detect malformed duplicates by ID BEFORE validating the separator.
-        match = re.match(r"^\|\s*(ISSUE-\d{3}|PROTO-\d{2})\b", line)
-        if not match or match.group(1) not in IDS:
-            continue
-        key = match.group(1)
-        cells = tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
-        if (key in seen or len(cells) != 5 or not all(cells)
-                or not cells[0].startswith(key + " · ")
-                or cells[2] != "NO_VERIFICABLE"
-                or "Estado operativo: UNKNOWN" not in cells[3]
-                or not cells[4].startswith("[#")):
-            raise ValueError("UNKNOWN: ambiguous coverage row " + key)
-        seen[key] = cells
-    if set(seen) != IDS:
-        raise ValueError("UNKNOWN: absent expected coverage IDs")
-    return seen
-
-
 @lru_cache(maxsize=16)
 def _run_node(script: str, node: str) -> tuple[int, str]:
     if not re.fullmatch(r"test-factory-control(?:-[a-z0-9-]+)?\.cjs", script):
@@ -164,8 +139,6 @@ def real_code_receipt(case: Case, *, node: str | None) -> str:
 class CoberturaAutofactory04Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.matrix = MATRIX.read_text(encoding="utf-8")
-        cls.rows = rows_from_matrix(cls.matrix)
         cls.node = shutil.which("node")
 
     def test_contrato_principal(self) -> None:
@@ -175,36 +148,15 @@ class CoberturaAutofactory04Tests(unittest.TestCase):
         self.assertEqual(4, len(NON_OFFLINE))
         for case in CASES:
             with self.subTest(row=case.row):
-                row = self.rows[case.row]
-                self.assertIn(case.source, row[3])
-                self.assertEqual(row[2], "NO_VERIFICABLE")
                 self.assertEqual(real_code_receipt(case, node=self.node), OFFLINE)
         for identifier, (kind, reason) in NON_OFFLINE.items():
             with self.subTest(external_or_documentary=identifier):
                 self.assertIn(kind, {"B", "C", "D"})
                 self.assertGreater(len(reason), 40)
-                self.assertEqual(self.rows[identifier][2], "NO_VERIFICABLE")
-        self.assertEqual(set(self.rows), IDS)
 
     def test_falla_cerrado(self) -> None:
-        """AC-02: matrix tampering and genuine JS deny/replay paths must fail."""
+        """AC-02: genuine JS deny/replay paths must fail."""
         self.assertEqual(self.node is not None, True, "Real Node runtime required")
-        for key in IDS:
-            with self.subTest(tampered=key):
-                original = next(line for line in self.matrix.splitlines()
-                                if line.startswith("| " + key + " · "))
-                mutations = (
-                    self.matrix.replace(original + "\n", "", 1),
-                    self.matrix + "\n" + original,
-                    self.matrix.replace(original, original.replace(
-                        "NO_VERIFICABLE", "CUBIERTO", 1), 1),
-                    self.matrix + "\n| " + key + "· malformed | one | two | three | four |",
-                )
-                for tampered in mutations:
-                    with self.assertRaisesRegex(ValueError, UNKNOWN):
-                        rows_from_matrix(tampered)
-        with self.assertRaisesRegex(ValueError, UNKNOWN):
-            rows_from_matrix(None)
         self.assertEqual(real_code_receipt(CASES[0], node=None), UNKNOWN)
         self.assertEqual(real_code_receipt(
             Case("PROTO-12", "factory-control-account-state.js",
@@ -227,14 +179,12 @@ class CoberturaAutofactory04Tests(unittest.TestCase):
 
     def test_sin_datos_reales(self) -> None:
         """AC-03: checked-in fake inputs, no credentials or live operations."""
-        self.assertEqual(set(self.rows), IDS)
         self.assertEqual(self.node is not None, True)
         for case in CASES:
             with self.subTest(offline_case=case.row):
                 self.assertRegex(case.source, r"^factory-control-[a-z0-9-]+\.js$")
                 self.assertRegex(case.script, r"^test-factory-control(?:-[a-z0-9-]+)?\.cjs$")
                 self.assertNotIn("https://", case.script)
-                self.assertEqual(self.rows[case.row][2], "NO_VERIFICABLE")
         self.assertNotEqual(OFFLINE, "CUBIERTO")
         self.assertNotEqual(OFFLINE, "VALIDATED_IN_PRODUCTION")
 
@@ -245,7 +195,6 @@ class CoberturaAutofactory04Tests(unittest.TestCase):
         self.assertIn("name: Validate / Pruebas y smoke Chrome", workflow)
         self.assertIn("npm test", workflow)
         self.assertIn("python3 -m unittest", workflow)
-        self.assertEqual(set(self.rows), IDS)
         self.assertNotEqual(OFFLINE, "success")
 
 

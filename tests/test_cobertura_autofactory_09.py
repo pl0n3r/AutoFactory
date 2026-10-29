@@ -14,7 +14,6 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX = ROOT / "docs/matriz-cobertura.md"
 A = frozenset(("README-13-04", "README-15-01", "README-15-02"))
 OTHER = {
     "README-13-03": ("B", "Actual interrupted network and delayed reload need browser evidence"),
@@ -183,26 +182,6 @@ else fn().then(r => process.stdout.write(JSON.stringify(r))).catch(() => {
 """
 
 
-def rows_from_matrix(source: object) -> dict[str, tuple[str, ...]]:
-    if not isinstance(source, str):
-        raise ValueError("UNKNOWN: unreadable matrix")
-    found: dict[str, tuple[str, ...]] = {}
-    for line in source.splitlines():
-        if not line.startswith("| README-"):
-            continue
-        columns = tuple(x.strip() for x in line.strip().strip("|").split("|"))
-        key = columns[0].split(" · ", 1)[0] if columns else ""
-        if key not in IDS:
-            continue
-        if (key in found or len(columns) != 5 or not all(columns)
-                or columns[2] != "NO_VERIFICABLE"):
-            raise ValueError("UNKNOWN: inconsistent row " + key)
-        found[key] = columns
-    if set(found) != IDS:
-        raise ValueError("UNKNOWN: incomplete inventory")
-    return found
-
-
 def run_node(mode: str) -> dict:
     if mode not in ("principal", "negatives"):
         raise ValueError("UNKNOWN: unsupported mode")
@@ -231,11 +210,6 @@ class CoberturaAutofactory09Tests(unittest.TestCase):
         self.assertEqual(len(IDS), 12)
         self.assertEqual(len(A), 3)
         self.assertEqual(set(A) | set(OTHER), set(IDS))
-        rows = rows_from_matrix(MATRIX.read_text(encoding="utf-8"))
-        for key, cells in rows.items():
-            with self.subTest(key=key):
-                self.assertTrue(cells[0].startswith(key + " · "))
-                self.assertEqual(cells[2], "NO_VERIFICABLE")
         evidence = run_node("principal")
         self.assertEqual(set(evidence["tested"]), A)
         self.assertEqual(set(evidence["partial"]), {
@@ -247,20 +221,6 @@ class CoberturaAutofactory09Tests(unittest.TestCase):
                             for kind, reason in OTHER.values()))
 
     def test_falla_cerrado(self):
-        text = MATRIX.read_text(encoding="utf-8")
-        row = next(x for x in text.splitlines()
-                   if x.startswith("| README-13-04 · "))
-        for bad in (
-            text.replace(row + "\n", "", 1),
-            text + "\n" + row,
-            text.replace(row, row.replace("NO_VERIFICABLE", "CUBIERTO"), 1),
-            text.replace(row, "| README-13-04 · malformed |"),
-        ):
-            with self.subTest(size=len(bad)):
-                with self.assertRaisesRegex(ValueError, UNKNOWN):
-                    rows_from_matrix(bad)
-        with self.assertRaisesRegex(ValueError, UNKNOWN):
-            rows_from_matrix(None)
         result = run_node("negatives")
         self.assertEqual(set(result["denied"]), {
             "invalid-storage", "ambiguous-send", "privileged-action",

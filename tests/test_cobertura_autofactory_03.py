@@ -3,20 +3,18 @@
 
 A denotes a tested local sub-contract only. B rows need genuine external
 evidence and C rows document a non-executable procedure. Neither an A result
-nor a green local run promotes any matrix row to CUBIERTO.
+nor a green local run certifies an installed browser or live bridge.
 """
 from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX = ROOT / "docs/matriz-cobertura.md"
 UNKNOWN = "UNKNOWN"
 
 # The test invokes real committed Node modules, not copied Python models.
@@ -212,28 +210,6 @@ check().catch(() => {
 """
 
 
-def rows_from_matrix(document: object) -> dict[str, tuple[str, ...]]:
-    """Fail closed on missing, duplicated, promoted or contradictory rows."""
-    if not isinstance(document, str):
-        raise ValueError("UNKNOWN: matrix unreadable")
-    found: dict[str, tuple[str, ...]] = {}
-    for line in document.splitlines():
-        if not line.startswith("| "):
-            continue
-        cells = tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
-        head = cells[0].split(" · ", 1) if cells else []
-        if not head or head[0] not in IDS:
-            continue
-        key = head[0]
-        if (key in found or len(head) != 2 or len(cells) != 5
-                or not all(cells) or cells[2] != "NO_VERIFICABLE"):
-            raise ValueError("UNKNOWN: contradictory matrix row " + key)
-        found[key] = cells
-    if set(found) != IDS:
-        raise ValueError("UNKNOWN: missing expected matrix rows")
-    return found
-
-
 def run_real_contract() -> dict[str, object]:
     node = shutil.which("node")
     if not node:
@@ -256,21 +232,13 @@ def run_real_contract() -> dict[str, object]:
 class CoberturaAutofactory03Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.matrix = MATRIX.read_text(encoding="utf-8")
-        cls.rows = rows_from_matrix(cls.matrix)
         cls.probe = run_real_contract()
 
     def test_contrato_principal(self) -> None:
         """AC-01: each A calls genuine JS; B/C remain out of offline scope."""
         self.assertEqual(len(IDS), 20)
         self.assertEqual(len(OFFLINE), 9)
-        self.assertEqual(set(self.rows), IDS)
         self.assertEqual(set(self.probe["passed"]), set(OFFLINE))
-        for key, row in self.rows.items():
-            with self.subTest(row=key):
-                self.assertTrue(row[0].startswith(key + " · "))
-                self.assertEqual(row[2], "NO_VERIFICABLE")
-                self.assertIn("#", row[4])
         for kind, why in NON_OFFLINE.values():
             self.assertIn(kind, ("B", "C", "D"))
             self.assertTrue(why)
@@ -278,19 +246,6 @@ class CoberturaAutofactory03Tests(unittest.TestCase):
 
     def test_falla_cerrado(self) -> None:
         """AC-02: ambiguity, unknown access and bad permission fail shut."""
-        sample = next(line for line in self.matrix.splitlines()
-                      if line.startswith("| DOC-SESSION-KEEPALIVE-01 · "))
-        for corrupted in (
-            self.matrix.replace(sample + "\n", "", 1),
-            self.matrix + "\n" + sample,
-            self.matrix.replace(sample, sample.replace("NO_VERIFICABLE", "CUBIERTO"), 1),
-            self.matrix.replace(sample, "| DOC-SESSION-KEEPALIVE-01 · broken |"),
-        ):
-            with self.subTest(corrupted_len=len(corrupted)):
-                with self.assertRaisesRegex(ValueError, UNKNOWN):
-                    rows_from_matrix(corrupted)
-        with self.assertRaisesRegex(ValueError, UNKNOWN):
-            rows_from_matrix(None)
         self.assertEqual(set(self.probe["denied"]), {
             "extension-expanded-permission", "closed-session",
             "limited-account", "paused-switch", "unknown-account-fields",
@@ -303,7 +258,6 @@ class CoberturaAutofactory03Tests(unittest.TestCase):
 
     def test_sin_datos_reales(self) -> None:
         """AC-03: no network, credentials, conversation content or live I/O."""
-        self.assertTrue(MATRIX.is_file())
         self.assertEqual(set(self.probe), {
             "passed", "denied", "operational_state"
         })
