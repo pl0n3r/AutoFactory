@@ -160,9 +160,9 @@ class CoberturaAutofactory05Tests(unittest.TestCase):
                 key = (case.script, case.args, case.receipt)
                 if key not in cache:
                     cache[key] = local_receipt(case, row[3], executable=self.node)
-                self.assertEqual(cache[key], OFFLINE,
+                self.assertEqual(OFFLINE, cache[key],
                                  f"{case.row}: actual Node behavior absent/invalid")
-        self.assertEqual(self.rows["README-01-01"][2], "NO_VERIFICABLE")
+        self.assertEqual("NO_VERIFICABLE", self.rows["README-01-01"][2])
 
     def test_falla_cerrado(self) -> None:
         """AC-02: malformed matrix and real negative scenarios must fail."""
@@ -180,7 +180,7 @@ class CoberturaAutofactory05Tests(unittest.TestCase):
                         matrix_rows(text)
         chosen = next(case for case in CASES if case.row == "PROTO-13")
         for source, executable in ((None, self.node), ("", self.node), ("real", None)):
-            self.assertEqual(local_receipt(chosen, source, executable=executable), UNKNOWN)
+            self.assertEqual(UNKNOWN, local_receipt(chosen, source, executable=executable))
         negative = (
             ("PROTO-13", (), "factory-control response consent: ok"),
             ("PROTO-18", ("failclosed",), "factory-control runtime lifecycle: ok"),
@@ -195,13 +195,13 @@ class CoberturaAutofactory05Tests(unittest.TestCase):
         for identifier, args, receipt in negative:
             with self.subTest(negative=identifier):
                 case = next(c for c in CASES if c.row == identifier)
-                self.assertEqual(local_receipt(
+                self.assertEqual(OFFLINE, local_receipt(
                     Case(case.row, case.source, case.script, args, receipt),
-                    self.rows[identifier][3], executable=self.node), OFFLINE)
+                    self.rows[identifier][3], executable=self.node))
 
     def test_sin_datos_reales(self) -> None:
         """AC-03: local synthetic test execution only; no live attestations."""
-        self.assertEqual(len(CASES), 19)
+        self.assertEqual(19, len(CASES))
         self.assertEqual(ROW_IDS, set(self.rows))
         for case in CASES:
             with self.subTest(row=case.row):
@@ -209,10 +209,10 @@ class CoberturaAutofactory05Tests(unittest.TestCase):
                 self.assertTrue(re.fullmatch(r"test-factory-control-[a-z0-9-]+\.cjs", case.script))
                 self.assertTrue(re.fullmatch(r"factory-control-[a-z0-9-]+\.js", case.source))
                 self.assertFalse(any("/" in arg or "\\" in arg for arg in case.args))
-                self.assertEqual(self.rows[case.row][2], "NO_VERIFICABLE")
-        self.assertEqual(self.rows["README-01-01"][2], "NO_VERIFICABLE")
-        self.assertNotEqual(OFFLINE, "CUBIERTO")
-        self.assertNotEqual(OFFLINE, "VALIDADO EN PRODUCCION")
+                self.assertEqual("NO_VERIFICABLE", self.rows[case.row][2])
+        self.assertEqual("NO_VERIFICABLE", self.rows["README-01-01"][2])
+        self.assertNotEqual("CUBIERTO", OFFLINE)
+        self.assertNotEqual("VALIDADO EN PRODUCCION", OFFLINE)
         self.assertNotIn("http", " ".join([case.script for case in CASES]))
 
 
