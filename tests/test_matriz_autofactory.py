@@ -17,7 +17,7 @@ MAIN_ID = re.compile(r"^(?:AF1-AC|README|AGENTES|PROTO|DOC|ISSUE|DEC|HIST)-[A-Z0
 MAPPING = re.compile(
     r"^\| \x60(?P<id>[A-Z0-9-]+)\x60 \| "
     r"(?P<verdict>CANDIDATA_LOCAL|SIN_CANDIDATA|DESCARTADO) \| "
-    r"(?P<code>—|\x60[A-Za-z0-9_.\-/]+\.(?:js|cjs|py)\x60) \| "
+    r"(?P<code>—|\x60[A-Za-z0-9_.\-/]+\.(?:js|cjs|py|json)\x60) \| "
     r"(?P<test>—|\x60(?:tests/test_[A-Za-z0-9_.\-/]+\.py|test-[A-Za-z0-9_.\-/]+\.cjs)\x60) \|$"
 )
 VALID_STATES = {"NO_VERIFICABLE", "CUBIERTO", "DESCARTADO", "EN_CURSO"}
@@ -44,11 +44,12 @@ def map_rows(text: str) -> dict[str, tuple[str, str, str]]:
     if text.count("## Candidatas por requisito (#432)") != 1:
         raise ValueError("Missing or duplicate candidate section")
     section = text.split("## Candidatas por requisito (#432)", 1)[1]
-    if "| ID | Veredicto | Código candidato | Prueba candidata |" not in section:
+    header = "| ID | Veredicto | Código candidato | Prueba candidata |"
+    if section.count(header) != 1:
         raise ValueError("Missing candidate columns")
     rows = {}
-    for line in section.splitlines():
-        if not line.startswith("| " + chr(96)):
+    for line in section.split(header, 1)[1].splitlines():
+        if not line.startswith("|") or line == "| --- | --- | --- | --- |":
             continue
         match = MAPPING.fullmatch(line)
         if match is None:
@@ -99,14 +100,15 @@ class MatrizAutofactoryTests(unittest.TestCase):
                 elif verdict == "CANDIDATA_LOCAL":
                     self.assertIsNotNone(candidate_path(code))
                     self.assertIsNotNone(candidate_path(test))
-                    self.assertIn(code, evidence)
-                    self.assertIn(test, evidence)
+                    self.assertRegex(evidence, r"\x60" + re.escape(code.strip(chr(96))) + r"\x60")
+                    self.assertRegex(evidence, r"\x60" + re.escape(test.strip(chr(96))) +
+                                     r"(?:::[A-Za-z_][A-Za-z0-9_]*)*\x60")
                     self.assertNotIn(test.strip(chr(96)), NOT_BEHAVIORAL)
                 else:
                     self.assertEqual((verdict, code, test),
                                      ("SIN_CANDIDATA", "—", "—"))
         self.assertEqual(verdicts, Counter({
-            "CANDIDATA_LOCAL": 48, "SIN_CANDIDATA": 133, "DESCARTADO": 8
+            "CANDIDATA_LOCAL": 50, "SIN_CANDIDATA": 131, "DESCARTADO": 8
         }))
         self.assertIn("no que su aserción cumpla la cláusula", self.text)
         self.assertIn("NO_VERIFICABLE", self.text)
@@ -121,6 +123,8 @@ class MatrizAutofactoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Malformed"):
             map_rows(self.text + "\n| " + chr(96) +
                      "INVENTADO" + chr(96) + " | CUBIERTO | — | — |\n")
+        with self.assertRaisesRegex(ValueError, "Malformed"):
+            map_rows(self.text + "\n| INVENTADO | CANDIDATA_LOCAL | — | — |\n")
 
     def test_rechaza_rutas_fuera_de_repositorio(self) -> None:
         with self.assertRaisesRegex(ValueError, "escapes"):
