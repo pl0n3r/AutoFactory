@@ -7,7 +7,6 @@ be supplied independently; a directory's self-reported version is not authority.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -47,7 +46,7 @@ def tracked_blobs(root: Path) -> dict[str, str]:
             relative = name.decode("utf-8", errors="strict")
         except (UnicodeError, ValueError) as exc:
             raise VerificationError("árbol Git malformado") from exc
-        if mode not in ("100644", "100755") or kind != "blob":
+        if mode not in ("100644", "100755") or kind != "blob" or not SHA_RE.fullmatch(oid):
             raise VerificationError("enlace simbólico o submódulo en la versión")
         if relative in result or not relative or any(p in ("", ".", "..") for p in relative.split("/")):
             raise VerificationError("ruta Git no válida")
@@ -98,9 +97,7 @@ def verify_folder(folder: Path, expected_sha: str, expected_version: str) -> tup
     if set(actual) != set(tracked):
         raise VerificationError("carpeta alterada: archivo añadido, eliminado o no declarado")
     for relative, path in actual.items():
-        data = path.read_bytes()
-        blob = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
-        if hashlib.sha1(blob).hexdigest() != tracked[relative]:
+        if path.read_bytes() != git(root, "cat-file", "blob", tracked[relative]):
             raise VerificationError("carpeta alterada: contenido distinto del commit")
     versions = []
     for relative in ("manifest.json", SAFARI_MANIFEST, "package.json", "package-lock.json"):
