@@ -264,7 +264,7 @@
 
 **Semántica para panel:** Esta tabla es una vista de trazabilidad complementaria con cuatro columnas `ID`, `Veredicto`, `Código candidato`, `Prueba candidata`. Su ID está entre backticks para no convertirla en filas de inventario del parser histórico de cinco columnas. Se enlaza 1:1 por el ID sin backticks. `CANDIDATA_LOCAL` significa únicamente que ambos archivos existen y se citan *en la misma fila histórica*, no que su aserción cumpla la cláusula; `SIN_CANDIDATA` no prueba que el código no exista. El estado y veredicto acreditado de cada obligación permanecen exclusivamente en la tabla original. `NO_VERIFICABLE` sigue `NO_VERIFICABLE` y las 22 filas `CUBIERTO` conservan su estatus histórico sin nueva promoción.
 
-**Pendientes:** Las filas `SIN_CANDIDATA` necesitan correlación específica cláusula → código → aserción y PR, o evidencia operativa real. No se crea una hoja por fila ni se inventa permiso live; se agrupan las ausencias bajo una hoja de tests autorizada derivada del épico #1. Todo endpoint remoto, sesión de usuario, instalación Safari/Chrome y SonarCloud continúan sin acreditarse por esta tabla.
+**Pendientes:** Las filas `SIN_CANDIDATA` necesitan correlación específica cláusula → código → aserción y PR, o evidencia operativa real. No se crea una hoja por fila ni se inventa permiso live; se agrupan las ausencias bajo la hoja [#435](https://github.com/pl0n3r/AutoFactory/issues/435) derivada del épico #1, dependiente de #432. La hoja no autoriza crear pruebas vacías, cambio de estado ni live. Todo endpoint remoto, sesión de usuario, instalación Safari/Chrome y SonarCloud continúan sin acreditarse por esta tabla.
 
 | ID | Veredicto | Código candidato | Prueba candidata |
 | --- | --- | --- | --- |
