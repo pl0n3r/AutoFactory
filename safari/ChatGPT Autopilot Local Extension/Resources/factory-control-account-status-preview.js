@@ -40,6 +40,19 @@
     });
   }
 
+  function remainingResetLabel(result, nowMs) {
+    // Unicamente tiempo restante ficticio ya validado, sin consultar cuentas.
+    if (!result || result.code !== 'LIMITADO' ||
+        result.freshness !== 'ejemplo fresco' ||
+        !Number.isSafeInteger(nowMs) || nowMs < 0 ||
+        !Number.isSafeInteger(result.resetAt) ||
+        result.resetAt <= nowMs || result.resetAt > nowMs + MAX_RESET_MS) return null;
+    const minutes = Math.ceil((result.resetAt - nowMs) / 60_000);
+    if (!Number.isSafeInteger(minutes) || minutes < 1 ||
+        minutes > MAX_RESET_MS / 60_000) return null;
+    return 'reinicio en ' + minutes + ' min';
+  }
+
   function render(doc, clock = () => Date.now()) {
     if (!doc || typeof doc.getElementById !== 'function') return;
     const nowMs = clock();
@@ -51,9 +64,16 @@
     ];
     for (const [id, result] of entries) {
       const output = doc.getElementById(id);
-      if (output) output.textContent = result.code + ' · ' + result.freshness + ' · SIMULACIÓN · OFF';
+      if (output) {
+        const remaining = remainingResetLabel(result, nowMs);
+        const label = result.code === 'LIMITADO' && remaining === null
+          ? UNKNOWN.code + ' · ' + UNKNOWN.freshness
+          : result.code + ' · ' + result.freshness +
+            (remaining === null ? '' : ' · ' + remaining);
+        output.textContent = label + ' · SIMULACIÓN · OFF';
+      }
     }
   }
 
-  return Object.freeze({ evaluate, render, syntheticExamples });
+  return Object.freeze({ evaluate, render, syntheticExamples, remainingResetLabel });
 });
