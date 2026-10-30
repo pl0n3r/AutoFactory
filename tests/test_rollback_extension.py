@@ -18,12 +18,12 @@ def git(root: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def synthetic_version(root: Path, version: str, source: str) -> str:
+def synthetic_version(root: Path, version: str, source: str, safari_version: str | None = None) -> str:
     root.mkdir()
     git(root, "init", "-q")
     for name, payload in (
         ("manifest.json", {"manifest_version": 3, "version": version}),
-        (SAFARI, {"manifest_version": 3, "version": version}),
+        (SAFARI, {"manifest_version": 3, "version": safari_version or version}),
         ("package.json", {"name": "offline-fixture", "version": version}),
         ("package-lock.json", {"version": version, "packages": {"": {"version": version}}}),
     ):
@@ -56,6 +56,7 @@ class RollbackExtensionTests(unittest.TestCase):
                     ok = check(folder, sha, version)
                     self.assertEqual(0, ok.returncode, ok.stderr)
                     self.assertIn("VERIFICADO:", ok.stdout)
+                    self.assertIn(f"carpeta={folder}", ok.stdout)
                 with self.subTest(version=version, state="wrong SHA"):
                     self.assertNotEqual(0, check(folder, "0" * 40, version).returncode)
                 with self.subTest(version=version, state="wrong version"):
@@ -79,6 +80,22 @@ class RollbackExtensionTests(unittest.TestCase):
             self.assertNotEqual(0, check(previous, sha_old, "1.7.37").returncode)
             target.write_bytes(backup)
             self.assertEqual(0, check(previous, sha_old, "1.7.37").returncode)
+            # Committed Safari drift must be detected independently from modified blobs.
+            mismatched = Path(tmp) / "mismatched"
+            mismatch_sha = synthetic_version(
+                mismatched, "1.7.37", "// mismatched fixture\n", safari_version="1.7.38"
+            )
+            self.assertNotEqual(0, check(mismatched, mismatch_sha, "1.7.37").returncode)
+
+            # Git replace objects must not conceal modified content.
+            replaced = Path(tmp) / "replaced"
+            replace_sha = synthetic_version(replaced, "1.7.37", "// pristine fixture\n")
+            original_oid = git(replaced, "rev-parse", "HEAD:content.js")
+            (replaced / "content.js").write_text("// malicious replacement\n", encoding="utf-8")
+            replacement_oid = git(replaced, "hash-object", "-w", "content.js")
+            git(replaced, "replace", original_oid, replacement_oid)
+            self.assertNotEqual(0, check(replaced, replace_sha, "1.7.37").returncode)
+
             # Without Git metadata, a folder's claimed version cannot certify its SHA.
             without_git = Path(tmp) / "no-git"
             without_git.mkdir()
