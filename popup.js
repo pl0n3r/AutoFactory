@@ -27,6 +27,27 @@ const fields = { prompt: $('prompt'), delaySeconds: $('delay'), modelTarget: $('
 const extensionVersion = extensionApi.runtime.getManifest().version;
 let selectedConversationMode = 'chat';
 $('version').textContent = `v${extensionVersion}`;
+const buildIdentity = $('build-identity');
+async function showBuildIdentity() {
+  if (!buildIdentity) return;
+  buildIdentity.dataset.identity = 'unverified';
+  buildIdentity.textContent = `v${extensionVersion} · SHA NO VERIFICADO`;
+  try {
+    const response = await fetch(extensionApi.runtime.getURL('extension-build.json'), { cache: 'no-store' });
+    if (!response.ok) return;
+    const record = await response.json();
+    if (!record || typeof record !== 'object' || Array.isArray(record) ||
+        Object.keys(record).sort().join(',') !== 'sha,tag,version' ||
+        record.version !== extensionVersion || record.tag !== 'v' + extensionVersion ||
+        typeof record.sha !== 'string' || !/^[0-9a-f]{40}$/.test(record.sha)) return;
+    // Local metadata is a build claim; the external tag verifier is the authority.
+    buildIdentity.textContent = `v${extensionVersion} · SHA ${record.sha} · cotejo externo obligatorio`;
+    buildIdentity.dataset.identity = 'claimed';
+  } catch (_error) {
+    // Missing/invalid package metadata must never become a fabricated SHA.
+  }
+}
+void showBuildIdentity();
 const apiCall = (fn, ...args) => new Promise((resolve, reject) => { try { const result = fn(...args, resolve); if (result?.then) result.then(resolve, reject); } catch (error) { reject(error); } });
 async function activeTab(){ const tabs=await apiCall(extensionApi.tabs.query.bind(extensionApi.tabs),{active:true,currentWindow:true}); return tabs[0]; }
 async function save(){ const values={prompt:fields.prompt.value.trim()||DEFAULT_PROMPT,promptSchemaVersion:PROMPT_SCHEMA_VERSION,settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,delaySeconds:Math.max(5,Number(fields.delaySeconds.value)||15),modelTarget:fields.modelTarget.value,reasoningLevel:fields.reasoningLevel.value,conversationMode:selectedConversationMode,followScroll:fields.followScroll.checked,scrollStepMin:Number(fields.scrollStepMin.value)||90,scrollStepMax:Number(fields.scrollStepMax.value)||320,scrollPollMs:Number(fields.scrollPollMs.value)||220,scrollStableChecks:Number(fields.scrollStableChecks.value)||8,scrollMaxSeconds:Number(fields.scrollMaxSeconds.value)||45,manualScrollPauseSeconds:Math.max(0,Number(fields.manualScrollPauseSeconds.value)||0),autoReload:fields.autoReload.checked,reloadCooldownMinutes:Math.max(1,Number(fields.reloadCooldownMinutes.value)||1),periodicReload:fields.periodicReload.checked,periodicReloadMinutes:Math.max(5,Number(fields.periodicReloadMinutes.value)||15)}; await apiCall(extensionApi.storage.local.set.bind(extensionApi.storage.local),values); }
