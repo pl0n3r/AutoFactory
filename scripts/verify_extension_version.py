@@ -117,18 +117,59 @@ def verify_folder(folder: Path, expected_sha: str, expected_version: str) -> tup
     return observed, len(tracked)
 
 
+
+def verify_published_build(folder: Path, expected_sha: str, expected_version: str,
+                           published_tag: str) -> str:
+    """Compare a packaged build with independently obtained release identity.
+
+    Does not assert that a caller-supplied tag is published or that a browser
+    has loaded the package; the caller must obtain tag/SHA from trusted GitHub.
+    """
+    if (not SHA_RE.fullmatch(expected_sha) or
+            not VERSION_RE.fullmatch(expected_version) or
+            published_tag != "v" + expected_version):
+        raise VerificationError("etiqueta, SHA o versión esperados inválidos")
+    if folder.is_symlink() or not folder.is_dir():
+        raise VerificationError("carpeta del build inválida")
+    build = folder / "extension-build.json"
+    manifest = folder / "manifest.json"
+    for path in (build, manifest):
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 2048:
+            raise VerificationError("metadatos del build ausentes o inseguros")
+    try:
+        record = json.loads(build.read_text(encoding="utf-8"))
+        chrome = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise VerificationError("metadatos del build ilegibles") from exc
+    if (not isinstance(record, dict) or set(record) != {"version", "sha", "tag"}
+            or record["sha"] != expected_sha or record["version"] != expected_version
+            or record["tag"] != published_tag or not isinstance(chrome, dict)
+            or chrome.get("version") != expected_version):
+        raise VerificationError("SHA/versión del build distinto de la etiqueta publicada")
+    return record["sha"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verifica SHA y versión antes de cargar una extensión local")
     parser.add_argument("folder", type=Path, help="raíz limpia del checkout de la versión")
     parser.add_argument("--sha", required=True, help="SHA Git esperado, obtenido fuera de la carpeta")
     parser.add_argument("--version", required=True, help="versión esperada X.Y.Z")
+    parser.add_argument("--published-tag", help="tag externo verificado, ej. v1.7.38; modo build empaquetado")
     args = parser.parse_args()
     try:
-        sha, total = verify_folder(args.folder, args.sha, args.version)
+        if args.published_tag is not None:
+            sha = verify_published_build(args.folder, args.sha, args.version, args.published_tag)
+            total = 1  # Sólo se verifica identidad; no se acredita integridad de todos los blobs.
+        else:
+            sha, total = verify_folder(args.folder, args.sha, args.version)
     except (VerificationError, OSError, subprocess.TimeoutExpired) as exc:
         print("RECHAZADO: " + str(exc), file=sys.stderr)
         return 1
-    print(f"VERIFICADO: carpeta={args.folder} SHA={sha} versión={args.version} archivos={total}; Chrome/Safari")
+    if args.published_tag is not None:
+        print(f"IDENTIDAD COINCIDE (integridad de blobs y tag remoto no acreditados): "
+              f"SHA={sha} versión={args.version} tag={args.published_tag}")
+    else:
+        print(f"VERIFICADO: carpeta={args.folder} SHA={sha} versión={args.version} archivos={total}; Chrome/Safari")
     return 0
 
 

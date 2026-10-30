@@ -59,7 +59,7 @@ def verified_source(relative: str, expected_digest: str, expected_size: int) -> 
     return current
 
 
-def write_safari_source_archive(safari_zip: Path) -> None:
+def write_safari_source_archive(safari_zip: Path, build_identity: bytes | None = None) -> None:
     """Fail closed on symlinks and emit only reversible Safari source."""
     with ZipFile(safari_zip, "w", ZIP_DEFLATED) as archive:
         for source in sorted((ROOT / "safari").rglob("*")):
@@ -67,6 +67,8 @@ def write_safari_source_archive(safari_zip: Path) -> None:
                 raise ValueError("symlink in Safari source")
             if source.is_file() and "xcuserdata" not in source.parts and source.suffix != ".xcuserstate":
                 archive.write(source, source.relative_to(ROOT))
+        if build_identity is not None:
+            archive.writestr("safari/ChatGPT Autopilot Local Extension/Resources/extension-build.json", build_identity)
         for relative in ("build-safari.sh", "README.md", "CHANGELOG.md"):
             source = ROOT / relative
             if source.is_symlink() or not source.is_file():
@@ -74,8 +76,28 @@ def write_safari_source_archive(safari_zip: Path) -> None:
             archive.write(source, relative)
 
 
+def stamped_build_identity() -> bytes:
+    """Emit an identity claim only for the Git checkout being packaged.
+
+    No release is created here; the release workflow separately authenticates
+    the published tag, exact main SHA, Chrome/Safari smoke and approval gates.
+    """
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+        text=True, check=True,
+    ).stdout.strip()
+    if len(sha) != 40 or any(char not in "0123456789abcdef" for char in sha):
+        raise ValueError("invalid Git commit for build identity")
+    tag = f"v{VERSION}"
+    if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != tag:
+        raise ValueError("release tag differs from manifest")
+    return (json.dumps({"version": VERSION, "sha": sha, "tag": tag},
+                       sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
 def package() -> tuple[Path, Path]:
     rows = release_assets()
+    build_identity = stamped_build_identity()
     sources = {}
     for row in rows:
         if not isinstance(row, dict):
@@ -92,9 +114,10 @@ def package() -> tuple[Path, Path]:
     with ZipFile(chrome_zip, "w", ZIP_DEFLATED) as archive:
         for relative, path in sources.items():
             archive.write(path, relative)
+        archive.writestr("extension-build.json", build_identity)
 
     safari_zip = DIST / f"chatgpt-autopilot-local-safari-source-v{VERSION}.zip"
-    write_safari_source_archive(safari_zip)
+    write_safari_source_archive(safari_zip, build_identity)
     return chrome_zip, safari_zip
 
 
