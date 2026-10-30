@@ -36,7 +36,11 @@ class ReleasePackagedAssetsTests(unittest.TestCase):
             zip_file = Path(tmp) / f"chatgpt-autopilot-local-chrome-v{version}.zip"
             self.assertTrue(zip_file.is_file())
             with ZipFile(zip_file) as archive:
-                self.assertEqual(set(archive.namelist()), set(assets))
+                self.assertEqual(set(archive.namelist()), set(assets) | {"extension-build.json"})
+                identity = archive.read("extension-build.json")
+                self.assertEqual(json.loads(identity), {
+                    "version": version, "sha": sha, "tag": f"v{version}",
+                })
                 self.assertIn("background-entry.js", assets)
                 self.assertIn("adaptive-recovery.js", assets)
                 self.assertIn("shared-learning-sync.js", assets)
@@ -53,6 +57,10 @@ class ReleasePackagedAssetsTests(unittest.TestCase):
                 names = set(archive.namelist())
                 self.assertIn("build-safari.sh", names)
                 self.assertIn("safari/ChatGPT Autopilot Local Extension/Resources/manifest.json", names)
+                self.assertEqual(
+                    archive.read("safari/ChatGPT Autopilot Local Extension/Resources/extension-build.json"),
+                    identity,
+                )
 
 
 if __name__ == "__main__":
