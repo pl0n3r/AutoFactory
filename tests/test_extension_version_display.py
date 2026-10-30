@@ -52,7 +52,7 @@ class VerifyExtensionVersionTests(unittest.TestCase):
                     capture_output=True, text=True, check=False,
                 )
                 self.assertEqual(cli.returncode, 0, cli.stderr)
-                self.assertIn("VERIFICADO:", cli.stdout)
+                self.assertIn("IDENTIDAD COINCIDE", cli.stdout)
                 for expected_sha, expected_version, tag in (
                     ("0" * 40, version, "v" + version),
                     (sha, "9.9.9", "v9.9.9"),

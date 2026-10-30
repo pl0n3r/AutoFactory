@@ -165,7 +165,11 @@ def main() -> int:
     except (VerificationError, OSError, subprocess.TimeoutExpired) as exc:
         print("RECHAZADO: " + str(exc), file=sys.stderr)
         return 1
-    print(f"VERIFICADO: carpeta={args.folder} SHA={sha} versión={args.version} archivos={total}; Chrome/Safari")
+    if args.published_tag is not None:
+        print(f"IDENTIDAD COINCIDE (integridad de blobs y tag remoto no acreditados): "
+              f"SHA={sha} versión={args.version} tag={args.published_tag}")
+    else:
+        print(f"VERIFICADO: carpeta={args.folder} SHA={sha} versión={args.version} archivos={total}; Chrome/Safari")
     return 0
 
 
