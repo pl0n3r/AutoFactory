@@ -260,7 +260,7 @@
 
 ## Candidatas por requisito (#432)
 
-**Reconciliación documental exact-main:** AutoFactory/main@`6f9372373fc8ca9bdef10f0cbfa22142fd9f4663`, fecha 30-oct-2026. 189 filas, 48 pares candidato código/prueba local, 133 sin pareja respaldada por la evidencia textual y 8 descartadas históricas.
+**Reconciliación documental exact-main:** AutoFactory/main@`6f9372373fc8ca9bdef10f0cbfa22142fd9f4663`, fecha 30-oct-2026. 189 filas, 50 pares candidato código/prueba local, 131 sin pareja respaldada por la evidencia textual y 8 descartadas históricas.
 
 **Semántica para panel:** Esta tabla es una vista de trazabilidad complementaria con cuatro columnas `ID`, `Veredicto`, `Código candidato`, `Prueba candidata`. Su ID está entre backticks para no convertirla en filas de inventario del parser histórico de cinco columnas. Se enlaza 1:1 por el ID sin backticks. `CANDIDATA_LOCAL` significa únicamente que ambos archivos existen y se citan *en la misma fila histórica*, no que su aserción cumpla la cláusula; `SIN_CANDIDATA` no prueba que el código no exista. El estado y veredicto acreditado de cada obligación permanecen exclusivamente en la tabla original. `NO_VERIFICABLE` sigue `NO_VERIFICABLE` y las 22 filas `CUBIERTO` conservan su estatus histórico sin nueva promoción.
 
@@ -343,7 +343,7 @@
 | `README-15-04` | SIN_CANDIDATA | — | — |
 | `AGENTES-01-01` | SIN_CANDIDATA | — | — |
 | `AGENTES-01-02` | SIN_CANDIDATA | — | — |
-| `AGENTES-01-03` | SIN_CANDIDATA | — | — |
+| `AGENTES-01-03` | CANDIDATA_LOCAL | `manifest.json` | `tests/test_cobertura_autofactory_01.py` |
 | `AGENTES-01-04` | SIN_CANDIDATA | — | — |
 | `AGENTES-01-05` | SIN_CANDIDATA | — | — |
 | `AGENTES-01-06` | SIN_CANDIDATA | — | — |
@@ -417,7 +417,7 @@
 | `DOC-EXTENSION-SOURCE-PREFLIGHT-01` | SIN_CANDIDATA | — | — |
 | `DOC-RECONCILIACION-ISSUES-20261024-01` | DESCARTADO | — | — |
 | `DOC-RELEASE-SECURITY-01` | SIN_CANDIDATA | — | — |
-| `DOC-SESSION-KEEPALIVE-01` | SIN_CANDIDATA | — | — |
+| `DOC-SESSION-KEEPALIVE-01` | CANDIDATA_LOCAL | `factory-control-session-keepalive.js` | `tests/test_cobertura_autofactory_03.py` |
 | `DOC-SESSION-KEEPALIVE-02` | SIN_CANDIDATA | — | — |
 | `DOC-SESSION-KEEPALIVE-03` | SIN_CANDIDATA | — | — |
 | `DOC-SESSION-KEEPALIVE-04` | SIN_CANDIDATA | — | — |
