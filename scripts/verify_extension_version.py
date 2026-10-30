@@ -27,7 +27,7 @@ class VerificationError(ValueError):
 def git(root: Path, *args: str) -> bytes:
     result = subprocess.run(
         ["git", "-C", str(root), *args], capture_output=True, check=False,
-        timeout=30,
+        env={**os.environ, "GIT_NO_REPLACE_OBJECTS": "1"}, timeout=30,
     )
     if result.returncode != 0:
         raise VerificationError("carpeta sin evidencia Git verificable")
@@ -128,7 +128,7 @@ def main() -> int:
     except (VerificationError, OSError, subprocess.TimeoutExpired) as exc:
         print("RECHAZADO: " + str(exc), file=sys.stderr)
         return 1
-    print(f"VERIFICADO: SHA={sha} versión={args.version} archivos={total}; Chrome/Safari")
+    print(f"VERIFICADO: carpeta={args.folder} SHA={sha} versión={args.version} archivos={total}; Chrome/Safari")
     return 0
 
 
