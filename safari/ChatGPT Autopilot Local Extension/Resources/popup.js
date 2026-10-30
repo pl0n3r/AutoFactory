@@ -37,7 +37,7 @@ async function showBuildIdentity() {
     if (!response.ok) return;
     const record = await response.json();
     if (!record || typeof record !== 'object' || Array.isArray(record) ||
-        Object.keys(record).sort().join(',') !== 'sha,tag,version' ||
+        Object.keys(record).sort((a, b) => a.localeCompare(b)).join(',') !== 'sha,tag,version' ||
         record.version !== extensionVersion || record.tag !== 'v' + extensionVersion ||
         typeof record.sha !== 'string' || !/^[0-9a-f]{40}$/.test(record.sha)) return;
     // Local metadata is a build claim; the external tag verifier is the authority.

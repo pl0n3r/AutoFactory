@@ -139,11 +139,12 @@ def verify_published_build(folder: Path, expected_sha: str, expected_version: st
     try:
         record = json.loads(build.read_text(encoding="utf-8"))
         chrome = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         raise VerificationError("metadatos del build ilegibles") from exc
     if (not isinstance(record, dict) or set(record) != {"version", "sha", "tag"}
             or record["sha"] != expected_sha or record["version"] != expected_version
-            or record["tag"] != published_tag or chrome.get("version") != expected_version):
+            or record["tag"] != published_tag or not isinstance(chrome, dict)
+            or chrome.get("version") != expected_version):
         raise VerificationError("SHA/versión del build distinto de la etiqueta publicada")
     return record["sha"]
 

@@ -81,6 +81,9 @@ class VerifyExtensionVersionTests(unittest.TestCase):
             (second / "manifest.json").write_text('{"version":"0.0.0"}')
             with self.assertRaises(verifier.VerificationError):
                 verifier.verify_published_build(second, b, "1.7.38", "v1.7.38")
+            (second / "manifest.json").write_text("[]")
+            with self.assertRaises(verifier.VerificationError):
+                verifier.verify_published_build(second, b, "1.7.38", "v1.7.38")
             record.unlink()
             record.symlink_to(first / "extension-build.json")
             with self.assertRaises(verifier.VerificationError):
