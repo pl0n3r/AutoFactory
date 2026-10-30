@@ -15,10 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs" / "matriz-cobertura.md"
 MAIN_ID = re.compile(r"^(?:AF1-AC|README|AGENTES|PROTO|DOC|ISSUE|DEC|HIST)-[A-Z0-9-]+$")
 MAPPING = re.compile(
-    r"^\| .(?P<id>[A-Z0-9-]+). \| "
+    r"^\| \x60(?P<id>[A-Z0-9-]+)\x60 \| "
     r"(?P<verdict>CANDIDATA_LOCAL|SIN_CANDIDATA|DESCARTADO) \| "
-    r"(?P<code>—|.[A-Za-z0-9_.\-/]+\.(?:js|cjs|py).) \| "
-    r"(?P<test>—|.(?:tests/test_[A-Za-z0-9_.\-/]+\.py|test-[A-Za-z0-9_.\-/]+\.cjs).) \|$"
+    r"(?P<code>—|\x60[A-Za-z0-9_.\-/]+\.(?:js|cjs|py)\x60) \| "
+    r"(?P<test>—|\x60(?:tests/test_[A-Za-z0-9_.\-/]+\.py|test-[A-Za-z0-9_.\-/]+\.cjs)\x60) \|$"
 )
 VALID_STATES = {"NO_VERIFICABLE", "CUBIERTO", "DESCARTADO", "EN_CURSO"}
 NOT_BEHAVIORAL = ("tests/test_matriz_cobertura.py", "tests/test_contraste_af_readme.py")
