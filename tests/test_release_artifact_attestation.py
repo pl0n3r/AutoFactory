@@ -119,7 +119,7 @@ class ReleaseArtifactAttestationTests(unittest.TestCase):
         self._mirror(
             "popup.html",
             '<html><script src="factory-control-command-outcome-preview.js"></script>'
-            '<html><script src="factory-control-heartbeat-preview.js"></script>'
+            '<script src="factory-control-heartbeat-preview.js"></script>'
             '<script src="factory-control-account-status-preview.js"></script>'
             '<script src="factory-control-local-commands.js"></script>'
             '<script src="popup.js"></script>'
