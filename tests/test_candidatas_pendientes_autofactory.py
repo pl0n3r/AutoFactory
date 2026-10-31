@@ -191,11 +191,11 @@ class CandidatasPendientesAutofactoryTests(unittest.TestCase):
         self.assertEqual(131, len(missing))
         self.assertEqual(set(ledger_rows(report)), missing)
         for ident, (group, proof) in ledger_rows(report).items():
-            with self.subTest(ident=ident):
-                self.assertEqual(group, group_for(ident))
-                expected = (TICK + "test_criterio_principal#" + SELECTED[ident] + TICK
-                            if ident in SELECTED else "—")
-                self.assertEqual(proof, expected)
+            # Fail hard: negative mutation tests rely on an actual exception.
+            self.assertEqual(group, group_for(ident), ident)
+            expected = (TICK + "test_criterio_principal#" + SELECTED[ident] + TICK
+                        if ident in SELECTED else "—")
+            self.assertEqual(proof, expected, ident)
         self.assertIn("NO_VERIFICABLE", report)
         self.assertIn("No es un certificado de runtime", report)
 
@@ -224,8 +224,14 @@ class CandidatasPendientesAutofactoryTests(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode,
                          "Offline contracts failed: " + completed.stderr[-1200:])
+        # The canonical acceptance runs this method only: force negative
+        # contract coverage even when npm test does not discover every Python test.
+        self.verify_negative_cases()
 
     def test_rechaza_promociones_duplicados_y_evidencia_ficticia(self) -> None:
+        self.verify_negative_cases()
+
+    def verify_negative_cases(self) -> None:
         matrix = MATRIX.read_text(encoding="utf-8")
         report = LEDGER.read_text(encoding="utf-8")
         rows = ledger_rows(report)
