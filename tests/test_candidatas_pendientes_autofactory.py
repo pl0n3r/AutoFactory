@@ -230,25 +230,34 @@ class CandidatasPendientesAutofactoryTests(unittest.TestCase):
         report = LEDGER.read_text(encoding="utf-8")
         rows = ledger_rows(report)
         first = next(iter(rows))
-        with self.assertRaises(AssertionError):
-            self.verify_ledger(matrix, report.replace(
-                "| " + TICK + first + TICK + " |", "| " + TICK +
-                "ID-INVENTADO" + TICK + " |", 1
-            ))
-        with self.assertRaises(ValueError):
-            ledger_rows(report + "\n" + HEADER + "\n")
-        with self.assertRaises(AssertionError):
-            self.verify_ledger(matrix, report.replace(
-                TICK + "test_criterio_principal#observer-readonly" + TICK, "—", 1
-            ))
-        with self.assertRaises(ValueError):
-            ledger_rows(report.replace("| PARCIAL_OFFLINE |", "| CUBIERTO |", 1))
+        invented = report.replace(
+            "| " + TICK + first + TICK + " |",
+            "| " + TICK + "ID-INVENTADO" + TICK + " |", 1
+        )
+        duplicate = report + "\n" + HEADER + "\n"
+        missing_proof = report.replace(
+            TICK + "test_criterio_principal#observer-readonly" + TICK, "—", 1
+        )
+        false_promotion = report.replace("| PARCIAL_OFFLINE |", "| CUBIERTO |", 1)
         observer = OBSERVER.read_text(encoding="utf-8")
+        unsafe_scopes = observer.replace("contents: read", "contents: write", 1)
+        unsafe_concurrency = observer.replace(
+            "cancel-in-progress: false", "cancel-in-progress: true", 1
+        )
+
+        # Exactly one potentially raising call per assertion scope (Sonar S2699).
         with self.assertRaises(AssertionError):
-            self.verify_observer(observer.replace("contents: read", "contents: write", 1))
+            self.verify_ledger(matrix, invented)
+        with self.assertRaises(ValueError):
+            ledger_rows(duplicate)
         with self.assertRaises(AssertionError):
-            self.verify_observer(observer.replace("cancel-in-progress: false",
-                                                  "cancel-in-progress: true", 1))
+            self.verify_ledger(matrix, missing_proof)
+        with self.assertRaises(ValueError):
+            ledger_rows(false_promotion)
+        with self.assertRaises(AssertionError):
+            self.verify_observer(unsafe_scopes)
+        with self.assertRaises(AssertionError):
+            self.verify_observer(unsafe_concurrency)
 
 
 if __name__ == "__main__":
