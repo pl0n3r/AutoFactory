@@ -148,12 +148,15 @@ const snapshot = () => ({
   assert.equal(memory.startupSamplesMs.length, 50);
   assert.deepEqual(memory.responseSamplesMs, [1000, 3000]);
   assert.equal(JSON.stringify(memory).includes(sentinel), false);
-  // README-13-04: circuit breaker after repeated failures.
+  // README-13-04: five failures are required, not just MAX_FAILURES.
+  assert.equal(reliability.MAX_FAILURES, 5);
   let state = reliability.normalize();
-  for (let i = 0; i < reliability.MAX_FAILURES; i++) {
+  assert.equal(state.circuitOpenUntil > 0, false);
+  for (let i = 1; i <= 5; i++) {
     state = reliability.afterFailure(state, 50000);
+    assert.equal(state.circuitOpenUntil > 0, i === 5);
   }
-  assert.equal(state.consecutiveFailures, reliability.MAX_FAILURES);
+  assert.equal(state.consecutiveFailures, 5);
   assert.equal(reliability.canReload(state, 50000), false);
   assert.equal(reliability.afterSuccess(state).consecutiveFailures, 0);
   // README-08-07: real activation requires the legal gate.
@@ -200,7 +203,10 @@ class CandidatasPendientesAutofactoryTests(unittest.TestCase):
         self.assertIn("No es un certificado de runtime", report)
 
     def verify_observer(self, text: str) -> None:
-        self.assertIn("pl0n3r/Factory/.github/workflows/observador-reservas-consumidor.yml@v1", text)
+        self.assertEqual(
+            ["pl0n3r/Factory/.github/workflows/observador-reservas-consumidor.yml@v1"],
+            re.findall(r"(?m)^    uses: (\S+)$", text),
+        )
         self.assertIn("cancel-in-progress: false", text)
         scopes = re.findall(
             r"(?m)^\s+(contents|issues|pull-requests|checks|actions): (read|write)$",
@@ -210,6 +216,7 @@ class CandidatasPendientesAutofactoryTests(unittest.TestCase):
         self.assertEqual({"contents", "issues", "pull-requests", "checks", "actions"},
                          {name for name, _ in scopes})
         self.assertTrue(all(permission == "read" for _, permission in scopes))
+        self.assertNotRegex(text, r"(?m)^\s*[\w-]+: write$")
         self.assertNotRegex(text, r"(?m)^\s*(?:secrets|steps|run):")
 
     def test_criterio_principal(self) -> None:
@@ -247,6 +254,12 @@ class CandidatasPendientesAutofactoryTests(unittest.TestCase):
         false_promotion = report.replace("| PARCIAL_OFFLINE |", "| CUBIERTO |", 1)
         observer = OBSERVER.read_text(encoding="utf-8")
         unsafe_scopes = observer.replace("contents: read", "contents: write", 1)
+        unsafe_extra_scope = observer + "\n      id-token: write\n"
+        unsafe_use = observer.replace(
+            "    uses: pl0n3r/Factory/.github/workflows/observador-reservas-consumidor.yml@v1",
+            "    uses: pl0n3r/Factory/.github/workflows/observador-reservas-consumidor.yml@main",
+            1
+        ) + "\n# pl0n3r/Factory/.github/workflows/observador-reservas-consumidor.yml@v1\n"
         unsafe_concurrency = observer.replace(
             "cancel-in-progress: false", "cancel-in-progress: true", 1
         )
@@ -262,6 +275,10 @@ class CandidatasPendientesAutofactoryTests(unittest.TestCase):
             ledger_rows(false_promotion)
         with self.assertRaises(AssertionError):
             self.verify_observer(unsafe_scopes)
+        with self.assertRaises(AssertionError):
+            self.verify_observer(unsafe_extra_scope)
+        with self.assertRaises(AssertionError):
+            self.verify_observer(unsafe_use)
         with self.assertRaises(AssertionError):
             self.verify_observer(unsafe_concurrency)
 

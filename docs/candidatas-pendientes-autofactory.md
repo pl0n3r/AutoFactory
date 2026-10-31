@@ -6,7 +6,7 @@
 
 ## Categorías sin promoción ficticia
 
-- **PARCIAL_OFFLINE (8):** una parte concreta del código se ejecuta con fixture; nunca equivale a cumplir todo el requisito ni modifica el estado de la matriz.
+- **PARCIAL_OFFLINE (8):** se verifica una porción local mediante aserciones ejecutadas sobre módulos JS con datos sintéticos **o mediante inspección estática de un workflow YAML**. En particular, `DOC-OBSERVADOR-RESERVAS-V3-01` se verifica **solo por lectura estática de sus permisos, caller y configuración**, sin ejecutar el observador ni demostrar comportamiento real de GitHub Actions. Ninguna evidencia parcial equivale a cumplir todo el requisito o modifica el estado de la matriz.
 - **PENDIENTE_OFFLINE (24):** puede existir predicado local, pero todavía no se acredita íntegramente; no se fabrican tests vacíos.
 - **OPERATIVO_EXTERNO (53):** precisa pruebas terminales autenticadas externas, instalación Chrome/Safari, release, Sonar nativo, consentimiento o decisión del dueño.
 - **NORMA_DOCUMENTAL (46):** enuncia reglas y responsabilidades; un grep de fuente no prueba su cumplimiento real.
@@ -15,7 +15,7 @@
 
 | IDs fuente SIN_CANDIDATA | Garantía de código que se prueba parcialmente | Prueba |
 | --- | --- | --- |
-| DOC-OBSERVADOR-RESERVAS-V3-01 | Caller de reserva V3 de solo lectura, reusable `@v1`, no cancela en progreso, mutación de permisos denegada | `test_criterio_principal#observer-readonly` |
+| DOC-OBSERVADOR-RESERVAS-V3-01 | **Inspección estática únicamente**, sin ejecutar workflow: el YAML declara un único `uses: ...@v1`, scopes `read` y no cancelación; variantes sintéticas con `@main` o permisos `write` se rechazan en la prueba | `test_criterio_principal#observer-readonly` |
 | DOC-OFFLINE-SESSION-STATE-DENIALS-02, README-13-06 | Contrato puro deniega reenganche ante sesión cerrada, pausa, reloj futuro y lectura ambigua | `test_criterio_principal#keepalive-denials` |
 | README-08-03 | Presupuesto igual a 80 % del límite observado o límite desconocido bloquea el contrato | `test_criterio_principal#keepalive-budget` |
 | README-08-07 | Preflight de activación deniega sin gate legal pese a pairing/consent sintéticos válidos, sin filtrar identidad | `test_criterio_principal#activation-gates` |
