@@ -33,6 +33,9 @@ class FactoryControlLocalPublisherTests(unittest.TestCase):
     def test_ac06_idle_reason_enum_and_idle_since(self):
         self.check_node("ac06")
 
+    def test_ac07_stuck_snapshot_never_blocks_later_reports(self):
+        self.check_node("ac07")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -96,50 +96,84 @@
     return Object.freeze(payload);
   }
 
-  function createPublisher({ now, enabled, permission, snapshot, post, report } = {}) {
+  function createPublisher({ now, enabled, permission, snapshot, post, report, timers } = {}) {
     if (![now, enabled, permission, snapshot, post].every(x => typeof x === 'function')) {
       throw new TypeError('publisher ports required');
     }
     let nextAllowed = 0;
     let failures = 0;
     let inFlight = false;
+    const schedule = timers?.setTimeout || setTimeout;
+    const unschedule = timers?.clearTimeout || clearTimeout;
     async function publish() {
       if (inFlight) return false;
       inFlight = true;
       let step = 'inicio';
+      let expired = false;
+      let watchdog;
+      // Abort an in-flight fetch on expiry when the receiving port supports it.
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
       const note = (ok, detail) => {
         try { if (typeof report === 'function') report({ ok, step, detail }); } catch (_e) { /* diagnostics only */ }
       };
-      try {
-        const current = now();
-        if (!Number.isSafeInteger(current) || current < 0 ||
-            current < nextAllowed) return false;
-        step = 'opcion';
-        if (!(await enabled())) { note(false, 'opción apagada'); return false; }
-        step = 'permiso';
-        if (!(await permission())) { note(false, 'sin permiso 127.0.0.1'); return false; }
-        step = 'pestañas';
-        const payload = payloadFrom(await snapshot());
-        step = 'envio';
-        // Opt-in may be revoked while gathering the snapshot. Never transmit
-        // from a stale permission/flag read, even on an in-flight alarm tick.
-        if (!(await enabled()) || !(await permission())) return false;
-        const result = await post(payload);
-        if (result !== true) throw new TypeError('local receiver unavailable');
-        note(true, 'enviado');
-        failures = 0;
-        nextAllowed = current + 30_000;
-        return true;
-      } catch (_error) {
-        // Only a fixed error class is recorded, never messages or chat data.
-        note(false, String(_error?.name || 'Error').slice(0, 30));
-        failures = Math.min(failures + 1, 5);
+      const work = (async () => {
         try {
-          nextAllowed = Math.max(nextAllowed,
-            now() + Math.min(600_000, 30_000 * (2 ** failures)));
-        } catch (_ignored) { nextAllowed = Number.MAX_SAFE_INTEGER; }
-        return false;
+          const current = now();
+          if (!Number.isSafeInteger(current) || current < 0 ||
+              current < nextAllowed) return false;
+          step = 'opcion';
+          const optedIn = await enabled();
+          if (expired) return false;
+          if (!optedIn) { note(false, 'opción apagada'); return false; }
+          step = 'permiso';
+          const granted = await permission();
+          if (expired) return false;
+          if (!granted) { note(false, 'sin permiso 127.0.0.1'); return false; }
+          step = 'pestañas';
+          const result = await snapshot();
+          if (expired) return false; // Never post a stale snapshot after watchdog expiry.
+          const payload = payloadFrom(result);
+          step = 'envio';
+          // Opt-in may be revoked while gathering the snapshot. Never transmit
+          // from a stale permission/flag read, even on an in-flight alarm tick.
+          const stillEnabled = await enabled();
+          if (expired || !stillEnabled) return false;
+          const stillGranted = await permission();
+          if (expired || !stillGranted) return false;
+          const sent = await post(payload, controller?.signal);
+          if (expired) return false; // Late I/O cannot clear backoff or report success.
+          if (sent !== true) throw new TypeError('local receiver unavailable');
+          note(true, 'enviado');
+          failures = 0;
+          nextAllowed = current + 30_000;
+          return true;
+        } catch (_error) {
+          if (expired) return false;
+          // Keep the existing failure backoff, independent of watchdog recovery.
+          note(false, String(_error?.name || 'Error').slice(0, 30));
+          failures = Math.min(failures + 1, 5);
+          try {
+            nextAllowed = Math.max(nextAllowed,
+              now() + Math.min(600_000, 30_000 * (2 ** failures)));
+          } catch (_ignored) { nextAllowed = Number.MAX_SAFE_INTEGER; }
+          return false;
+        }
+      })();
+      // A non-settling port must not keep inFlight set across all later alarms.
+      // Timeout recovery is not an HTTP error and does not advance backoff.
+      const timeout = new Promise(resolve => {
+        watchdog = schedule(() => {
+          expired = true;
+          controller?.abort();
+          note(false, 'watchdog 60s');
+          resolve(false);
+        }, 60_000);
+      });
+      try {
+        return await Promise.race([work, timeout]);
       } finally {
+        expired = true;
+        unschedule(watchdog);
         inFlight = false;
       }
     }
@@ -171,6 +205,21 @@
         }
       });
     }
+    const schedule = typeof root.setTimeout === 'function' ?
+      root.setTimeout.bind(root) : setTimeout;
+    const unschedule = typeof root.clearTimeout === 'function' ?
+      root.clearTimeout.bind(root) : clearTimeout;
+    async function callWithin(timeoutMs, target, method, ...args) {
+      let timer;
+      try {
+        return await Promise.race([
+          call(target, method, ...args),
+          new Promise(resolve => { timer = schedule(() => resolve(null), timeoutMs); })
+        ]);
+      } finally {
+        unschedule(timer);
+      }
+    }
     let runId = root.crypto?.randomUUID?.() || 'run-initial';
     const enabled = async () => {
       const stored = await call(extension.storage.local, 'get', { [FLAG]: false });
@@ -191,7 +240,8 @@
       const tabs = found.filter(t => Number.isSafeInteger(t?.id) && t.id >= 0).slice(0, 99);
       const chats = [];
       const observed = await Promise.all(tabs.map(async tab => {
-        const signal = await call(extension.tabs, 'sendMessage',
+        // A frozen tab is UNKNOWN after 4 s, never an indefinitely pending report.
+        const signal = await callWithin(4_000, extension.tabs, 'sendMessage',
           tab.id, { type: 'autopilot:get-status' });
         // No free text, URLs or account details from content scripts are read.
         const flag = typeof signal?.enabled === 'boolean' ? signal.enabled : null;
@@ -211,8 +261,9 @@
         run_id: runId, chats
       };
     }
-    const post = async payload => {
+    const post = async (payload, signal) => {
       const response = await root.fetch(ENDPOINT, {
+        signal,
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'omit', mode: 'cors', redirect: 'error', cache: 'no-store',
         referrerPolicy: 'no-referrer', body: JSON.stringify(payload)
@@ -247,7 +298,8 @@
           { at: Date.now(), ok: info.ok === true, step: String(info.step), detail: String(info.detail) } });
       } catch (_e) { /* diagnostics only */ }
     };
-    const publisher = createPublisher({ now: Date.now, enabled, permission, snapshot, post, report });
+    const publisher = createPublisher({ now: Date.now, enabled, permission, snapshot, post, report,
+      timers: { setTimeout: schedule, clearTimeout: unschedule } });
     // Pressing Play starts a new run: announce the detected chats right away.
     extension.storage.onChanged?.addListener((changes, area) => {
       if (area === 'local' && changes.masterEnabled?.newValue === true) {

@@ -228,7 +228,133 @@ async function ac06() {
   assert.equal(p.idle_reason, 'esperando_pacing');
   assert.equal(p.idle_since, '2026-10-12T12:00:00Z');
 }
-const cases = { ac01, ac02, ac03, ac04, ac05, ac06 };
+// Controlled clock: no wall-clock waits and no real browser/network dependency.
+function fakeTimers() {
+  let time = 100_000, serial = 0;
+  const pending = new Map();
+  return {
+    now() { return time; },
+    setTimeout(fn, delay) {
+      const key = ++serial;
+      pending.set(key, { at: time + delay, fn });
+      return key;
+    },
+    clearTimeout(key) { pending.delete(key); },
+    advance(ms) {
+      time += ms;
+      for (const [key, task] of [...pending].sort((a, b) => a[1].at - b[1].at)) {
+        if (task.at <= time && pending.has(key)) {
+          pending.delete(key);
+          task.fn();
+        }
+      }
+    }
+  };
+}
+const flush = () => new Promise(setImmediate);
+
+async function testSilentTabUsesUnknownAfter4s() {
+  const clock = fakeTimers();
+  const posts = [];
+  const storage = {
+    get(defaults, cb) { cb({ ...defaults, factoryControlLocalPublishingEnabled: true }); },
+    set(_values, cb) { cb?.(); }
+  };
+  const root = {
+    setTimeout: clock.setTimeout.bind(clock),
+    clearTimeout: clock.clearTimeout.bind(clock),
+    crypto: { randomUUID: () => '11111111-1111-4111-8111-111111111111' },
+    async fetch(_url, options) {
+      posts.push(JSON.parse(options.body));
+      return { ok: true };
+    },
+    chrome: {
+      storage: { local: storage, onChanged: { addListener() {} } },
+      permissions: { contains(_details, cb) { cb(true); }, onRemoved: { addListener() {} } },
+      tabs: {
+        query(_filter, cb) { cb([{ id: 1 }, { id: 2 }]); },
+        sendMessage(id, _message, cb) {
+          if (id === 1) cb({ enabled: true });
+          // Tab 2 stays frozen forever: its callback never fires.
+        }
+      },
+      alarms: { create() {}, clear(_name, cb) { cb?.(true); },
+        onAlarm: { addListener() {} } },
+      runtime: { onStartup: { addListener() {} }, onInstalled: { addListener() {} } }
+    }
+  };
+  assert.equal(api.installBackground(root), true);
+  await flush();
+  assert.equal(posts.length, 0);
+  clock.advance(3999);
+  await flush();
+  assert.equal(posts.length, 0);
+  clock.advance(1);
+  await flush();
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].chats_open, 2);
+  assert.equal(posts[0].state, 'activo');
+  const silent = posts[0].chats.find(x => x.chat_id === 't2');
+  assert.equal(silent.state, 'desconocido');
+  assert.equal(JSON.stringify(posts).includes('SECRET'), false);
+}
+
+async function ac07() {
+  const clock = fakeTimers();
+  let resolveFirst, samples = 0, posts = 0;
+  const messages = [];
+  const pub = api.createPublisher({
+    now: () => clock.now(), timers: clock,
+    enabled: async () => true, permission: async () => true,
+    snapshot: () => ++samples === 1 ?
+      new Promise(resolve => { resolveFirst = resolve; }) : Promise.resolve(base),
+    post: async () => { posts++; return true; },
+    report: note => messages.push(note)
+  });
+  const first = pub.publish();
+  await flush();
+  assert.equal(samples, 1);
+  assert.equal(await pub.publish(), false); // still in flight
+  clock.advance(59_999);
+  await flush();
+  assert.equal(posts, 0);
+  clock.advance(1);
+  assert.equal(await first, false); // watchdog frees inFlight at 60 s
+  assert.equal(await pub.publish(), true); // no extra 60 s backoff
+  assert.equal(posts, 1);
+  resolveFirst(base); // a very late frozen-tab response is harmless
+  await flush();
+  assert.equal(posts, 1);
+  assert.equal(messages.filter(x => x.ok === true).length, 1);
+
+  // A stuck POST is aborted when the port supports cancellation.
+  const clock2 = fakeTimers();
+  let releasePost, postCount = 0, aborted = 0;
+  const pub2 = api.createPublisher({
+    now: () => clock2.now(), timers: clock2,
+    enabled: async () => true, permission: async () => true,
+    snapshot: async () => base,
+    post: (_payload, signal) => {
+      if (++postCount === 1) {
+        signal?.addEventListener('abort', () => { aborted++; });
+        return new Promise(resolve => { releasePost = resolve; });
+      }
+      return Promise.resolve(true);
+    }
+  });
+  const stuckPost = pub2.publish();
+  await flush();
+  assert.equal(postCount, 1);
+  clock2.advance(60_000);
+  assert.equal(await stuckPost, false);
+  assert.equal(aborted, 1);
+  assert.equal(await pub2.publish(), true);
+  releasePost(true);
+  await flush();
+  assert.equal(postCount, 2);
+  await testSilentTabUsesUnknownAfter4s();
+}
+const cases = { ac01, ac02, ac03, ac04, ac05, ac06, ac07 };
 const selected = process.argv[2] ? [process.argv[2]] : Object.keys(cases);
 (async () => {
   await Promise.all(selected.map(key => {
