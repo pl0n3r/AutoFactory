@@ -28,7 +28,7 @@ README-02-03|Estado de la versión publicada|no autorizan por sí mismas el puen
 README-03-01|Work Queue|Issues críticos abiertos|B_EXTERNA|.github/workflows/coordinacion.yml|issues:|#219
 README-03-02|Work Queue|El estado actual lo determina GitHub|B_EXTERNA|.github/workflows/coordinacion.yml|pull_request:|#219
 README-03-03|Work Queue|#228 — paridad Chrome/Safari|B_EXTERNA|AGENTES.md|trabajo/issue-N|#228
-README-03-04|Work Queue|#134 — readiness del bridge|B_EXTERNA|AGENTES.md|D-061|#134
+README-03-04|Work Queue|#134 — readiness del bridge|B_EXTERNA|decisiones.yml|D-061|#134
 README-03-05|Work Queue|#219 — SonarCloud|B_EXTERNA|.github/workflows/validate.yml|name: Validate / Pruebas y smoke Chrome|#219
 README-04-01|Qué hace el producto|Observa únicamente las pestañas habilitadas|A_PARCIAL|autopilot-core.js|COMPOSER_SELECTORS|#122
 README-04-02|Qué hace el producto|Gestiona estados transitorios|A_PARCIAL|content.js|adaptiveRecovery|#122
@@ -42,7 +42,7 @@ README-06-03|Stack e infraestructura|No existe backend Hostinger|C_DECLARATIVA|A
 README-06-04|Stack e infraestructura|Permiso LAN opcional|A_PARCIAL|manifest.json|"optional_host_permissions"|#134
 README-06-05|Stack e infraestructura|paridad de manifiestos y rollback|A_PARCIAL|scripts/verify-release-evidence.cjs|safari_smoke|#122
 README-07-01|Ciclo de entrega|Issue → estado/reserva|B_EXTERNA|AGENTES.md|trabajo/issue-N|#219
-README-07-02|Ciclo de entrega|Cuando el bot de coordinación no esté instalado|C_DECLARATIVA|AGENTES.md|fallback local|#219
+README-07-02|Ciclo de entrega|Cuando el bot de coordinación no esté instalado|C_DECLARATIVA|AGENTES.md|sin inventar UUID|#219
 README-07-03|Ciclo de entrega|Una vez instalada coordinación Factory|C_DECLARATIVA|.github/workflows/coordinacion.yml|pl0n3r/factory/.github/workflows/coordinacion.yml@v1|#219
 README-07-04|Ciclo de entrega|Un merge o CI verde|A_PARCIAL|scripts/verify-release-evidence.cjs|chrome_smoke|#122
 README-07-05|Ciclo de entrega|La entrega instalable exige|A_PARCIAL|scripts/verify-release-evidence.cjs|rollback|#122

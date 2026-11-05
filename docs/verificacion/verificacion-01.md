@@ -17,7 +17,7 @@ Criterio: `A_PARCIAL` = subcontrato de código/fixture reproducible, no producto
 | README-03-01 | B_EXTERNA | `.github/workflows/coordinacion.yml` | `issues:` | #219 |
 | README-03-02 | B_EXTERNA | `.github/workflows/coordinacion.yml` | `pull_request:` | #219 |
 | README-03-03 | B_EXTERNA | `AGENTES.md` | `trabajo/issue-N` | #228 |
-| README-03-04 | B_EXTERNA | `AGENTES.md` | `D-061` | #134 |
+| README-03-04 | B_EXTERNA | `decisiones.yml` | `D-061` | #134 |
 | README-03-05 | B_EXTERNA | `.github/workflows/validate.yml` | `name: Validate / Pruebas y smoke Chrome` | #219 |
 | README-04-01 | A_PARCIAL | `autopilot-core.js` | `COMPOSER_SELECTORS` | #122 |
 | README-04-02 | A_PARCIAL | `content.js` | `adaptiveRecovery` | #122 |
@@ -31,7 +31,7 @@ Criterio: `A_PARCIAL` = subcontrato de código/fixture reproducible, no producto
 | README-06-04 | A_PARCIAL | `manifest.json` | `"optional_host_permissions"` | #134 |
 | README-06-05 | A_PARCIAL | `scripts/verify-release-evidence.cjs` | `safari_smoke` | #122 |
 | README-07-01 | B_EXTERNA | `AGENTES.md` | `trabajo/issue-N` | #219 |
-| README-07-02 | C_DECLARATIVA | `AGENTES.md` | `fallback local` | #219 |
+| README-07-02 | C_DECLARATIVA | `AGENTES.md` | `sin inventar UUID` | #219 |
 | README-07-03 | C_DECLARATIVA | `.github/workflows/coordinacion.yml` | `pl0n3r/factory/.github/workflows/coordinacion.yml@v1` | #219 |
 | README-07-04 | A_PARCIAL | `scripts/verify-release-evidence.cjs` | `chrome_smoke` | #122 |
 | README-07-05 | A_PARCIAL | `scripts/verify-release-evidence.cjs` | `rollback` | #122 |
