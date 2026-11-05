@@ -148,20 +148,27 @@ class VerificacionAutofactory01Tests(unittest.TestCase):
     def test_mutaciones_fallan_cerrado(self):
         original = README.read_text(encoding="utf-8")
         report = REPORT.read_text(encoding="utf-8")
+        changed_readme = original.replace("Validate sobre main", "Validate desconocido", 1)
+        changed_id = report.replace("| README-01-01 |", "| README-01-02 |", 1)
+        false_coverage = report.replace("| B_EXTERNA |", "| CUBIERTO |", 1)
+        false_install = report.replace("no certificado de instalación", "certificado", 1)
+        manifest = (ROOT / "manifest.json").read_text(encoding="utf-8")
+        changed_manifest = manifest.replace('"manifest_version": 3', '"manifest_version": 2', 1)
+        verifier = (ROOT / "scripts/verify-release-evidence.cjs").read_text(encoding="utf-8")
+        changed_verifier = verifier.replace("safari_smoke", "no_smoke", 1)
+
         with self.assertRaises(AssertionError):
-            verify_readme(original.replace("Validate sobre main", "Validate desconocido", 1))
+            verify_readme(changed_readme)
         with self.assertRaises(ValueError):
-            report_rows(report.replace("| README-01-01 |", "| README-01-02 |", 1))
+            report_rows(changed_id)
         with self.assertRaises(ValueError):
-            report_rows(report.replace("| B_EXTERNA |", "| CUBIERTO |", 1))
+            report_rows(false_coverage)
         with self.assertRaises(ValueError):
-            report_rows(report.replace("no certificado de instalación", "certificado", 1))
+            report_rows(false_install)
         with self.assertRaises(AssertionError):
-            src = (ROOT / "manifest.json").read_text(encoding="utf-8")
-            verify_sources({"manifest.json": src.replace('"manifest_version": 3', '"manifest_version": 2', 1)})
+            verify_sources({"manifest.json": changed_manifest})
         with self.assertRaises(AssertionError):
-            src = (ROOT / "scripts/verify-release-evidence.cjs").read_text(encoding="utf-8")
-            verify_sources({"scripts/verify-release-evidence.cjs": src.replace("safari_smoke", "no_smoke", 1)})
+            verify_sources({"scripts/verify-release-evidence.cjs": changed_verifier})
 
 
 if __name__ == "__main__":
