@@ -229,7 +229,7 @@
     'scroll-failure', 'front-stop', 'status', 'conversation-mode', 'reasoning-level',
     'send-start', 'send-control-missing', 'send-confirmed', 'circuit-reset',
     'recovery', 'human-required', 'circuit-open', 'draft-cleared', 'failure',
-    'enabled-change', 'content-loaded'
+    'enabled-change', 'content-loaded', 'order-received', 'composer-blocked'
   ]);
   const DIAGNOSTIC_TEXT = new Set([
     'code', 'action', 'kind', 'requested', 'result', 'fallback', 'reason',
@@ -237,7 +237,7 @@
   ]);
   const DIAGNOSTIC_BOOLEAN = new Set(['enabled', 'backgroundTabs', 'persistentState']);
   const DIAGNOSTIC_NUMBER = new Set(['promptLength', 'attempt', 'intervalMinutes',
-    'cmpCount', 'cmpReason', 'taCount', 'edCount']);
+    'cmpCount', 'cmpReason', 'taCount', 'edCount', 'order_id']);
 
   // A send-control-missing event is reduced to bounded counts at the trust edge.
   // Textual DOM attributes and the conversation path are inspected for shape only.

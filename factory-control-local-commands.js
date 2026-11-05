@@ -100,7 +100,7 @@
         // Account/session state can change while the receipt is persisted.
         // Do not resume on a stale pre-mark authorization.
         if (command.want === 'start' && await allowedToStart() !== true) return false;
-        if (await apply(command.want, command.chat_id, command.issue || command.repo) !== true) return false;
+        if (await apply(command.want, command.chat_id, command.issue || command.repo, command.id) !== true) return false;
         if (await enabled() !== true) return false;
         return await ack(command.id) === true;
       } catch (_error) {
@@ -396,7 +396,7 @@
       await storage.set({ [RECEIPTS]: next });
       return (await receipts())[key] === true;
     }
-    async function apply(want, chatId = null, issue = null) {
+    async function apply(want, chatId = null, issue = null, orderId = null) {
       if (want !== 'stop' && want !== 'start' && want !== 'assign') return false;
       if (want === 'assign' && (chatId === null || !issue)) return false;
       if (want === 'start' && await allowedToStart() !== true) return false;
@@ -453,8 +453,8 @@
           try {
             Promise.resolve(tabs.sendMessage(tab.id,
               want === 'assign'
-                ? (REPOS.includes(issue) ? { type: 'autopilot:assign', repo: issue }
-                  : { type: 'autopilot:assign', issue })
+                ? (REPOS.includes(issue) ? { type: 'autopilot:assign', repo: issue, orderId }
+                  : { type: 'autopilot:assign', issue, orderId })
                 : { type: 'autopilot:set-enabled', enabled: active }))
               .then(result => finish(want === 'assign' ? result?.ok === true
                 : result?.ok === true && result?.enabled === active),
