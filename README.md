@@ -154,7 +154,7 @@ El seguimiento visual usa desplazamiento progresivo de contenedores relevantes y
 
 ## Estado local por pestaña
 
-La señal **SIN AVANCE** todavía no está integrada en el popup ni en el badge de la extensión. La [hoja #246](https://github.com/pl0n3r/AutoFactory/issues/246) y su [PR #247](https://github.com/pl0n3r/AutoFactory/pull/247) desarrollan únicamente un **contrato puro offline** de estados de actividad, sin interfaz, timers, almacenamiento ni integración runtime, y aún no están fusionados.
+La señal **SIN AVANCE** todavía no está integrada en el popup ni en el badge de la extensión. La [hoja #246](https://github.com/pl0n3r/AutoFactory/issues/246) y su [PR #247](https://github.com/pl0n3r/AutoFactory/pull/247) materializaron un **contrato puro offline** de estados de actividad, sin interfaz, timers, almacenamiento ni integración runtime. El PR #247 está fusionado, pero ello no acredita UI por pestaña ni integración runtime.
 
 En el `main` actual, el popup presenta un estado global junto a **▶ PLAY · ACTIVAR** y **■ STOP · PAUSAR**, no una tarjeta «Estado de pestañas» ni contador por pestaña. No dar por disponible ni certificado un diagnóstico por pestaña hasta que exista implementación y validación real.
 

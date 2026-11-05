@@ -127,12 +127,22 @@ class ReadmeContractAdoptionTests(unittest.TestCase):
         self.assertIn("todavía no está integrada en el popup", status)
         self.assertIn("https://github.com/pl0n3r/AutoFactory/issues/246", status)
         self.assertIn("contrato puro offline", status)
+        self.assertIn("El PR #247 está fusionado", status)
+        self.assertNotIn("aún no están fusionados", status)
         self.assertNotIn("El popup muestra una tarjeta", status)
         self.assertNotIn("El badge de la extensión muestra", status)
         self.assertIn("▶ PLAY · ACTIVAR", readme)
         self.assertIn("■ STOP · PAUSAR", readme)
         self.assertIn("**COPIAR DIAGNÓSTICO** produce", readme)
         self.assertNotIn("Pulsa **ACTIVAR TODAS**", readme)
+
+    def test_readme_pr_247_is_merged_without_tab_ui_claim(self):
+        status = self.readme().split("## Estado local por pestaña", 1)[1].split("## Log de diagnóstico", 1)[0]
+        self.assertIn("[PR #247](https://github.com/pl0n3r/AutoFactory/pull/247)", status)
+        self.assertIn("El PR #247 está fusionado", status)
+        self.assertNotIn("y aún no están fusionados", status)
+        self.assertIn("todavía no está integrada en el popup", status)
+        self.assertIn("sin interfaz, timers, almacenamiento ni integración runtime", status)
 
     def test_factory_map_preserves_roles(self):
         readme = self.readme()
