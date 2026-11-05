@@ -341,6 +341,18 @@
   // no reply text, titles or URLs are ever exposed.
   const DIRECTED_KEY = 'autofactory-directed';
   let assignedPrompt = '';
+  // Order in flight (AutoFactory #460): only the numeric id, never text. It ties the
+  // send events to the orchestrator `assign` order and flags a composer stuck for >60 s.
+  const ORDER_BLOCK_MS = 60000;
+  let order = { id: 0, at: 0, blocked: false };
+  function orderDetails() { return order.id > 0 ? { order_id: order.id } : {}; }
+  function clearOrder() { order = { id: 0, at: 0, blocked: false }; }
+  function registerOrder(orderId) {
+    clearOrder();
+    if (!Number.isSafeInteger(orderId) || orderId < 1) return;
+    order = { id: orderId, at: Date.now(), blocked: false };
+    log('order-received', { order_id: orderId });
+  }
   // One CONNECT per browser profile: the opt-in lives in extension storage, so
   // every ChatGPT tab (including ones opened later) is directed without a push.
   const LINK_FLAG = 'factoryControlLanCommandsEnabled';
@@ -356,7 +368,7 @@
     extensionApi.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && Object.hasOwn(changes, LINK_FLAG)) {
         linkEnabled = changes[LINK_FLAG].newValue === true;
-        if (!linkEnabled) assignedPrompt = '';
+        if (!linkEnabled) { assignedPrompt = ''; clearOrder(); }
       }
     });
   } catch (_e) { /* storage events unavailable */ }
@@ -369,7 +381,7 @@
       if (on) sessionStorage.setItem(DIRECTED_KEY, '1');
       else sessionStorage.removeItem(DIRECTED_KEY);
     } catch (_e) { /* ignore */ }
-    if (!on) assignedPrompt = '';
+    if (!on) { assignedPrompt = ''; clearOrder(); }
   }
   function takeAssignment() {
     const value = assignedPrompt;
@@ -378,53 +390,65 @@
   }
   // Factory «modo dirigido»: the exact per-repository prompt from factory/README.md.
   const DIRECTED_REPOS = ['Factory', 'Condor', 'GrindFlow', 'brvtal', 'ControlBot', 'AutoFactory', 'FactoryRunner'];
-  function assignRepo(repo) {
+  function assignRepo(repo, orderId) {
     if (!DIRECTED_REPOS.includes(repo)) return false;
     assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio.';
     state.nextSendAt = 0;
+    registerOrder(orderId);
     return true;
   }
-  function assignIssue(issue) {
+  function assignIssue(issue, orderId) {
     if (typeof issue !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(issue)) return false;
     const [repo, number] = issue.split('#');
     // Factory «modo dirigido» + one assigned issue: work it to a merged PR, resolve blockers.
     assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio. Tu issue asignado es #' + number + ': llévalo hasta dejar su PR fusionado. REGLA: tu trabajo es DESBLOQUEAR, no reportar bloqueos. Si algo te frena (checks en rojo, rama atrasada, reserva caducada, job fallido por causa transitoria, revisión pendiente, otro issue que debe cerrarse antes), ejecuta ahora la acción que lo resuelve dentro de lo que permite PLAN-AGENTES: corrige el CI, actualiza la rama, repite el job fallido, recupera tu reserva (/tomar), pide la revisión, o toma y trabaja el issue bloqueador. CodeRabbit: solo revisión FINAL. No pidas revisión (@coderabbitai review) en commits intermedios ni mientras el CI esté en rojo o pendiente; pídela UNA sola vez cuando el PR sea el definitivo y el CI esté en verde (el cupo gratuito es mínimo y compartido). No programes tareas, recordatorios ni revisiones futuras de ChatGPT. Termina tu respuesta con DOS líneas: «Hecho: <acción concreta que ejecutaste>» y «Siguiente: <la próxima acción>». Solo si ya agotaste todo lo permitido, di en una línea el motivo exacto empezando por «Parada legítima:».';
     state.nextSendAt = 0;
+    registerOrder(orderId);
     return true;
   }
   // Diagnostics only (counts and a reason code, never text): why is the composer not usable?
   let lastProbeAt = 0;
+  function composerNodeReason(node, composer) {
+    if (node.hidden) return 1;
+    if (node.hasAttribute('inert')) return 2;
+    if (node.getAttribute('aria-hidden') === 'true') return 3;
+    if (node.getAttribute('aria-disabled') === 'true') return 4;
+    const style = getComputedStyle(node);
+    if (style.display === 'none') return 5;
+    if (style.visibility === 'hidden' || style.visibility === 'collapse') return 6;
+    if (style.pointerEvents === 'none') return node === composer ? 7 : 17;
+    if (Number.parseFloat(style.opacity) === 0) return 8;
+    return 0;
+  }
+  function composerReason() {
+    const el = document.querySelector('#prompt-textarea') || document.querySelector('[contenteditable="true"]');
+    if (!el) return 0;
+    if (el.closest('[data-message-author-role]')) return 11;
+    if (el.disabled) return 9;
+    if (el.readOnly || el.getAttribute('aria-readonly') === 'true') return 10;
+    for (let node = el; node?.nodeType === 1; node = node.parentElement) {
+      const reason = composerNodeReason(node, el);
+      if (reason) return reason;
+    }
+    return 0;
+  }
   function probeComposer() {
     if (Date.now() - lastProbeAt < 60000) return;
     lastProbeAt = Date.now();
-    const el = document.querySelector('#prompt-textarea') || document.querySelector('[contenteditable="true"]');
-    let reason = 0;
-    if (el) {
-      if (el.closest('[data-message-author-role]')) reason = 11;
-      else if (el.disabled) reason = 9;
-      else if (el.readOnly || el.getAttribute('aria-readonly') === 'true') reason = 10;
-      else {
-        for (let n = el; n?.nodeType === 1 && !reason; n = n.parentElement) {
-          if (n.hidden) reason = 1;
-          else if (n.hasAttribute('inert')) reason = 2;
-          else if (n.getAttribute('aria-hidden') === 'true') reason = 3;
-          else if (n.getAttribute('aria-disabled') === 'true') reason = 4;
-          else {
-            const st = getComputedStyle(n);
-            if (st.display === 'none') reason = 5;
-            else if (st.visibility === 'hidden' || st.visibility === 'collapse') reason = 6;
-            else if (st.pointerEvents === 'none') reason = n === el ? 7 : 17;
-            else if (Number.parseFloat(st.opacity) === 0) reason = 8;
-          }
-        }
-      }
-    }
+    const reason = composerReason();
     log('failure', {
       cmpCount: document.querySelectorAll('#prompt-textarea').length,
       cmpReason: reason,
       taCount: document.querySelectorAll('textarea').length,
       edCount: document.querySelectorAll('[contenteditable="true"]').length
     });
+  }
+
+  // One composer-blocked event per order that stays unsent for more than 60 s.
+  function checkOrderBlocked() {
+    if (order.id < 1 || order.blocked || Date.now() - order.at <= ORDER_BLOCK_MS) return;
+    order.blocked = true;
+    log('composer-blocked', { order_id: order.id, cmpReason: composerReason() });
   }
 
   // Only issue/PR numbers mentioned in the last reply (bounded integers, no text): the orchestrator
@@ -815,7 +839,7 @@
     if (state.pendingSignature === signature) {
       throw new Error('Ya existe un envío pendiente; se evitó un duplicado');
     }
-    log('send-start', { promptLength: core.normalize(prompt).length, signature });
+    log('send-start', { promptLength: core.normalize(prompt).length, signature, ...orderDetails() });
     if (!promptMatches(core.composerText(field), prompt)
         && !core.replaceComposerText(field, prompt, document)) {
       throw new Error('El campo no contiene exactamente el mensaje');
@@ -872,11 +896,13 @@
     state.pendingSignature = signature;
     Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
     persistRuntime();
-    log('send-confirmed', { promptLength: core.normalize(prompt).length, signature });
+    log('send-confirmed', { promptLength: core.normalize(prompt).length, signature, ...orderDetails() });
+    clearOrder();
     setStatus('Mensaje confirmado; esperando respuesta');
   }
 
   async function tick() {
+    checkOrderBlocked();
     if (!state.enabled || state.busy) return;
     state.busy = true;
     try {
@@ -1434,7 +1460,7 @@
     if (message?.type === 'autopilot:heartbeat') void tick();
     if (message?.type === 'autopilot:directed') setDirected(message.on === true);
     if (message?.type === 'autopilot:assign') {
-      const accepted = typeof message.repo === 'string' ? assignRepo(message.repo) : assignIssue(message.issue);
+      const accepted = typeof message.repo === 'string' ? assignRepo(message.repo, message.orderId) : assignIssue(message.issue, message.orderId);
       if (accepted) setDirected(true);
       reply({ ok: accepted, assigned: accepted });
       return;
