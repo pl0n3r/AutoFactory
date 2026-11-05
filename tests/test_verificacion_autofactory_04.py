@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs/verificacion/verificacion-04.md"
@@ -85,6 +86,8 @@ def parse_rows(text: str, *, report: bool) -> dict[str, list[str]]:
             continue
         key = cells[0].strip("`").split(" · ", 1)[0]
         if key not in valid:
+            if report and key not in {"ID", "---"}:
+                raise ValueError("ID no asignado: " + key)
             continue
         if key in out:
             raise ValueError("ID repetido: " + key)
@@ -132,6 +135,9 @@ def validate(report_text: str, matrix_text: str, root: Path = ROOT) -> None:
     for id in ("D-054", "D-055", "D-057", "D-058", "D-059"):
         if id not in actual or actual[id]["status"] != "active":
             raise ValueError("Decisión suprimida/cambiada: " + id)
+        expected = id + " · " + actual[id]["text"]
+        if report["DEC-" + id][1].replace(r"\|", "|") != expected:
+            raise ValueError("Texto normativo distinto: " + id)
 
 
 class VerificacionAutofactory04Tests(unittest.TestCase):
@@ -155,6 +161,7 @@ class VerificacionAutofactory04Tests(unittest.TestCase):
                     if x.startswith("| `PROTO-29`"))
         changes = (
             self.report.replace(line, "", 1),
+            self.report.replace(line, line + "\n" + line.replace("PROTO-29", "PROTO-32", 1), 1),
             self.report.replace(line, line + chr(10) + line, 1),
             self.report.replace(line, line.replace("NO_VERIFICABLE",
                                                   "CUBIERTO", 1), 1),
@@ -177,6 +184,22 @@ class VerificacionAutofactory04Tests(unittest.TestCase):
         altered_matrix = self.matrix.replace(target, tampered, 1)
         with self.assertRaises(ValueError):
             validate(self.report, altered_matrix)
+
+    def test_texto_de_decisiones_falla_cerrado(self):
+        """Una decisión modificada no conserva evidencia por coincidir su ID."""
+        source = ROOT / "decisiones.yml"
+        decisions = json.loads(source.read_text(encoding="utf-8"))
+        next(item for item in decisions["decisions"] if item["id"] == "D-054")["text"] += " CAMBIADO"
+        original_read = Path.read_text
+
+        def fake_read(path, *args, **kwargs):
+            if path == source:
+                return json.dumps(decisions)
+            return original_read(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", fake_read):
+            with self.assertRaisesRegex(ValueError, "Texto normativo distinto: D-054"):
+                validate(self.report, self.matrix)
 
     def test_ac21_ac22_ac23_contrato_real(self):
         """Pruebas existentes invocan Node y código JS real con fixtures."""
