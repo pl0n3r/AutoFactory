@@ -60,9 +60,9 @@ README-09-04|Roadmap y fuentes de verdad|Versiones reales|B_EXTERNA|CHANGELOG.md
 CASES = [tuple(line.split("|")) for line in SPEC.splitlines()]
 LEVELS = {"A_PARCIAL", "B_EXTERNA", "C_DECLARATIVA"}
 ROW = re.compile(
-    r"^\\| (README-\\d{2}-\\d{2}) \\| (A_PARCIAL|B_EXTERNA|C_DECLARATIVA) "
-    r"\\| \\x60([^\\x60]+)\\x60 \\| \\x60([^\\x60]+)\\x60 "
-    r"\\| (#[0-9]+) \\|$", re.M
+    r"^\| (README-\d{2}-\d{2}) \| (A_PARCIAL|B_EXTERNA|C_DECLARATIVA) "
+    r"\| \x60([^\x60]+)\x60 \| \x60([^\x60]+)\x60 "
+    r"\| (#[0-9]+) \|$", re.M
 )
 
 
@@ -74,7 +74,7 @@ def expected_ids():
 
 def extract_section(readme, heading):
     match = re.search(r"(?ms)^## " + re.escape(heading)
-                      + r"[ \\t]*\\n(.*?)(?=^## |\\Z)", readme)
+                      + r"[ \t]*\n(.*?)(?=^## |\Z)", readme)
     if match is None:
         raise AssertionError(f"Missing README section {heading}")
     return match.group(1)
@@ -98,7 +98,7 @@ def report_rows(report):
     for (ident, _, _, level, source, token, issue), observed in zip(CASES, rows):
         if observed != (ident, level, source, token, issue):
             raise ValueError(f"{ident}: ledger differs from source contract")
-    if "estado operativo \\x60UNKNOWN\\x60" not in report:
+    if "estado operativo \x60UNKNOWN\x60" not in report:
         raise ValueError("Missing UNKNOWN operational caveat")
     if "no certificado de instalación" not in report:
         raise ValueError("Missing non-operational limit")
