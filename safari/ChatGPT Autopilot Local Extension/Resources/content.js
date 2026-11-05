@@ -408,30 +408,29 @@
   }
   // Diagnostics only (counts and a reason code, never text): why is the composer not usable?
   let lastProbeAt = 0;
+  function composerNodeReason(node, composer) {
+    if (node.hidden) return 1;
+    if (node.hasAttribute('inert')) return 2;
+    if (node.getAttribute('aria-hidden') === 'true') return 3;
+    if (node.getAttribute('aria-disabled') === 'true') return 4;
+    const style = getComputedStyle(node);
+    if (style.display === 'none') return 5;
+    if (style.visibility === 'hidden' || style.visibility === 'collapse') return 6;
+    if (style.pointerEvents === 'none') return node === composer ? 7 : 17;
+    if (Number.parseFloat(style.opacity) === 0) return 8;
+    return 0;
+  }
   function composerReason() {
     const el = document.querySelector('#prompt-textarea') || document.querySelector('[contenteditable="true"]');
-    let reason = 0;
-    if (el) {
-      if (el.closest('[data-message-author-role]')) reason = 11;
-      else if (el.disabled) reason = 9;
-      else if (el.readOnly || el.getAttribute('aria-readonly') === 'true') reason = 10;
-      else {
-        for (let n = el; n?.nodeType === 1 && !reason; n = n.parentElement) {
-          if (n.hidden) reason = 1;
-          else if (n.hasAttribute('inert')) reason = 2;
-          else if (n.getAttribute('aria-hidden') === 'true') reason = 3;
-          else if (n.getAttribute('aria-disabled') === 'true') reason = 4;
-          else {
-            const st = getComputedStyle(n);
-            if (st.display === 'none') reason = 5;
-            else if (st.visibility === 'hidden' || st.visibility === 'collapse') reason = 6;
-            else if (st.pointerEvents === 'none') reason = n === el ? 7 : 17;
-            else if (Number.parseFloat(st.opacity) === 0) reason = 8;
-          }
-        }
-      }
+    if (!el) return 0;
+    if (el.closest('[data-message-author-role]')) return 11;
+    if (el.disabled) return 9;
+    if (el.readOnly || el.getAttribute('aria-readonly') === 'true') return 10;
+    for (let node = el; node?.nodeType === 1; node = node.parentElement) {
+      const reason = composerNodeReason(node, el);
+      if (reason) return reason;
     }
-    return reason;
+    return 0;
   }
   function probeComposer() {
     if (Date.now() - lastProbeAt < 60000) return;
