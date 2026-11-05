@@ -143,7 +143,7 @@ class VerificacionAutofactory04Tests(unittest.TestCase):
     def test_trazabilidad_38_filas_exactas(self):
         validate(self.report, self.matrix)
         table = parse_rows(self.report, report=True)
-        self.assertEqual(len(table), 38)
+        self.assertEqual(38, len(table))
         self.assertEqual(5, sum(x[3] == "A_PARCIAL" for x in CASES))
         self.assertEqual(29, sum(x[3] == "B_EXTERNA" for x in CASES))
         self.assertEqual(4, sum(x[3] == "C_DECLARATIVA" for x in CASES))
@@ -174,8 +174,9 @@ class VerificacionAutofactory04Tests(unittest.TestCase):
                       if x.startswith("| PROTO-29 · "))
         tampered = target.replace("| NO_VERIFICABLE |", "| CUBIERTO |", 1)
         self.assertNotEqual(target, tampered)
+        altered_matrix = self.matrix.replace(target, tampered, 1)
         with self.assertRaises(ValueError):
-            validate(self.report, self.matrix.replace(target, tampered, 1))
+            validate(self.report, altered_matrix)
 
     def test_ac21_ac22_ac23_contrato_real(self):
         """Pruebas existentes invocan Node y código JS real con fixtures."""
