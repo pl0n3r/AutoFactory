@@ -116,7 +116,7 @@ async function boot(kind) {
     failures: logs.filter(e => e.event === 'failure').map(e => e.details?.code).filter(Boolean)
   });
   const snapshots = [];
-  await heartbeat();
+  await heartbeat(1500);
   snapshots.push(read());
   if (kind === 'directed' || kind === 'fail') {
     await heartbeat(119000);

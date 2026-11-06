@@ -349,9 +349,9 @@
   const ORDER_BLOCK_MS = 60000;
   let order = { id: 0, at: 0, blocked: false };
   // No draft content or signature is retained; only the pending order and counters.
-  let composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false };
+  let composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false, terminalReason: '' };
   function resetComposerRecovery() {
-    composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false };
+    composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false, terminalReason: '' };
   }
   function orderDetails() { return order.id > 0 ? { order_id: order.id } : {}; }
   function clearOrder() {
@@ -1443,8 +1443,10 @@
       const composerText = core.composerText(field);
       const composerHasText = Boolean(composerText);
       const resumableDraft = promptMatches(core.composerText(field), prompt);
+      // A fresh unrelated draft requires a fresh uninterrupted waiting window.
+      if (!composerHasText || resumableDraft) composerRecovery.observedAt = 0;
       if (isDirected() && order.id > 0 && composerRecovery.terminal) {
-        setStatus('Error: composer-clear-send-exhausted', 'error');
+        setStatus('Error: ' + (composerRecovery.terminalReason || 'composer-clear-send-exhausted'), 'error');
         return;
       }
       if (composerHasText && !resumableDraft) {
@@ -1467,6 +1469,7 @@
         }
         if (!core.replaceComposerText(field, '', document) || core.composerText(field)) {
           composerRecovery.terminal = true;
+          composerRecovery.terminalReason = 'composer-clear-failed';
           log('failure', { code: 'composer-clear-failed', ...orderDetails() });
           setStatus('Error: composer-clear-failed', 'error');
           return;
@@ -1499,6 +1502,7 @@
         // Otherwise permit the first attempt plus at most two retries per order.
         if (ambiguousSendFailure || composerRecovery.attempts >= 3) {
           composerRecovery.terminal = true;
+          composerRecovery.terminalReason = reason;
           state.nextSendAt = Number.POSITIVE_INFINITY;
           persistRuntime();
           setStatus(`Error: ${reason}`, 'error');
