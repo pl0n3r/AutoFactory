@@ -1442,7 +1442,7 @@
       }
       const composerText = core.composerText(field);
       const composerHasText = Boolean(composerText);
-      const resumableDraft = promptMatches(composerText, prompt);
+      const resumableDraft = promptMatches(core.composerText(field), prompt);
       if (isDirected() && order.id > 0 && composerRecovery.terminal) {
         setStatus('Error: composer-clear-send-exhausted', 'error');
         return;
