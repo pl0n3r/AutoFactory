@@ -31,6 +31,8 @@ async function boot(kind) {
     { url: 'https://chatgpt.com/c/synthetic-469', runScripts: 'outside-only' }
   );
   const w = dom.window;
+  // The shared core module executes in Node's realm, while the DOM is JSDOM.
+  global.InputEvent = w.InputEvent;
   let now = 100000, sent = 0, attempts = 0, lastSentText = '';
   const logs = [], listeners = [];
   const field = w.document.getElementById('prompt-textarea');
@@ -61,7 +63,10 @@ async function boot(kind) {
     lastUserMessageText: () => lastSentText
   };
   w.ChatGPTAutopilotLearning = learning;
-  w.ChatGPTAutopilotReliability = reliability;
+  w.ChatGPTAutopilotReliability = {
+    ...reliability,
+    afterFailure: value => reliability.afterFailure(value, now)
+  };
   w.ChatGPTAutopilotAdaptiveRecovery = {};
   w.ChatGPTAutopilotBudgetGuard = null;
   const stored = {
