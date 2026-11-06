@@ -23,7 +23,7 @@ function contract() {
   assert.equal(JSON.stringify(result).includes('private.example'), false);
   const blank = publisher.payloadFrom({ ...baseline, chats: [
     { chat_id: 't1', state: 'generando', phase: 'desconocido',
-      last_prompt_s: 0, last_reply_s: 'free text', last_reply_chars: 0, msgs_hour: NaN }
+      last_prompt_s: 0, last_reply_s: 'free text', last_reply_chars: 0, msgs_hour: Number.NaN }
   ] }).chats[0];
   assert.equal(blank.last_reply_chars, 0);
   assert.equal(blank.last_reply_s, 0);
@@ -67,21 +67,21 @@ function runtime() {
       assert.ok(response);
       return response;
     }
-    const empty = status();
+    const empty = status() ?? {};
     assert.equal(empty.phase, 'desconocido');
     assert.equal(empty.last_reply_chars, 0, 'historical answer is not a reply to latest order');
     assert.equal(empty.last_prompt_s, 10);
     assert.equal(empty.msgs_hour, 1);
     const reply = window.document.createElement('article');
-    reply.setAttribute('data-message-author-role', 'assistant');
+    reply.dataset.messageAuthorRole = 'assistant';
     reply.textContent = 'UNCLASSIFIED SECRET ANSWER';
     window.document.querySelector('main').append(reply);
-    const answer = status();
+    const answer = status() ?? {};
     assert.equal(answer.phase, 'desconocido');
     assert.equal(answer.last_reply_chars, reply.textContent.length);
     assert.equal(answer.last_reply_s, 0);
     now += 12000;
-    const later = status();
+    const later = status() ?? {};
     assert.equal(later.last_reply_s, 12);
     assert.equal(later.last_prompt_s, 22);
     const snapshot = publisher.payloadFrom({ ...baseline,
