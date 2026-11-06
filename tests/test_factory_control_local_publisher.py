@@ -15,6 +15,19 @@ class FactoryControlLocalPublisherTests(unittest.TestCase):
         )
         self.assertEqual(done.returncode, 0, done.stdout + "\n" + done.stderr)
 
+    def check_telemetry(self, case: str) -> None:
+        done = subprocess.run(
+            ["node", "tests/test-factory-control-local-publisher.cjs", case],
+            cwd=ROOT, capture_output=True, text=True, timeout=25, check=False,
+        )
+        self.assertEqual(done.returncode, 0, done.stdout + "\\n" + done.stderr)
+
+    def test_ac08_telemetry_contract_bounded_and_private(self):
+        self.check_telemetry("contract")
+
+    def test_ac09_content_script_empty_vs_unknown_reply(self):
+        self.check_telemetry("runtime")
+
     def test_ac01_contract_keys_only(self):
         self.check_node("ac01")
 

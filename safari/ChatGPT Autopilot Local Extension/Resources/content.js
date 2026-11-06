@@ -451,6 +451,58 @@
     log('composer-blocked', { order_id: order.id, cmpReason: composerReason() });
   }
 
+  // Local-only observations: transmit integer counters, never a message or title.
+  const SENT_TIMES_KEY = 'autofactory-sent-times-v1';
+  const HOUR_MS = 60 * 60 * 1000;
+  let sentTimes = [];
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SENT_TIMES_KEY) || '[]');
+    if (Array.isArray(saved)) sentTimes = saved.filter(Number.isSafeInteger).slice(-10000);
+  } catch (_error) { /* Invalid local telemetry starts empty. */ }
+  let observedReplyNode = null;
+  let observedReplyChars = 0;
+  let observedReplyAt = 0;
+
+  function recentSentCount(now) {
+    sentTimes = sentTimes.filter(t => t > 0 && t <= now && now - t < HOUR_MS);
+    // The existing reliable send timestamp survives older sessions without history.
+    if (state.lastSentAt > 0 && state.lastSentAt <= now &&
+        now - state.lastSentAt < HOUR_MS && !sentTimes.includes(state.lastSentAt)) {
+      sentTimes.push(state.lastSentAt);
+    }
+    return Math.min(10000, sentTimes.length);
+  }
+  function recordSent(at) {
+    recentSentCount(at);
+    if (!sentTimes.includes(at)) sentTimes.push(at);
+    sentTimes = sentTimes.slice(-10000);
+    try { sessionStorage.setItem(SENT_TIMES_KEY, JSON.stringify(sentTimes)); }
+    catch (_error) { /* Counter history is best effort, never affects a send. */ }
+  }
+  function secondsSince(at, now) {
+    return Number.isSafeInteger(at) && at > 0 && at <= now
+      ? Math.min(10000000, Math.floor((now - at) / 1000)) : 0;
+  }
+  function replyTelemetry() {
+    const now = Date.now();
+    const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
+    // A pre-order reply is not evidence that the new order received an answer.
+    const last = state.lastSentAt > 0 && messages.length <= state.assistantCountBeforeSend
+      ? null : messages[messages.length - 1];
+    const chars = Math.min(1000000,
+      String(last?.innerText || last?.textContent || '').length);
+    if (last !== observedReplyNode || chars !== observedReplyChars) {
+      observedReplyNode = last;
+      observedReplyChars = chars;
+      // DOM messages have no dependable historical timestamp; measure since
+      // the latest change observed by this tab, not an invented send time.
+      observedReplyAt = chars > 0 ? now : 0;
+    }
+    return { last_prompt_s: secondsSince(state.lastSentAt, now),
+      last_reply_s: secondsSince(observedReplyAt, now),
+      last_reply_chars: chars, msgs_hour: recentSentCount(now) };
+  }
+
   // Only issue/PR numbers mentioned in the last reply (bounded integers, no text): the orchestrator
   // uses them to send a blocked chat to the blocker the agent itself named.
   function replyRefs() {
@@ -889,6 +941,7 @@
     }
     budgetGuard?.confirmSent?.();
     state.lastSentAt = Date.now();
+    recordSent(state.lastSentAt);
     state.generationStartedAt = 0;
     state.waiting = true;
     state.sawGeneration = generationStarted;
@@ -1469,7 +1522,7 @@
       reply({ enabled: state.enabled, status: state.status,
         directed: isDirected(), phase: replyPhase(),
         busy: Boolean(state.waiting || core.stopButton(document)),
-        refs: replyRefs() });
+        refs: replyRefs(), ...replyTelemetry() });
     } else reply({ ok: true, enabled: state.enabled, status: state.status });
   });
 
