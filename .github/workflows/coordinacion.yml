@@ -90,6 +90,20 @@ jobs:
       association: ${{ github.event.comment.author_association }}
       body: ${{ github.event.comment.body }}
 
+  validar_caller_offline:
+    # Regresión exact-HEAD en PRs del mismo repositorio, sin permisos de escritura.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    name: Validar caller CAS V3 (offline)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: python3 -m unittest -v tests.test_autofactory_lock_caller
+
   etiqueta:
     if: >-
       github.event_name == 'issues' &&
