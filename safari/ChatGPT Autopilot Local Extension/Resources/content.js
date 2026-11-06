@@ -23,7 +23,8 @@
     periodicReloadMinutes: 15,
     modelTarget: 'gpt-6',
     reasoningLevel: 'high',
-    conversationMode: 'chat'
+    conversationMode: 'chat',
+    directedComposerClearAfterMs: 120000
   });
   const restored = reliability.load(sessionStorage);
   const RECOVERABLE_STATE_KEY = 'chatgpt-autopilot-recoverable-state';
@@ -298,7 +299,9 @@
         reasoningLevel: ['keep', 'high'].includes(values.reasoningLevel)
           ? values.reasoningLevel : SCROLL_DEFAULTS.reasoningLevel,
         conversationMode: ['chat', 'work'].includes(values.conversationMode)
-          ? values.conversationMode : SCROLL_DEFAULTS.conversationMode
+          ? values.conversationMode : SCROLL_DEFAULTS.conversationMode,
+        directedComposerClearAfterMs: Math.max(30000, Math.min(3600000,
+          Number(values.directedComposerClearAfterMs) || SCROLL_DEFAULTS.directedComposerClearAfterMs))
       };
     });
     cachedConfigPromise.catch(() => { cachedConfigPromise = null; });
@@ -345,8 +348,16 @@
   // send events to the orchestrator `assign` order and flags a composer stuck for >60 s.
   const ORDER_BLOCK_MS = 60000;
   let order = { id: 0, at: 0, blocked: false };
+  // No draft content or signature is retained; only the pending order and counters.
+  let composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false };
+  function resetComposerRecovery() {
+    composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false };
+  }
   function orderDetails() { return order.id > 0 ? { order_id: order.id } : {}; }
-  function clearOrder() { order = { id: 0, at: 0, blocked: false }; }
+  function clearOrder() {
+    order = { id: 0, at: 0, blocked: false };
+    resetComposerRecovery();
+  }
   function registerOrder(orderId) {
     clearOrder();
     if (!Number.isSafeInteger(orderId) || orderId < 1) return;
@@ -384,9 +395,8 @@
     if (!on) { assignedPrompt = ''; clearOrder(); }
   }
   function takeAssignment() {
-    const value = assignedPrompt;
-    assignedPrompt = '';
-    return value;
+    // Retain until sendPrompt confirms the message in the conversation.
+    return assignedPrompt;
   }
   // Factory «modo dirigido»: the exact per-repository prompt from factory/README.md.
   const DIRECTED_REPOS = ['Factory', 'Condor', 'GrindFlow', 'brvtal', 'ControlBot', 'AutoFactory', 'FactoryRunner'];
@@ -950,6 +960,7 @@
     Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
     persistRuntime();
     log('send-confirmed', { promptLength: core.normalize(prompt).length, signature, ...orderDetails() });
+    assignedPrompt = '';
     clearOrder();
     setStatus('Mensaje confirmado; esperando respuesta');
   }
@@ -1429,11 +1440,42 @@
         setStatus('Campo de mensaje no encontrado', 'error');
         return;
       }
-      const composerHasText = Boolean(core.composerText(field));
-      const resumableDraft = promptMatches(core.composerText(field), prompt);
-      if (composerHasText && !resumableDraft) {
-        setStatus('Pausado: el campo contiene texto', 'error');
+      const composerText = core.composerText(field);
+      const composerHasText = Boolean(composerText);
+      const resumableDraft = promptMatches(composerText, prompt);
+      if (isDirected() && order.id > 0 && composerRecovery.terminal) {
+        setStatus('Error: composer-clear-send-exhausted', 'error');
         return;
+      }
+      if (composerHasText && !resumableDraft) {
+        // A manual chat or a directed chat without a pending numeric order
+        // must never have its draft removed or submitted automatically.
+        if (!isDirected() || order.id < 1 || !assignedPrompt) {
+          setStatus('Pausado: el campo contiene texto', 'error');
+          return;
+        }
+        if (composerRecovery.orderId !== order.id || !composerRecovery.observedAt) {
+          composerRecovery.orderId = order.id;
+          composerRecovery.observedAt = Date.now();
+        }
+        const remaining = currentConfig.directedComposerClearAfterMs
+          - (Date.now() - composerRecovery.observedAt);
+        if (remaining > 0) {
+          state.nextSendAt = Date.now() + Math.min(5000, remaining);
+          setStatus('Dirigido: borrador ajeno; esperando recuperación');
+          return;
+        }
+        if (!core.replaceComposerText(field, '', document) || core.composerText(field)) {
+          composerRecovery.terminal = true;
+          log('failure', { code: 'composer-clear-failed', ...orderDetails() });
+          setStatus('Error: composer-clear-failed', 'error');
+          return;
+        }
+        composerRecovery.active = true;
+        composerRecovery.observedAt = 0;
+        // The existing background sanitizer allows code + promptLength only.
+        // No draft text, signature, or conversation identifier is emitted.
+        log('draft-cleared', { code: 'composer-cleared', promptLength: composerText.length });
       }
       if (resumableDraft) setStatus('Retomando borrador propio pendiente');
       await ensureConversationMode(currentConfig.conversationMode);
@@ -1443,10 +1485,26 @@
         setStatus('Nivel Alto no verificable; continuando con el nivel actual');
       }
       if (!await waitForBudgetBeforeSend(prompt)) return;
+      if (composerRecovery.active && isDirected() && order.id > 0) composerRecovery.attempts += 1;
       await sendPrompt(prompt);
     } catch (error) {
       saveLearning('failure');
       const ambiguousSendFailure = error?.message === 'ChatGPT no confirmó el mensaje dentro de la conversación';
+      if (composerRecovery.active && isDirected() && order.id > 0) {
+        const reason = ambiguousSendFailure ? 'composer-clear-unconfirmed'
+          : composerRecovery.attempts >= 3 ? 'composer-clear-send-exhausted'
+          : 'composer-clear-send-failed';
+        log('failure', { code: reason, attempt: composerRecovery.attempts, ...orderDetails() });
+        // An unconfirmed send may already have reached ChatGPT; never retry it.
+        // Otherwise permit the first attempt plus at most two retries per order.
+        if (ambiguousSendFailure || composerRecovery.attempts >= 3) {
+          composerRecovery.terminal = true;
+          state.nextSendAt = Number.POSITIVE_INFINITY;
+          persistRuntime();
+          setStatus(`Error: ${reason}`, 'error');
+          return;
+        }
+      }
       const failure = reliability.afterFailure(runtimeSnapshot());
       if (ambiguousSendFailure) {
         failure.circuitOpenUntil = Date.now() + 300000;
