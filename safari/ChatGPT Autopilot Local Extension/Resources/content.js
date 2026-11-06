@@ -1494,9 +1494,9 @@
       saveLearning('failure');
       const ambiguousSendFailure = error?.message === 'ChatGPT no confirmó el mensaje dentro de la conversación';
       if (composerRecovery.active && isDirected() && order.id > 0) {
-        const reason = ambiguousSendFailure ? 'composer-clear-unconfirmed'
-          : composerRecovery.attempts >= 3 ? 'composer-clear-send-exhausted'
-          : 'composer-clear-send-failed';
+        let reason = 'composer-clear-send-failed';
+        if (ambiguousSendFailure) reason = 'composer-clear-unconfirmed';
+        else if (composerRecovery.attempts >= 3) reason = 'composer-clear-send-exhausted';
         log('failure', { code: reason, attempt: composerRecovery.attempts, ...orderDetails() });
         // An unconfirmed send may already have reached ChatGPT; never retry it.
         // Otherwise permit the first attempt plus at most two retries per order.
