@@ -33,6 +33,8 @@
     'error', 'limite', 'sesion_cerrada', 'desconocido']);
   // Opaque ids and coarse states only: never titles, text, URLs or conversation ids.
   const PHASES = Object.freeze(['trabajando', 'esperando_externo', 'termino', 'bloqueado', 'desconocido']);
+  const METRIC_LIMITS = Object.freeze({ last_prompt_s: 10000000,
+    last_reply_s: 10000000, last_reply_chars: 1000000, msgs_hour: 10000 });
   function chatsFrom(list) {
     if (!Array.isArray(list)) return [];
     const out = [];
@@ -48,6 +50,15 @@
       chat.phase = PHASES.includes(item.phase) ? item.phase : 'desconocido';
       chat.refs = Array.isArray(item.refs) ? item.refs.filter(n => Number.isSafeInteger(n) && n > 0 && n < 1000000).slice(0, 6) : [];
       chat.directed = item.directed === true;
+      for (const [key, limit] of Object.entries(METRIC_LIMITS)) {
+        // Legacy snapshots without metrics remain compatible. Live snapshots
+        // always supply all four fields, including 0 for missing responses.
+        if (Object.hasOwn(item, key)) {
+          const value = item[key];
+          chat[key] = Number.isSafeInteger(value) && value >= 0
+            ? Math.min(value, limit) : 0;
+        }
+      }
       out.push(Object.freeze(chat));
     }
     return out;
@@ -247,6 +258,8 @@
         const flag = typeof signal?.enabled === 'boolean' ? signal.enabled : null;
         const text = typeof signal?.status === 'string' ? signal.status.toLowerCase() : '';
         chats.push({ chat_id: 't' + tab.id, phase: signal?.phase, refs: signal?.refs, directed: signal?.directed === true,
+          last_prompt_s: signal?.last_prompt_s, last_reply_s: signal?.last_reply_s,
+          last_reply_chars: signal?.last_reply_chars, msgs_hour: signal?.msgs_hour,
           state: flag === null ? 'desconocido' : flag === false ? 'detenido' : /dirigido: esperando orden/.test(text) || (signal?.directed === true && signal?.busy === false && !/no disponible|recuperaci[oó]n|protecci[oó]n activa|no encontrado|recarga|l[ií]mite|sesi[oó]n/.test(text)) ? 'esperando_envio' : /no disponible|recuperaci[oó]n|protecci[oó]n activa|no encontrado|recarga/.test(text) ? 'error' : /l[ií]mite/.test(text) ? 'limite'
             : /sesi[oó]n/.test(text) ? 'sesion_cerrada' : flag ? 'generando' : 'detenido' });
         return flag;
