@@ -121,7 +121,8 @@ async function boot(kind) {
     failures: logs.filter(e => e.event === 'failure').map(e => e.details?.code).filter(Boolean)
   });
   const snapshots = [];
-  await heartbeat(1500);
+  await heartbeat(6000); // content.js has a 5s startup guard
+  await heartbeat(); // the first heartbeat completes interface initialization
   snapshots.push(read());
   if (kind === 'directed' || kind === 'fail') {
     await heartbeat(119000);
