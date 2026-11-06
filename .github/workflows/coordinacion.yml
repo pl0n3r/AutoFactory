@@ -46,6 +46,64 @@ jobs:
       association: ${{ github.event.comment.author_association }}
       body: ${{ github.event.comment.body }}
 
+  validar_recuperacion_v3:
+    # Validar identidad y sintaxis sin tocar locks, leases ni el runtime.
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request == null &&
+      github.event.sender.login == github.event.comment.user.login &&
+      github.event.comment.user.login == 'pl0n3r' &&
+      startsWith(github.event.comment.body, '/recuperar-lock-v3-activa ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      valid: ${{ steps.comando.outputs.valid }}
+    steps:
+      - name: Comprobar orden OWNER exacta
+        id: comando
+        shell: bash
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [[ "$BODY" =~ ^/recuperar-lock-v3-activa\ [0-9a-f]{40}\ [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Orden CAS V3 no canónica (SHA40 + UUID)."
+            exit 1
+          fi
+
+  recuperar_v3:
+    needs: validar_recuperacion_v3
+    if: needs.validar_recuperacion_v3.result == 'success' && needs.validar_recuperacion_v3.outputs.valid == 'true'
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      checks: write
+    uses: pl0n3r/factory/.github/workflows/coordinacion.yml@v1
+    with:
+      operation: comment
+      issue_number: ${{ github.event.issue.number }}
+      actor: ${{ github.event.comment.user.login }}
+      association: ${{ github.event.comment.author_association }}
+      body: ${{ github.event.comment.body }}
+
+  validar_caller_offline:
+    # Regresión exact-HEAD en PRs del mismo repositorio, sin permisos de escritura.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    name: Validar caller CAS V3 (offline)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: python3 -m unittest -v tests.test_autofactory_lock_caller
+
   etiqueta:
     if: >-
       github.event_name == 'issues' &&
