@@ -92,7 +92,7 @@ function runtime() {
     assert.deepEqual(keys.map(k => chat[k]), [22, 12, reply.textContent.length, 1]);
     assert.equal(JSON.stringify(snapshot).includes('SECRET'), false);
     assert.equal(JSON.stringify(snapshot).includes('UNCLASSIFIED'), false);
-    assert.equal(JSON.stringify(snapshot).includes('https://chatgpt.com'), false);
+    assert.doesNotMatch(JSON.stringify(snapshot), /https?:\/\//);
   } finally { dom.window.close(); }
 }
 const selected = process.argv[2];
