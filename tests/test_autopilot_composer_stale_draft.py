@@ -49,7 +49,7 @@ async function boot(kind) {
   };
   sendButton.click = () => {
     attempts += 1;
-    if (kind === 'fail') throw new Error('synthetic-send-failure');
+    if (kind === 'fail' || kind === 'retry-replaced') throw new Error('synthetic-send-failure');
     if (kind === 'unconfirmed') return;
     if (kind === 'race' && attempts === 1) {
       send({ type: 'autopilot:assign', repo: 'GrindFlow', orderId: 470 });
@@ -121,7 +121,7 @@ async function boot(kind) {
     for (let i = 0; i < 40; i += 1) await new Promise(resolve => setImmediate(resolve));
   };
   if (['directed', 'fail', 'match', 'unconfirmed', 'race',
-       'replaced', 'whitespace', 'persist-fail'].includes(kind)) {
+       'replaced', 'whitespace', 'persist-fail', 'retry-replaced'].includes(kind)) {
     send({ type: 'autopilot:assign', repo: 'AutoFactory', orderId: 469 });
     field.textContent = ['match', 'unconfirmed', 'race', 'persist-fail'].includes(kind)
       ? OWN : kind === 'whitespace' ? '  ' + SECRET + '  ' : SECRET;
@@ -140,7 +140,7 @@ async function boot(kind) {
   await heartbeat(6000); // content.js has a 5s startup guard
   await heartbeat(); // the first heartbeat completes interface initialization
   snapshots.push(read());
-  if (['directed', 'fail', 'replaced', 'whitespace'].includes(kind)) {
+  if (['directed', 'fail', 'replaced', 'whitespace', 'retry-replaced'].includes(kind)) {
     await heartbeat(119000);
     snapshots.push(read());
     if (kind === 'replaced') {
@@ -150,6 +150,19 @@ async function boot(kind) {
     await heartbeat(2000);
     snapshots.push(read());
     if (kind === 'replaced') {
+      await heartbeat(121000);
+      snapshots.push(read());
+    }
+    if (kind === 'retry-replaced') {
+      field.textContent = 'NUEVO-BORRADOR-TRAS-FALLO';
+      field.dispatchEvent(new w.Event('input', { bubbles: true }));
+      await heartbeat(6000);
+      snapshots.push(read());
+      await heartbeat(115000);
+      field.textContent = 'BORRADOR-SUSTITUIDO-POSFALLO';
+      field.dispatchEvent(new w.Event('input', { bubbles: true }));
+      await heartbeat(6000);
+      snapshots.push(read());
       await heartbeat(121000);
       snapshots.push(read());
     }
@@ -187,7 +200,8 @@ async function boot(kind) {
 (async () => {
   const cases = {};
   for (const kind of ['directed', 'without-order', 'manual', 'match', 'fail',
-                      'unconfirmed', 'replaced', 'whitespace', 'race', 'persist-fail']) {
+                      'unconfirmed', 'replaced', 'whitespace', 'race', 'persist-fail',
+                      'retry-replaced']) {
     cases[kind] = await boot(kind);
   }
   console.log(JSON.stringify(cases));
@@ -307,6 +321,14 @@ class DirectedComposerStaleDraftTests(unittest.TestCase):
         states = self.cases["persist-fail"]["snapshots"]
         self.assertEqual([state["attempts"] for state in states], [1, 1])
         self.assertIn("send-state-persist-failed", states[-1]["failures"])
+
+    def test_changed_draft_after_failed_clear_gets_full_timeout(self):
+        states = self.cases['retry-replaced']['snapshots']
+        self.assertEqual(states[2]['attempts'], 1)
+        self.assertEqual(states[3]['attempts'], 1)
+        self.assertEqual(states[4]['attempts'], 1)
+        self.assertEqual(states[4]['content'], 'BORRADOR-SUSTITUIDO-POSFALLO')
+        self.assertEqual(states[5]['attempts'], 2)
 
     def test_chrome_safari_content_mirror(self):
         self.assertEqual((ROOT / "content.js").read_bytes(),

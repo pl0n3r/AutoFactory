@@ -362,7 +362,7 @@
     if (watchedDraft?.field === field) return;
     stopDraftWatch();
     const onChange = () => {
-      if (!composerRecovery.active && composerRecovery.observedAt > 0) {
+      if (composerRecovery.observedAt > 0) {
         composerRecovery.observedAt = Date.now();
       }
     };
