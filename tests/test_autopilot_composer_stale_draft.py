@@ -33,7 +33,8 @@ async function boot(kind) {
   const w = dom.window;
   // The shared core module executes in Node's realm, while the DOM is JSDOM.
   global.InputEvent = w.InputEvent;
-  let now = 100000, sent = 0, attempts = 0, lastSentText = '';
+  let now = 100000, sent = 0, attempts = 0, lastSentText = '', assistantCount = 0;
+  const sentHistory = [];
   const logs = [], listeners = [];
   const field = w.document.getElementById('prompt-textarea');
   const sendButton = w.document.getElementById('send-button');
@@ -42,10 +43,19 @@ async function boot(kind) {
   w.scrollTo = () => {};
   w.setInterval = () => 1;
   w.clearInterval = () => {};
+  w.setTimeout = (callback) => {
+    if (kind === 'unconfirmed') setImmediate(() => { now += 8100; callback(); });
+    return 1;
+  };
   sendButton.click = () => {
     attempts += 1;
     if (kind === 'fail') throw new Error('synthetic-send-failure');
+    if (kind === 'unconfirmed') return;
+    if (kind === 'race' && attempts === 1) {
+      send({ type: 'autopilot:assign', repo: 'GrindFlow', orderId: 470 });
+    }
     lastSentText = realCore.composerText(field);
+    sentHistory.push(lastSentText);
     sent += 1;
     realCore.replaceComposerText(field, '', w.document);
   };
@@ -54,18 +64,22 @@ async function boot(kind) {
     composer: doc => doc.getElementById('prompt-textarea'),
     pageSignal: () => ({ code: 'ready', action: 'continue' }),
     isSafeRecoverySignal: () => false,
-    stopButton: () => sent > 0 ? sendButton : null,
+    stopButton: () => sent > assistantCount ? sendButton : null,
     recoveryButton: () => null,
     canSend: () => true,
     sendButton: () => sendButton,
-    assistantMessageCount: () => 0,
+    assistantMessageCount: () => assistantCount,
     userMessageCount: () => sent,
     lastUserMessageText: () => lastSentText
   };
   w.ChatGPTAutopilotLearning = learning;
   w.ChatGPTAutopilotReliability = {
     ...reliability,
-    afterFailure: value => reliability.afterFailure(value, now)
+    afterFailure: value => reliability.afterFailure(value, now),
+    save: (store, snapshot) => {
+      if (kind === 'persist-fail' && sent > 0) throw new Error('synthetic-persist-failure');
+      return reliability.save(store, snapshot);
+    }
   };
   w.ChatGPTAutopilotAdaptiveRecovery = {};
   w.ChatGPTAutopilotBudgetGuard = null;
@@ -106,16 +120,18 @@ async function boot(kind) {
     send({ type: 'autopilot:heartbeat' });
     for (let i = 0; i < 40; i += 1) await new Promise(resolve => setImmediate(resolve));
   };
-  if (kind === 'directed' || kind === 'fail' || kind === 'match') {
+  if (['directed', 'fail', 'match', 'unconfirmed', 'race',
+       'replaced', 'whitespace', 'persist-fail'].includes(kind)) {
     send({ type: 'autopilot:assign', repo: 'AutoFactory', orderId: 469 });
-    field.textContent = kind === 'match' ? OWN : SECRET;
+    field.textContent = ['match', 'unconfirmed', 'race', 'persist-fail'].includes(kind)
+      ? OWN : kind === 'whitespace' ? '  ' + SECRET + '  ' : SECRET;
   } else {
     if (kind === 'without-order') send({ type: 'autopilot:directed', on: true });
     field.textContent = SECRET;
   }
   const read = () => ({
     content: realCore.composerText(field),
-    attempts, sent, lastSentText,
+    attempts, sent, lastSentText, sentHistory: [...sentHistory],
     cleared: logs.filter(e => e.event === 'draft-cleared' && e.details?.code === 'composer-cleared'),
     statuses: logs.filter(e => e.event === 'status').map(e => e.details?.status || ''),
     failures: logs.filter(e => e.event === 'failure').map(e => e.details?.code).filter(Boolean)
@@ -124,11 +140,19 @@ async function boot(kind) {
   await heartbeat(6000); // content.js has a 5s startup guard
   await heartbeat(); // the first heartbeat completes interface initialization
   snapshots.push(read());
-  if (kind === 'directed' || kind === 'fail') {
+  if (['directed', 'fail', 'replaced', 'whitespace'].includes(kind)) {
     await heartbeat(119000);
     snapshots.push(read());
+    if (kind === 'replaced') {
+      field.textContent = 'OTRO-BORRADOR-DIRIGIDO';
+      field.dispatchEvent(new w.Event('input', { bubbles: true }));
+    }
     await heartbeat(2000);
     snapshots.push(read());
+    if (kind === 'replaced') {
+      await heartbeat(121000);
+      snapshots.push(read());
+    }
     if (kind === 'fail') {
       await heartbeat(600000);
       snapshots.push(read());
@@ -136,7 +160,25 @@ async function boot(kind) {
       snapshots.push(read());
       await heartbeat(600000);
       snapshots.push(read());
+      send({ type: 'autopilot:assign', repo: 'AutoFactory', orderId: 469 });
+      await heartbeat(600000);
+      snapshots.push(read());
     }
+  }
+  if (kind === 'manual' || kind === 'without-order') {
+    await heartbeat(121000);
+    snapshots.push(read());
+  }
+  if (kind === 'unconfirmed' || kind === 'persist-fail') {
+    await heartbeat(600000);
+    snapshots.push(read());
+  }
+  if (kind === 'race') {
+    assistantCount = 1;
+    await heartbeat(5000);
+    snapshots.push(read());
+    await heartbeat(20000);
+    snapshots.push(read());
   }
   const result = { snapshots, logs };
   w.close();
@@ -144,7 +186,8 @@ async function boot(kind) {
 }
 (async () => {
   const cases = {};
-  for (const kind of ['directed', 'without-order', 'manual', 'match', 'fail']) {
+  for (const kind of ['directed', 'without-order', 'manual', 'match', 'fail',
+                      'unconfirmed', 'replaced', 'whitespace', 'race', 'persist-fail']) {
     cases[kind] = await boot(kind);
   }
   console.log(JSON.stringify(cases));
@@ -213,13 +256,57 @@ class DirectedComposerStaleDraftTests(unittest.TestCase):
     def test_failed_send_after_clear_stops_after_two_retries(self):
         states = self.cases["fail"]["snapshots"]
         self.assertEqual([state["attempts"] for state in states],
-                         [0, 0, 1, 2, 3, 3])
+                         [0, 0, 1, 2, 3, 3, 3])
         self.assertTrue(any(
             "composer-clear-send-exhausted" in status
             for status in states[-1]["statuses"]
         ))
         self.assertEqual(len(states[-1]["cleared"]), 1)
         self.assertEqual(states[-1]["sent"], 0)
+
+    def test_manual_and_without_order_remain_untouched_after_full_threshold(self):
+        for kind in ("manual", "without-order"):
+            states = self.cases[kind]["snapshots"]
+            self.assertEqual(len(states), 2)
+            self.assertEqual(states[-1]["content"], "BORRADOR-SENSIBLE-CHAT-469")
+            self.assertEqual(states[-1]["attempts"], 0)
+            self.assertFalse(states[-1]["cleared"])
+
+    def test_raw_character_length_keeps_whitespace_without_content(self):
+        item = self.cases["whitespace"]["snapshots"][-1]
+        self.assertEqual(item["cleared"][0]["details"]["promptLength"],
+                         len("  BORRADOR-SENSIBLE-CHAT-469  "))
+        self.assertNotIn("BORRADOR-SENSIBLE-CHAT-469",
+                         json.dumps(self.cases["whitespace"]["logs"]))
+
+    def test_replaced_draft_waits_for_new_uninterrupted_window(self):
+        states = self.cases["replaced"]["snapshots"]
+        self.assertEqual(states[2]["attempts"], 0)
+        self.assertEqual(states[2]["content"], "OTRO-BORRADOR-DIRIGIDO")
+        self.assertEqual(states[-1]["attempts"], 1)
+        self.assertEqual(states[-1]["cleared"][0]["details"]["promptLength"],
+                         len("OTRO-BORRADOR-DIRIGIDO"))
+
+    def test_ambiguous_send_without_clear_cannot_retry(self):
+        states = self.cases["unconfirmed"]["snapshots"]
+        self.assertEqual([state["attempts"] for state in states], [1, 1])
+        self.assertFalse(states[-1]["cleared"])
+        self.assertIn("composer-send-unconfirmed", states[-1]["failures"])
+        self.assertTrue(any("composer-send-unconfirmed" in status
+                            for status in states[-1]["statuses"]))
+
+    def test_new_assignment_survives_previous_order_confirmation(self):
+        states = self.cases["race"]["snapshots"]
+        self.assertEqual(states[-1]["sent"], 2)
+        self.assertIn("pl0n3r/AutoFactory", states[-1]["sentHistory"][0])
+        self.assertIn("pl0n3r/GrindFlow", states[-1]["sentHistory"][1])
+        self.assertTrue(any(item["event"] == "order-received"
+                            for item in self.cases["race"]["logs"]))
+
+    def test_persistence_failure_cannot_requeue_accepted_order(self):
+        states = self.cases["persist-fail"]["snapshots"]
+        self.assertEqual([state["attempts"] for state in states], [1, 1])
+        self.assertIn("send-state-persist-failed", states[-1]["failures"])
 
     def test_chrome_safari_content_mirror(self):
         self.assertEqual((ROOT / "content.js").read_bytes(),

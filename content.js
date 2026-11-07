@@ -350,7 +350,30 @@
   let order = { id: 0, at: 0, blocked: false };
   // No draft content or signature is retained; only the pending order and counters.
   let composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false, terminalReason: '' };
+  // Watch edits without retaining or hashing the draft itself.
+  let watchedDraft = null;
+  function stopDraftWatch() {
+    if (!watchedDraft) return;
+    watchedDraft.field.removeEventListener('input', watchedDraft.onChange);
+    watchedDraft.observer?.disconnect();
+    watchedDraft = null;
+  }
+  function watchDraftChanges(field) {
+    if (watchedDraft?.field === field) return;
+    stopDraftWatch();
+    const onChange = () => {
+      if (!composerRecovery.active && composerRecovery.observedAt > 0) {
+        composerRecovery.observedAt = Date.now();
+      }
+    };
+    const observer = typeof MutationObserver === 'function' ? new MutationObserver(onChange) : null;
+    observer?.observe(field, { childList: true, characterData: true, subtree: true });
+    field.addEventListener('input', onChange);
+    watchedDraft = { field, onChange, observer };
+    composerRecovery.observedAt = 0;
+  }
   function resetComposerRecovery() {
+    stopDraftWatch();
     composerRecovery = { orderId: 0, observedAt: 0, attempts: 0, active: false, terminal: false, terminalReason: '' };
   }
   function orderDetails() { return order.id > 0 ? { order_id: order.id } : {}; }
@@ -359,6 +382,8 @@
     resetComposerRecovery();
   }
   function registerOrder(orderId) {
+    // A redelivered receipt is not a new order: preserve its retry veto.
+    if (Number.isSafeInteger(orderId) && orderId > 0 && order.id === orderId) return;
     clearOrder();
     if (!Number.isSafeInteger(orderId) || orderId < 1) return;
     order = { id: orderId, at: Date.now(), blocked: false };
@@ -402,6 +427,7 @@
   const DIRECTED_REPOS = ['Factory', 'Condor', 'GrindFlow', 'brvtal', 'ControlBot', 'AutoFactory', 'FactoryRunner'];
   function assignRepo(repo, orderId) {
     if (!DIRECTED_REPOS.includes(repo)) return false;
+    if (Number.isSafeInteger(orderId) && orderId > 0 && order.id === orderId) return true;
     assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio.';
     state.nextSendAt = 0;
     registerOrder(orderId);
@@ -409,6 +435,7 @@
   }
   function assignIssue(issue, orderId) {
     if (typeof issue !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(issue)) return false;
+    if (Number.isSafeInteger(orderId) && orderId > 0 && order.id === orderId) return true;
     const [repo, number] = issue.split('#');
     // Factory «modo dirigido» + one assigned issue: work it to a merged PR, resolve blockers.
     assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio. Tu issue asignado es #' + number + ': llévalo hasta dejar su PR fusionado. REGLA: tu trabajo es DESBLOQUEAR, no reportar bloqueos. Si algo te frena (checks en rojo, rama atrasada, reserva caducada, job fallido por causa transitoria, revisión pendiente, otro issue que debe cerrarse antes), ejecuta ahora la acción que lo resuelve dentro de lo que permite PLAN-AGENTES: corrige el CI, actualiza la rama, repite el job fallido, recupera tu reserva (/tomar), pide la revisión, o toma y trabaja el issue bloqueador. CodeRabbit: solo revisión FINAL. No pidas revisión (@coderabbitai review) en commits intermedios ni mientras el CI esté en rojo o pendiente; pídela UNA sola vez cuando el PR sea el definitivo y el CI esté en verde (el cupo gratuito es mínimo y compartido). No programes tareas, recordatorios ni revisiones futuras de ChatGPT. Termina tu respuesta con DOS líneas: «Hecho: <acción concreta que ejecutaste>» y «Siguiente: <la próxima acción>». Solo si ya agotaste todo lo permitido, di en una línea el motivo exacto empezando por «Parada legítima:».';
@@ -897,6 +924,10 @@
   async function sendPrompt(prompt) {
     const field = core.composer(document);
     if (!field) throw new Error('No encontré #prompt-textarea');
+    const sendingOrderId = order.id;
+    const sendingDetails = sendingOrderId > 0 ? { order_id: sendingOrderId } : {};
+    const orderDetails = () => sendingDetails; // stable per-send receipt
+    const directedCommand = isDirected() && assignedPrompt === prompt;
     const signature = reliability.signature(prompt);
     if (state.pendingSignature === signature) {
       throw new Error('Ya existe un envío pendiente; se evitó un duplicado');
@@ -936,6 +967,10 @@
     if (!button?.isConnected || !core.canSend(button)) {
       throw new Error('El botón real de enviar no está disponible');
     }
+    // An assignment arriving during the awaits must not be overwritten by the old send.
+    if (directedCommand && (order.id !== sendingOrderId || assignedPrompt !== prompt)) {
+      throw new Error('La orden dirigida cambió antes del envío');
+    }
     const userCountBeforeSend = core.userMessageCount(document);
     state.assistantCountBeforeSend = core.assistantMessageCount(document);
     button.click();
@@ -949,6 +984,12 @@
     })) {
       throw new Error('ChatGPT no confirmó el mensaje dentro de la conversación');
     }
+    // Mark the matching assignment as sent before any fallible persistence.
+    // A newer assignment remains queued for the next cycle.
+    if (directedCommand && order.id === sendingOrderId && assignedPrompt === prompt) {
+      assignedPrompt = '';
+      clearOrder();
+    }
     budgetGuard?.confirmSent?.();
     state.lastSentAt = Date.now();
     recordSent(state.lastSentAt);
@@ -958,10 +999,11 @@
     state.platformReviewPlaceholderSeen = false;
     state.pendingSignature = signature;
     Object.assign(state, reliability.afterSuccess(runtimeSnapshot()));
-    persistRuntime();
+    try { persistRuntime(); } catch (_error) {
+      // The DOM already accepted the message; never requeue after storage failure.
+      log('failure', { code: 'send-state-persist-failed', ...sendingDetails });
+    }
     log('send-confirmed', { promptLength: core.normalize(prompt).length, signature, ...orderDetails() });
-    assignedPrompt = '';
-    clearOrder();
     setStatus('Mensaje confirmado; esperando respuesta');
   }
 
@@ -969,10 +1011,13 @@
     checkOrderBlocked();
     if (!state.enabled || state.busy) return;
     state.busy = true;
+    let prompt = '';
+    let directedOrderId = -1;
+    let directedSendAttempted = false;
     try {
       const currentConfig = await config();
       const { prompt: defaultPrompt, delaySeconds } = currentConfig;
-      let prompt = defaultPrompt;
+      prompt = defaultPrompt;
       state.settings = { ...state.settings, ...currentConfig };
       // Directed chats do long work: never cut a live response for the periodic
       // refresh (hard limit: 90 extra minutes past due, then refresh anyway).
@@ -1434,6 +1479,7 @@
           return;
         }
         prompt = assigned;
+        directedOrderId = order.id;
       }
       const field = core.composer(document);
       if (!field) {
@@ -1443,8 +1489,11 @@
       const composerText = core.composerText(field);
       const composerHasText = Boolean(composerText);
       const resumableDraft = promptMatches(core.composerText(field), prompt);
-      // A fresh unrelated draft requires a fresh uninterrupted waiting window.
-      if (!composerHasText || resumableDraft) composerRecovery.observedAt = 0;
+      // An empty composer or an owned draft ends the foreign-draft watch.
+      if (!composerHasText || resumableDraft) {
+        composerRecovery.observedAt = 0;
+        stopDraftWatch();
+      }
       if (isDirected() && order.id > 0 && composerRecovery.terminal) {
         setStatus('Error: ' + (composerRecovery.terminalReason || 'composer-clear-send-exhausted'), 'error');
         return;
@@ -1456,6 +1505,7 @@
           setStatus('Pausado: el campo contiene texto', 'error');
           return;
         }
+        watchDraftChanges(field);
         if (composerRecovery.orderId !== order.id || !composerRecovery.observedAt) {
           composerRecovery.orderId = order.id;
           composerRecovery.observedAt = Date.now();
@@ -1467,6 +1517,11 @@
           setStatus('Dirigido: borrador ajeno; esperando recuperación');
           return;
         }
+        // Count characters in the raw field before normalization; never log the text.
+        const discardedLength = ('value' in field
+          ? String(field.value).length
+          : String(field.innerText || field.textContent || '').length);
+        stopDraftWatch();
         if (!core.replaceComposerText(field, '', document) || core.composerText(field)) {
           composerRecovery.terminal = true;
           composerRecovery.terminalReason = 'composer-clear-failed';
@@ -1478,7 +1533,7 @@
         composerRecovery.observedAt = 0;
         // The existing background sanitizer allows code + promptLength only.
         // No draft text, signature, or conversation identifier is emitted.
-        log('draft-cleared', { code: 'composer-cleared', promptLength: composerText.length });
+        log('draft-cleared', { code: 'composer-cleared', promptLength: discardedLength });
       }
       if (resumableDraft) setStatus('Retomando borrador propio pendiente');
       await ensureConversationMode(currentConfig.conversationMode);
@@ -1488,11 +1543,24 @@
         setStatus('Nivel Alto no verificable; continuando con el nivel actual');
       }
       if (!await waitForBudgetBeforeSend(prompt)) return;
+      if (directedOrderId >= 0 && (order.id !== directedOrderId || assignedPrompt !== prompt)) return;
       if (composerRecovery.active && isDirected() && order.id > 0) composerRecovery.attempts += 1;
+      directedSendAttempted = directedOrderId >= 0;
       await sendPrompt(prompt);
     } catch (error) {
       saveLearning('failure');
       const ambiguousSendFailure = error?.message === 'ChatGPT no confirmó el mensaje dentro de la conversación';
+      if (ambiguousSendFailure && directedSendAttempted
+          && order.id === directedOrderId && assignedPrompt === prompt) {
+        const reason = composerRecovery.active ? 'composer-clear-unconfirmed' : 'composer-send-unconfirmed';
+        composerRecovery.terminal = true;
+        composerRecovery.terminalReason = reason;
+        state.nextSendAt = Number.POSITIVE_INFINITY;
+        log('failure', { code: reason, ...orderDetails() });
+        try { persistRuntime(); } catch (_error) { /* already terminal */ }
+        setStatus('Error: ' + reason, 'error');
+        return;
+      }
       if (composerRecovery.active && isDirected() && order.id > 0) {
         let reason = 'composer-clear-send-failed';
         if (ambiguousSendFailure) reason = 'composer-clear-unconfirmed';
