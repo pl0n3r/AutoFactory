@@ -30,6 +30,23 @@ function contract() {
   assert.equal(blank.msgs_hour, 0);
   assert.equal(JSON.stringify(blank).includes('free text'), false);
 }
+function orqContract() {
+  const good = { issue: 'AutoFactory#475', fase: 'pr', pr: 476,
+    hecho: 'PR abierto', siguiente: 'Revisar CI', bloqueo: null };
+  const packet = orqStatus => publisher.payloadFrom({ ...baseline, chats: [{
+    chat_id: 't1', state: 'generando', phase: 'desconocido', orqStatus,
+    text: 'SECRET-REPLY', title: 'SECRET-TITLE', url: 'https://secret.invalid/private'
+  }] }).chats[0];
+  assert.deepEqual(packet(good).status, good);
+  for (const bad of [
+    { ...good, fase: 'unknown' }, { ...good, issue: 'bad issue' },
+    { ...good, pr: '476' }, { ...good, hecho: 'x'.repeat(161) },
+    { ...good, siguiente: 'x\u0001y' }, { ...good, fase: 'bloqueado' },
+    { ...good, fase: 'parada', bloqueo: null }, { ...good, extra: 'private' },
+    { ...good, bloqueo: { secret: 'do-not-send' } }
+  ]) assert.equal(Object.hasOwn(packet(bad), 'status'), false);
+  assert.doesNotMatch(JSON.stringify(packet(good)), /SECRET|secret.invalid/);
+}
 function runtime() {
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('<!doctype html><main><article data-message-author-role="assistant">OLD REPLY</article></main>',
@@ -93,10 +110,33 @@ function runtime() {
     assert.equal(JSON.stringify(snapshot).includes('SECRET'), false);
     assert.equal(JSON.stringify(snapshot).includes('UNCLASSIFIED'), false);
     assert.doesNotMatch(JSON.stringify(snapshot), /https?:\/\//);
+
+    for (const listener of listeners) listener({ type: 'autopilot:directed', on: true }, {}, () => {});
+    const valid = { issue: 'AutoFactory#475', fase: 'revision', pr: 476,
+      hecho: 'CI verde', siguiente: 'Revisar PR', bloqueo: null };
+    reply.textContent = 'PRIVATE CHAT BODY\nORQ-ESTADO: ' + JSON.stringify(valid);
+    const signal = status();
+    assert.deepEqual(signal.orqStatus, valid);
+    const sent = publisher.payloadFrom({ ...baseline, chats: [
+      { chat_id: 't1', state: 'generando', phase: signal.phase,
+        orqStatus: signal.orqStatus, text: reply.textContent,
+        title: 'SECRET TITLE', url: 'https://secret.invalid' }] });
+    assert.deepEqual(sent.chats[0].status, valid);
+    assert.doesNotMatch(JSON.stringify(sent), /PRIVATE CHAT BODY|SECRET|secret.invalid/);
+    reply.textContent += '\nORQ-ESTADO: {"fase":"invalid"}';
+    assert.equal(status().orqStatus, undefined);
+    reply.textContent = 'ORQ-ESTADO: ' + 'x'.repeat(601);
+    assert.equal(status().orqStatus, undefined);
+    reply.textContent = 'ORQ-ESTADO: ' + JSON.stringify({ ...valid, fase: 'parada' });
+    assert.equal(status().orqStatus, undefined);
+    reply.textContent = 'ORQ-ESTADO: ' + JSON.stringify({ ...valid, hecho: 'x\u0001y' });
+    assert.equal(status().orqStatus, undefined);
+
   } finally { dom.window.close(); }
 }
 const selected = process.argv[2];
 if (selected === 'contract') contract();
 else if (selected === 'runtime') runtime();
+else if (selected === 'orq') orqContract();
 else throw new Error('unknown telemetry test');
 console.log('AutoFactory #467 telemetry ' + selected + ': PASS');

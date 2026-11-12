@@ -28,6 +28,16 @@ class FactoryControlLocalPublisherTests(unittest.TestCase):
     def test_ac09_content_script_empty_vs_unknown_reply(self):
         self.check_telemetry("runtime")
 
+    def test_orq_status_contract_and_privacy(self):
+        self.check_telemetry("orq")
+
+    def test_orq_safari_byte_parity_and_prompt(self):
+        safari = ROOT / "safari" / "ChatGPT Autopilot Local Extension" / "Resources"
+        for name in ("content.js", "factory-control-local-publisher.js"):
+            self.assertEqual((ROOT / name).read_bytes(), (safari / name).read_bytes())
+        self.assertIn("Termina con UNA línea ORQ-ESTADO", (ROOT / "content.js").read_text())
+        self.assertIn("orqStatus: signal?.orqStatus", (ROOT / "factory-control-local-publisher.js").read_text())
+
     def test_ac01_contract_keys_only(self):
         self.check_node("ac01")
 

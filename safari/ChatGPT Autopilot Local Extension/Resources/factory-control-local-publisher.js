@@ -33,6 +33,32 @@
     'error', 'limite', 'sesion_cerrada', 'desconocido']);
   // Opaque ids and coarse states only: never titles, text, URLs or conversation ids.
   const PHASES = Object.freeze(['trabajando', 'esperando_externo', 'termino', 'bloqueado', 'desconocido']);
+  const ORQ_PHASES = Object.freeze(['reservando', 'trabajando', 'pr', 'revision',
+    'fusionado', 'bloqueado', 'parada', 'sin_trabajo']);
+  // Revalidate the explicit summary at the outbound localhost boundary.
+  function orqStatusFrom(value) {
+    if (!plain(value)) return null;
+    const keys = ['issue', 'fase', 'pr', 'hecho', 'siguiente', 'bloqueo'];
+    if (Reflect.ownKeys(value).length !== keys.length) return null;
+    const data = Object.create(null);
+    for (const key of keys) {
+      const d = Object.getOwnPropertyDescriptor(value, key);
+      if (!d || !Object.hasOwn(d, 'value') || !d.enumerable) return null;
+      data[key] = d.value;
+    }
+    if (typeof data.issue !== 'string' ||
+        !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(data.issue) ||
+        !ORQ_PHASES.includes(data.fase) ||
+        !(data.pr === null || (Number.isSafeInteger(data.pr) && data.pr > 0))) return null;
+    const safeText = x => typeof x === 'string' && x.length > 0 && x.length <= 160 &&
+      !/[\u0000-\u001f\u007f-\u009f]/.test(x);
+    if (!safeText(data.hecho) || !safeText(data.siguiente) ||
+        !(data.bloqueo === null || safeText(data.bloqueo)) ||
+        (['bloqueado', 'parada'].includes(data.fase) && !safeText(data.bloqueo)) ||
+        ('ORQ-ESTADO: ' + JSON.stringify(data)).length > 600) return null;
+    return Object.freeze({ issue: data.issue, fase: data.fase, pr: data.pr,
+      hecho: data.hecho, siguiente: data.siguiente, bloqueo: data.bloqueo });
+  }
   const METRIC_LIMITS = Object.freeze({ last_prompt_s: 10000000,
     last_reply_s: 10000000, last_reply_chars: 1000000, msgs_hour: 10000 });
   function chatsFrom(list) {
@@ -59,6 +85,8 @@
             ? Math.min(value, limit) : 0;
         }
       }
+      const status = orqStatusFrom(item.orqStatus);
+      if (status) chat.status = status;
       out.push(Object.freeze(chat));
     }
     return out;
@@ -260,6 +288,7 @@
         chats.push({ chat_id: 't' + tab.id, phase: signal?.phase, refs: signal?.refs, directed: signal?.directed === true,
           last_prompt_s: signal?.last_prompt_s, last_reply_s: signal?.last_reply_s,
           last_reply_chars: signal?.last_reply_chars, msgs_hour: signal?.msgs_hour,
+          orqStatus: signal?.orqStatus,
           state: flag === null ? 'desconocido' : flag === false ? 'detenido' : /dirigido: esperando orden/.test(text) || (signal?.directed === true && signal?.busy === false && !/no disponible|recuperaci[oó]n|protecci[oó]n activa|no encontrado|recarga|l[ií]mite|sesi[oó]n/.test(text)) ? 'esperando_envio' : /no disponible|recuperaci[oó]n|protecci[oó]n activa|no encontrado|recarga/.test(text) ? 'error' : /l[ií]mite/.test(text) ? 'limite'
             : /sesi[oó]n/.test(text) ? 'sesion_cerrada' : flag ? 'generando' : 'detenido' });
         return flag;
