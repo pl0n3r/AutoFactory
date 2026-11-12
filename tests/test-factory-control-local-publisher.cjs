@@ -119,7 +119,7 @@ function runtime() {
     assert.deepEqual(JSON.parse(JSON.stringify(signal.orqStatus)), valid);
     const sent = publisher.payloadFrom({ ...baseline, chats: [
       { chat_id: 't1', state: 'generando', phase: signal.phase,
-        orqStatus: signal.orqStatus, text: reply.textContent,
+        orqStatus: JSON.parse(JSON.stringify(signal.orqStatus)), text: reply.textContent,
         title: 'SECRET TITLE', url: 'https://secret.invalid' }] });
     assert.deepEqual(sent.chats[0].status, valid);
     assert.doesNotMatch(JSON.stringify(sent), /PRIVATE CHAT BODY|SECRET|secret.invalid/);
