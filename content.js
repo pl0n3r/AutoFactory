@@ -425,10 +425,11 @@
   }
   // Factory «modo dirigido»: the exact per-repository prompt from factory/README.md.
   const DIRECTED_REPOS = ['Factory', 'Condor', 'GrindFlow', 'brvtal', 'ControlBot', 'AutoFactory', 'FactoryRunner'];
+  const ORQ_ENDING_PROMPT = ' Termina con UNA línea ORQ-ESTADO: {"issue":"Repo#N","fase":"...","pr":null,"hecho":"...","siguiente":"...","bloqueo":null}. Fases: reservando, trabajando, pr, revision, fusionado, bloqueado, parada, sin_trabajo. Usa el número del PR si existe y un motivo en bloqueo si la fase es bloqueado o parada.';
   function assignRepo(repo, orderId) {
     if (!DIRECTED_REPOS.includes(repo)) return false;
     if (Number.isSafeInteger(orderId) && orderId > 0 && order.id === orderId) return true;
-    assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio.';
+    assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio.' + ORQ_ENDING_PROMPT;
     state.nextSendAt = 0;
     registerOrder(orderId);
     return true;
@@ -438,7 +439,7 @@
     if (Number.isSafeInteger(orderId) && orderId > 0 && order.id === orderId) return true;
     const [repo, number] = issue.split('#');
     // Factory «modo dirigido» + one assigned issue: work it to a merged PR, resolve blockers.
-    assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio. Tu issue asignado es #' + number + ': llévalo hasta dejar su PR fusionado. REGLA: tu trabajo es DESBLOQUEAR, no reportar bloqueos. Si algo te frena (checks en rojo, rama atrasada, reserva caducada, job fallido por causa transitoria, revisión pendiente, otro issue que debe cerrarse antes), ejecuta ahora la acción que lo resuelve dentro de lo que permite PLAN-AGENTES: corrige el CI, actualiza la rama, repite el job fallido, recupera tu reserva (/tomar), pide la revisión, o toma y trabaja el issue bloqueador. CodeRabbit: solo revisión FINAL. No pidas revisión (@coderabbitai review) en commits intermedios ni mientras el CI esté en rojo o pendiente; pídela UNA sola vez cuando el PR sea el definitivo y el CI esté en verde (el cupo gratuito es mínimo y compartido). No programes tareas, recordatorios ni revisiones futuras de ChatGPT. Termina tu respuesta con DOS líneas: «Hecho: <acción concreta que ejecutaste>» y «Siguiente: <la próxima acción>». Solo si ya agotaste todo lo permitido, di en una línea el motivo exacto empezando por «Parada legítima:».';
+    assignedPrompt = 'Trabajas en el repositorio pl0n3r/' + repo + '. Lee y ejecuta https://github.com/pl0n3r/factory/blob/main/PLAN-AGENTES.md para este repositorio. Tu issue asignado es #' + number + ': llévalo hasta dejar su PR fusionado. REGLA: tu trabajo es DESBLOQUEAR, no reportar bloqueos. Si algo te frena (checks en rojo, rama atrasada, reserva caducada, job fallido por causa transitoria, revisión pendiente, otro issue que debe cerrarse antes), ejecuta ahora la acción que lo resuelve dentro de lo que permite PLAN-AGENTES: corrige el CI, actualiza la rama, repite el job fallido, recupera tu reserva (/tomar), pide la revisión, o toma y trabaja el issue bloqueador. CodeRabbit: solo revisión FINAL. No pidas revisión (@coderabbitai review) en commits intermedios ni mientras el CI esté en rojo o pendiente; pídela UNA sola vez cuando el PR sea el definitivo y el CI esté en verde (el cupo gratuito es mínimo y compartido). No programes tareas, recordatorios ni revisiones futuras de ChatGPT. Termina tu respuesta con DOS líneas: «Hecho: <acción concreta que ejecutaste>» y «Siguiente: <la próxima acción>». Solo si ya agotaste todo lo permitido, di en una línea el motivo exacto empezando por «Parada legítima:».' + ORQ_ENDING_PROMPT;
     state.nextSendAt = 0;
     registerOrder(orderId);
     return true;
@@ -488,7 +489,7 @@
     log('composer-blocked', { order_id: order.id, cmpReason: composerReason() });
   }
 
-  // Local-only observations: transmit integer counters, never a message or title.
+  // Local telemetry remains numeric; only validated ORQ-ESTADO carries structured reply data.
   const SENT_TIMES_KEY = 'autofactory-sent-times-v1';
   const HOUR_MS = 60 * 60 * 1000;
   let sentTimes = [];
@@ -520,6 +521,41 @@
     return Number.isSafeInteger(at) && at > 0 && at <= now
       ? Math.min(10000000, Math.floor((now - at) / 1000)) : 0;
   }
+  // Only a validated, explicitly requested summary can leave a directed chat.
+  const ORQ_PHASES = Object.freeze(['reservando', 'trabajando', 'pr', 'revision',
+    'fusionado', 'bloqueado', 'parada', 'sin_trabajo']);
+  function parseOrqStatusLine(line) {
+    if (typeof line !== 'string' || line.length > 600 || !line.startsWith('ORQ-ESTADO:')) return null;
+    let data;
+    try { data = JSON.parse(line.slice('ORQ-ESTADO:'.length).trim()); }
+    catch (_error) { return null; }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    const keys = ['issue', 'fase', 'pr', 'hecho', 'siguiente', 'bloqueo'];
+    if (Object.keys(data).length !== keys.length || !keys.every(k => Object.hasOwn(data, k))) return null;
+    if (typeof data.issue !== 'string' ||
+        !/^[A-Za-z][A-Za-z0-9_-]{0,39}#[1-9]\d{0,9}$/.test(data.issue) ||
+        !ORQ_PHASES.includes(data.fase) ||
+        !(data.pr === null || (Number.isSafeInteger(data.pr) && data.pr > 0))) return null;
+    const safeText = x => typeof x === 'string' && x.length > 0 && x.length <= 160 &&
+      !/[\u0000-\u001f\u007f-\u009f]/.test(x);
+    if (!safeText(data.hecho) || !safeText(data.siguiente) ||
+        !(data.bloqueo === null || safeText(data.bloqueo)) ||
+        (['bloqueado', 'parada'].includes(data.fase) && !safeText(data.bloqueo))) return null;
+    return { issue: data.issue, fase: data.fase, pr: data.pr, hecho: data.hecho,
+      siguiente: data.siguiente, bloqueo: data.bloqueo };
+  }
+  function replyOrqStatus() {
+    if (!isDirected()) return null;
+    const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
+    if (state.lastSentAt > 0 && messages.length <= state.assistantCountBeforeSend) return null;
+    const last = messages[messages.length - 1];
+    const lines = String(last?.innerText || last?.textContent || '').split(/\r?\n/);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].startsWith('ORQ-ESTADO:')) return parseOrqStatusLine(lines[i]);
+    }
+    return null;
+  }
+
   function replyTelemetry() {
     const now = Date.now();
     const messages = document.querySelectorAll('[data-message-author-role="assistant"]');
@@ -1649,10 +1685,12 @@
       return;
     }
     if (message?.type === 'autopilot:get-status') {
+      const orqStatus = replyOrqStatus();
       reply({ enabled: state.enabled, status: state.status,
         directed: isDirected(), phase: replyPhase(),
         busy: Boolean(state.waiting || core.stopButton(document)),
-        refs: replyRefs(), ...replyTelemetry() });
+        refs: replyRefs(), ...replyTelemetry(),
+        ...(orqStatus ? { orqStatus } : {}) });
     } else reply({ ok: true, enabled: state.enabled, status: state.status });
   });
 
