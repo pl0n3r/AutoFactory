@@ -116,10 +116,13 @@ function runtime() {
       hecho: 'CI verde', siguiente: 'Revisar PR', bloqueo: null };
     reply.textContent = 'PRIVATE CHAT BODY\nORQ-ESTADO: ' + JSON.stringify(valid);
     const signal = status();
-    assert.deepEqual(JSON.parse(JSON.stringify(signal.orqStatus)), valid);
+    const statusValue = signal?.orqStatus;
+    assert.ok(statusValue, 'the content script must provide a validated status');
+    const statusSnapshot = structuredClone(statusValue);
+    assert.deepEqual(statusSnapshot, valid);
     const sent = publisher.payloadFrom({ ...baseline, chats: [
-      { chat_id: 't1', state: 'generando', phase: signal.phase,
-        orqStatus: JSON.parse(JSON.stringify(signal.orqStatus)), text: reply.textContent,
+      { chat_id: 't1', state: 'generando', phase: signal?.phase,
+        orqStatus: statusSnapshot, text: reply.textContent,
         title: 'SECRET TITLE', url: 'https://secret.invalid' }] });
     assert.deepEqual(sent.chats[0].status, valid);
     assert.doesNotMatch(JSON.stringify(sent), /PRIVATE CHAT BODY|SECRET|secret.invalid/);
