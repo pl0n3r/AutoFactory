@@ -116,7 +116,7 @@ function runtime() {
       hecho: 'CI verde', siguiente: 'Revisar PR', bloqueo: null };
     reply.textContent = 'PRIVATE CHAT BODY\nORQ-ESTADO: ' + JSON.stringify(valid);
     const signal = status();
-    assert.deepEqual(signal.orqStatus, valid);
+    assert.deepEqual(JSON.parse(JSON.stringify(signal.orqStatus)), valid);
     const sent = publisher.payloadFrom({ ...baseline, chats: [
       { chat_id: 't1', state: 'generando', phase: signal.phase,
         orqStatus: signal.orqStatus, text: reply.textContent,
