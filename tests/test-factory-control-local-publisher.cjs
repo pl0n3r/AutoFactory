@@ -127,6 +127,11 @@ function runtime() {
     assert.equal(status().orqStatus, undefined);
     reply.textContent = 'ORQ-ESTADO: ' + 'x'.repeat(601);
     assert.equal(status().orqStatus, undefined);
+
+    reply.textContent = 'ORQ-ESTADO: {"issue":';
+    assert.equal(status().orqStatus, undefined, 'malformed JSON must not escape');
+    reply.textContent = 'ORQ-ESTADO: ' + JSON.stringify({ ...valid, fase: 'desconocida' });
+    assert.equal(status().orqStatus, undefined, 'unknown phase is rejected');
     reply.textContent = 'ORQ-ESTADO: ' + JSON.stringify({ ...valid, fase: 'parada' });
     assert.equal(status().orqStatus, undefined);
     reply.textContent = 'ORQ-ESTADO: ' + JSON.stringify({ ...valid, hecho: 'x\u0001y' });
