@@ -97,6 +97,12 @@ function bootFakeTab(session, decision, {
     };
   }
   const runtimeListeners = [];
+  let pagehideEvents = 0;
+  let pagehideWithDocument = false;
+  window.addEventListener('pagehide', () => {
+    pagehideEvents += 1;
+    pagehideWithDocument = Boolean(window.document);
+  });
   let now = 100000;
   let budgetCalls = 0;
   let clicks = 0;
@@ -167,7 +173,18 @@ function bootFakeTab(session, decision, {
         const key = window.sessionStorage.key(i);
         return [key, window.sessionStorage.getItem(key)];
       })),
-    close: () => dom.window.close()
+    mutateDocument: () => {
+      const marker = window.document.createElement('span');
+      window.document.body.appendChild(marker);
+    },
+    pagehideEvents: () => pagehideEvents,
+    pagehideWithDocument: () => pagehideWithDocument,
+    close: () => {
+      // Simular el ciclo de vida de navegador antes de destruir JSDOM.
+      // El listener real del content script desconecta MutationObserver.
+      window.dispatchEvent(new window.Event('pagehide'));
+      dom.window.close();
+    }
   };
 }
 
@@ -259,6 +276,21 @@ function bootFakeTab(session, decision, {
     'a permitted budget alone never authorizes a provider click');
   reloaded.close();
   console.log('account-budget-content: reload latch and real tick prevent automatic retry');
+
+  // Encolar una mutación y cerrar antes de entregar los microtasks de jsdom.
+  // Sin pagehide, el observador puede dereferenciar document tras window.close().
+  const closingTab = bootFakeTab(new Map(), () => true,
+    { missingGuard: true, budgetEnabled: false });
+  assert.equal(closingTab.isEnabled(), true,
+    'the synthetic tab must be enabled to exercise MutationObserver');
+  closingTab.mutateDocument();
+  closingTab.close();
+  assert.equal(closingTab.pagehideEvents(), 1,
+    'teardown must dispatch exactly one pagehide to release observers');
+  assert.equal(closingTab.pagehideWithDocument(), true,
+    'pagehide must be delivered while the tab document is still available');
+  await microtasks();
+  console.log('account-budget-content: pagehide disconnects observers before JSDOM close');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;
