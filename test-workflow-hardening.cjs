@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
 const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
-const SETUP_NODE = 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
+const SETUP_NODE = 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 const CHROME_SMOKE_STEP = `        run: node scripts/chrome-ephemeral-smoke.cjs "v$(node -p 'require("./manifest.json").version')" "$(git rev-parse HEAD)"`;
 
 function verify(source) {
