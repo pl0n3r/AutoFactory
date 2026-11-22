@@ -136,7 +136,8 @@ async function flush() {
 });
 
 
-async function unavailableScenario(mode, invalidSnapshot = { budget: 'invalid' }) {
+const DEFAULT_INVALID_SNAPSHOT = Object.freeze({ budget: 'invalid' });
+async function unavailableScenario(mode, invalidSnapshot = DEFAULT_INVALID_SNAPSHOT) {
   const dom = new JSDOM('<!doctype html><button id="send">Send</button>', {
     url: 'https://chatgpt.com/', runScripts: 'outside-only'
   });
