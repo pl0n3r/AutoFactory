@@ -32,6 +32,135 @@ jobs:
           node-version: 20
       - run: node test-sonar-check-relay.cjs
 
+  sonar-inventory:
+    # Diagnostic only for the owner-reserved incident. Never run PR checkout code with the secret.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'trabajo/issue-219' &&
+      github.event.pull_request.user.login == 'pl0n3r'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read SonarCloud New Code findings with repository secret
+        shell: bash
+        env:
+          SONAR_READ_TOKEN: ${{ secrets.SONAR_TOKEN || secrets.SONARCLOUD_TOKEN || secrets.SONARQUBE_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          token = os.environ.get("SONAR_READ_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("SONAR_READ_TOKEN_MISSING: owner must provide existing SonarCloud read secret")
+          project = "pl0n3r_AutoFactory"
+          base = "https://sonarcloud.io/api/"
+          auth = "Basic " + base64.b64encode((token + ":").encode()).decode()
+
+          def get(path, params):
+              url = base + path + "?" + urllib.parse.urlencode(params)
+              request = urllib.request.Request(
+                  url, headers={"Authorization": auth, "Accept": "application/json"}
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  raise RuntimeError(path + ": HTTP " + str(error.code)) from None
+
+          def safe(value, maximum=180):
+              return "".join(c if c.isprintable() and c not in "<>\x60" else " "
+                             for c in str(value or ""))[:maximum]
+
+          gate = get("qualitygates/project_status",
+                     {"projectKey": project, "branch": "main"})
+          state = gate.get("projectStatus", {})
+          print("SONAR_GATE", json.dumps({
+              "status": state.get("status"),
+              "conditions": [
+                  {"metric": c.get("metricKey"), "actual": c.get("actualValue"),
+                   "error": c.get("errorThreshold"), "status": c.get("status")}
+                  for c in state.get("conditions", [])
+              ]}, sort_keys=True))
+          # Cloud installations may not expose new_code_periods/show. A 404
+          # must not silently certify the New Code Period as verified.
+          period_verified = False
+          try:
+              period = get("new_code_periods/show", {"project": project, "branch": "main"})
+              print("SONAR_NEW_CODE_PERIOD", json.dumps({
+                  "type": safe(period.get("type")),
+                  "value": safe(period.get("value")),
+                  "effectiveDate": safe(period.get("effectiveDate"))}, sort_keys=True))
+              period_verified = bool(period.get("type"))
+          except RuntimeError as error:
+              print("SONAR_NEW_CODE_PERIOD_SHOW_UNAVAILABLE", safe(error))
+          if not period_verified:
+              try:
+                  periods = get("new_code_periods/list", {"project": project})
+                  matching = [p for p in periods.get("newCodePeriods", [])
+                              if p.get("branchKey") in (None, "", "main")]
+                  for item in matching[:3]:
+                      print("SONAR_NEW_CODE_DEFINITION", json.dumps({
+                          "branch": safe(item.get("branchKey")),
+                          "type": safe(item.get("type")),
+                          "value": safe(item.get("value")),
+                          "inherited": item.get("inherited")}, sort_keys=True))
+                  period_verified = any(item.get("type") for item in matching)
+              except RuntimeError as error:
+                  print("SONAR_NEW_CODE_PERIOD_LIST_UNAVAILABLE", safe(error))
+          if not period_verified:
+              try:
+                  metadata = get("components/show", {"component": project})
+                  component = metadata.get("component", {})
+                  print("SONAR_NEW_CODE_WINDOW", json.dumps({
+                      "start": safe(component.get("leakPeriodDate")),
+                      "end": safe(component.get("analysisDate"))}, sort_keys=True))
+                  period_verified = bool(component.get("leakPeriodDate")
+                                         and component.get("analysisDate"))
+              except RuntimeError as error:
+                  print("SONAR_NEW_CODE_WINDOW_UNAVAILABLE", safe(error))
+          if not period_verified:
+              raise SystemExit("SONAR_NEW_CODE_PERIOD_UNVERIFIED")
+          page = 1
+          total = None
+          while page <= 20:
+              result = get("issues/search", {
+                  "componentKeys": project, "branch": "main",
+                  "sinceLeakPeriod": "true", "resolved": "false",
+                  "ps": 100, "p": page
+              })
+              if total is None:
+                  total = result.get("total")
+                  print("SONAR_NEW_CODE_ISSUES_TOTAL", total)
+              issues = result.get("issues", [])
+              for issue in issues:
+                  span = issue.get("textRange") or {}
+                  print("SONAR_ISSUE", json.dumps({
+                      "key": safe(issue.get("key"), 90),
+                      "rule": safe(issue.get("rule"), 120),
+                      "path": safe(issue.get("component"), 260),
+                      "line": span.get("startLine", issue.get("line")),
+                      "type": issue.get("type"),
+                      "severity": issue.get("severity"),
+                      "impacts": issue.get("impacts", []),
+                      "status": issue.get("status"),
+                      "message": safe(issue.get("message"), 240)
+                  }, ensure_ascii=True, sort_keys=True))
+              if not issues or (isinstance(total, int) and page * 100 >= total):
+                  break
+              page += 1
+          if isinstance(total, int) and page * 100 < total:
+              raise RuntimeError("SONAR_ISSUES_TRUNCATED: more than 2000 findings")
+          PY
+
   report:
     if: >-
       github.event_name == 'push' ||
