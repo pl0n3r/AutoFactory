@@ -391,29 +391,31 @@
     return '';
   }
 
+  function modelSuffixAfterGap(tokens, next) {
+    const candidate = tokens[next] || '';
+    if (candidate === '-') return { version: tokens[next + 1] || '', next: next + 2 };
+    return {
+      version: candidate.startsWith('-') ? candidate.slice(1) : candidate,
+      next: next + 1
+    };
+  }
+  function modelVersionAt(tokens, index) {
+    const word = tokens[index];
+    if (!word.startsWith('gpt')) return null;
+    const inline = word.slice(3);
+    if (inline === '') return modelSuffixAfterGap(tokens, index + 1);
+    if (inline === '-') return { version: tokens[index + 1] || '', next: index + 2 };
+    return { version: inline.startsWith('-') ? inline.slice(1) : inline, next: index + 1 };
+  }
   function modelIdFromText(value) {
-    // Single-pass token matching avoids regex backtracking on ambiguous separators.
+    // Linear token scan: split hyphen/space parsing into small, bounded helpers.
     const tokens = normalize(value).toLowerCase().replace(/[‐‑‒–—]/g, '-').split(/\s+/);
     let foundGpt6 = false;
     for (let index = 0; index < tokens.length; index += 1) {
-      const word = tokens[index];
-      if (!word.startsWith('gpt')) continue;
-      let version = word.slice(3);
-      let next = index + 1;
-      // Accept one optional dash, never two separated by whitespace.
-      let hasSeparator = version.startsWith('-');
-      if (hasSeparator) version = version.slice(1);
-      if (version === '') {
-        if (!hasSeparator && tokens[next] === '-') {
-          hasSeparator = true;
-          next += 1;
-        }
-        version = tokens[next] || '';
-        next += 1;
-        if (!hasSeparator && version.startsWith('-')) version = version.slice(1);
-      }
-      if (version === '5.6' && tokens[next] === 'sol') return 'gpt-5.6-sol';
-      if (version === '6') foundGpt6 = true;
+      const parsed = modelVersionAt(tokens, index);
+      if (!parsed) continue;
+      if (parsed.version === '5.6' && tokens[parsed.next] === 'sol') return 'gpt-5.6-sol';
+      if (parsed.version === '6') foundGpt6 = true;
     }
     return foundGpt6 ? 'gpt-6' : null;
   }
