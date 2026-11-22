@@ -392,10 +392,24 @@
   }
 
   function modelIdFromText(value) {
-    const text = normalize(value).toLowerCase().replace(/[‐‑‒–—]/g, '-');
-    if (/(^|\s)gpt\s*-?\s*5\.6\s+sol(\s|$)/.test(text)) return 'gpt-5.6-sol';
-    if (/(^|\s)gpt\s*-?\s*6(\s|$)/.test(text)) return 'gpt-6';
-    return null;
+    // Single-pass token matching avoids regex backtracking on ambiguous separators.
+    const tokens = normalize(value).toLowerCase().replace(/[‐‑‒–—]/g, '-').split(/\s+/);
+    let foundGpt6 = false;
+    for (let index = 0; index < tokens.length; index += 1) {
+      const word = tokens[index];
+      if (!word.startsWith('gpt')) continue;
+      let version = word.slice(3);
+      let next = index + 1;
+      if (version === '' || version === '-') {
+        if (version === '' && tokens[next] === '-') next += 1;
+        version = tokens[next] || '';
+        next += 1;
+      }
+      if (version.startsWith('-')) version = version.slice(1);
+      if (version === '5.6' && tokens[next] === 'sol') return 'gpt-5.6-sol';
+      if (version === '6') foundGpt6 = true;
+    }
+    return foundGpt6 ? 'gpt-6' : null;
   }
   function reasoningSliderTarget(level, minimum, maximum) {
     const min = Number(minimum);
