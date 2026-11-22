@@ -400,12 +400,18 @@
       if (!word.startsWith('gpt')) continue;
       let version = word.slice(3);
       let next = index + 1;
-      if (version === '' || version === '-') {
-        if (version === '' && tokens[next] === '-') next += 1;
+      // Accept one optional dash, never two separated by whitespace.
+      let hasSeparator = version.startsWith('-');
+      if (hasSeparator) version = version.slice(1);
+      if (version === '') {
+        if (!hasSeparator && tokens[next] === '-') {
+          hasSeparator = true;
+          next += 1;
+        }
         version = tokens[next] || '';
         next += 1;
+        if (!hasSeparator && version.startsWith('-')) version = version.slice(1);
       }
-      if (version.startsWith('-')) version = version.slice(1);
       if (version === '5.6' && tokens[next] === 'sol') return 'gpt-5.6-sol';
       if (version === '6') foundGpt6 = true;
     }

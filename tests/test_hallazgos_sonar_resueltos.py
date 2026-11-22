@@ -41,7 +41,7 @@ const samples = [
   ['GPT - 5.6 Sol', 'gpt-5.6-sol'], ['GPT5.6 Sol', 'gpt-5.6-sol'],
   ['GPT-6 GPT 5.6 Sol', 'gpt-5.6-sol'],
   ['GPT-7', null], ['High', null], ['xGPT6', null],
-  ['GPT---6', null], ['GPT-5.6', null]
+  ['GPT---6', null], ['GPT- -6', null], ['GPT - -6', null], ['GPT-5.6', null]
 ];
 for (const [input, expected] of samples) {
   assert.equal(core.modelIdFromText(input), expected, input);
