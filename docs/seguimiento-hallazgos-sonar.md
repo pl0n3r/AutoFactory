@@ -32,7 +32,7 @@ Prueba: `tests/test_hallazgos_sonar_resueltos.py::HallazgosSonarResueltosTests::
 
 ## Informe real de anotaciones del PR #486, ronda de CI
 
-- SonarCloud exact-HEAD `5aa3ac9c4c257b3d9e7f7a26c8e0e97afb0dc71b`: Quality Gate PR Reliability C, `Validate` y `CodeQL` `success`. El [reporte automático autenticado](https://github.com/pl0n3r/AutoFactory/pull/486#issuecomment-7075584872) devolvió cuatro anotaciones:
+- SonarCloud exact-HEAD `5aa3ac9c4c257b3d9e7f7a26c8e0e97afb0dc71b`: Quality Gate PR Reliability C, `Validate` y `CodeQL` `success`. El [reporte automático autenticado](https://github.com/pl0n3r/AutoFactory/pull/486#issuecomment-7075526581) devolvió cuatro anotaciones:
   - `autopilot-core.js:394` y espejo Safari: complejidad cognitiva 21 (máximo 15), introducida por el nuevo parser. Se reparó separando reconocimiento de tokens en dos funciones puras de complejidad acotada; fuzz de 180 000 combinaciones comparadas con el parser previo, cero divergencias.
   - `popup.js:253` y espejo Safari: `javascript:S9383` de `storage.local.get` externo, no del `set` interno. Se añadió manejo explícito de rechazo también a la lectura, con `void` y `catch` opcional compatible con APIs callback-only.
 - Verificar nuevo análisis Sonar del PR sobre el último HEAD y después comprobar A/A en main fusionado antes de cerrar los Issues.
