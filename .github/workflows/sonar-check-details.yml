@@ -90,13 +90,45 @@ jobs:
                    "error": c.get("errorThreshold"), "status": c.get("status")}
                   for c in state.get("conditions", [])
               ]}, sort_keys=True))
+          # Cloud installations may not expose new_code_periods/show. A 404
+          # must not silently certify the New Code Period as verified.
+          period_verified = False
           try:
               period = get("new_code_periods/show", {"project": project, "branch": "main"})
               print("SONAR_NEW_CODE_PERIOD", json.dumps({
-                  "type": period.get("type"), "value": period.get("value"),
-                  "effectiveDate": period.get("effectiveDate")}, sort_keys=True))
+                  "type": safe(period.get("type")),
+                  "value": safe(period.get("value")),
+                  "effectiveDate": safe(period.get("effectiveDate"))}, sort_keys=True))
+              period_verified = bool(period.get("type"))
           except RuntimeError as error:
-              print("SONAR_NEW_CODE_PERIOD_UNAVAILABLE", safe(error))
+              print("SONAR_NEW_CODE_PERIOD_SHOW_UNAVAILABLE", safe(error))
+          if not period_verified:
+              try:
+                  periods = get("new_code_periods/list", {"project": project})
+                  matching = [p for p in periods.get("newCodePeriods", [])
+                              if p.get("branchKey") in (None, "", "main")]
+                  for item in matching[:3]:
+                      print("SONAR_NEW_CODE_DEFINITION", json.dumps({
+                          "branch": safe(item.get("branchKey")),
+                          "type": safe(item.get("type")),
+                          "value": safe(item.get("value")),
+                          "inherited": item.get("inherited")}, sort_keys=True))
+                  period_verified = any(item.get("type") for item in matching)
+              except RuntimeError as error:
+                  print("SONAR_NEW_CODE_PERIOD_LIST_UNAVAILABLE", safe(error))
+          if not period_verified:
+              try:
+                  metadata = get("components/show", {"component": project})
+                  component = metadata.get("component", {})
+                  print("SONAR_NEW_CODE_WINDOW", json.dumps({
+                      "start": safe(component.get("leakPeriodDate")),
+                      "end": safe(component.get("analysisDate"))}, sort_keys=True))
+                  period_verified = bool(component.get("leakPeriodDate")
+                                         and component.get("analysisDate"))
+              except RuntimeError as error:
+                  print("SONAR_NEW_CODE_WINDOW_UNAVAILABLE", safe(error))
+          if not period_verified:
+              raise SystemExit("SONAR_NEW_CODE_PERIOD_UNVERIFIED")
           page = 1
           total = None
           while page <= 20:
