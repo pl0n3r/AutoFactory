@@ -43,3 +43,9 @@ Prueba: `tests/test_hallazgos_sonar_resueltos.py::HallazgosSonarResueltosTests::
 - `javascript:S7721` (`modelSuffixAfterGap`): mover función sin cierres al ámbito superior. Se eliminó la función adicional: `modelVersionAt` usa el normalizador de la fábrica y mantiene complejidad menor de 15, verificado con 180 000 casos aleatorios comparados con el algoritmo anterior.
 - `javascript:S9383` de `popup.js:253` y espejo Safari: la llamada a `refresh()` (async) al final del callback seguía sin `await`/rechazo explícito, aunque los `get/set` ya estuvieran manejados. `refresh()` contiene `try/catch` interno; marcar intencionalmente `void refresh()` conserva el orden y evita promesa flotante.
 - No cerrar antes de `SonarCloud Code Analysis` `success` exact-HEAD y comprobación Security/Reliability A/A en main posterior al squash.
+
+## Cierre de comentarios de CodeRabbit FINAL
+
+- La [revisión final única en PR #486](https://github.com/pl0n3r/AutoFactory/pull/486) se solicitó **una vez** tras `SonarCloud`, `Validate` y `CodeQL` `success` exact-HEAD `363c10b`. CodeRabbit publicó un comentario **Minor / Functional Correctness** sobre `popup.js:243`: cuando `storage.local.get` usa callback en Chrome, el error se comunica por `runtime.lastError` y no como Promise rechazada. También sugirió probar ambas formas.
+- La reparación revisa `extensionApi.runtime?.lastError` antes de utilizar `values`, publica el estado de error sin exponer contenido y retorna antes de migración/hidratación; se aplica exactamente en Chrome y Safari. El test reproduce `lastError` en callback con lectura sin valores y `Promise.reject`, exige estado visible y cero escrituras/hidrataciones. **Sin otra solicitud CodeRabbit**.
+- Como toda modificación después de la revisión, la suite nativa, SonarCloud y CodeQL deben volver a `success` sobre el nuevo HEAD antes del squash; verificar que no aparecen nuevos bugs graves.

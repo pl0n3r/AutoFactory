@@ -33,6 +33,7 @@ class HallazgosSonarResueltosTests(unittest.TestCase):
         self.assertIn('})?.catch?.(() => {', popup)
         self.assertIn('void extensionApi.storage.local.get(DEFAULTS, values => {', popup)
         self.assertIn('No se pudieron cargar los ajustes', popup)
+        self.assertIn('if (extensionApi.runtime?.lastError) {', popup)
         self.assertIn('refreshLearning();void refresh();', popup)
         node_program = r"""
 const assert = require('node:assert/strict');
@@ -78,6 +79,41 @@ const rejectedMessages = [];
 runMigration(() => Promise.reject(new Error('simulated storage failure')), rejectedMessages);
 queueMicrotask(() => {
   assert.equal(rejectedMessages.some(x => x.includes('No se guardaron')), true);
+});
+
+// Exercise the complete read-error flow, including the outer Promise catch.
+const readEnd = popup.indexOf('extensionApi.storage.onChanged.addListener', begin);
+assert.ok(readEnd > end, 'complete settings read should be discoverable');
+const readFlow = popup.slice(begin, readEnd).trim();
+function runReadFailure(get, lastError) {
+  const state = {statuses: [], writes: 0, hydrations: 0};
+  const context = {
+    DEFAULTS: {}, SETTINGS_DEFAULT_VERSION: 2,
+    extensionApi: {
+      runtime: {lastError},
+      storage: {local: {
+        get,
+        set: () => { state.writes += 1; }
+      }}
+    },
+    fields: new Proxy({}, {
+      get: () => { state.hydrations += 1; throw new Error('unexpected hydration'); }
+    }),
+    showStatus: message => state.statuses.push(message)
+  };
+  vm.runInNewContext(readFlow, context);
+  return state;
+}
+const callbackError = runReadFailure((_defaults, cb) => cb(undefined),
+  {message: 'simulated runtime read failure'});
+assert.equal(callbackError.statuses.some(x => x.includes('No se pudieron cargar')), true);
+assert.equal(callbackError.writes, 0);
+assert.equal(callbackError.hydrations, 0);
+const promiseError = runReadFailure(() => Promise.reject(new Error('read failed')), null);
+setImmediate(() => {
+  assert.equal(promiseError.statuses.some(x => x.includes('No se pudieron cargar')), true);
+  assert.equal(promiseError.writes, 0);
+  assert.equal(promiseError.hydrations, 0);
 });
 """
         result = subprocess.run(

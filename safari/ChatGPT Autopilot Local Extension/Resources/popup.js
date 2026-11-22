@@ -241,6 +241,11 @@ renderFactoryControlBridge({state:'disabled',capabilities:{}});}});
 void refreshFactoryControlBridge();
 void refreshSharedLearning();
 void extensionApi.storage.local.get(DEFAULTS, values => {
+  // Callback-form storage APIs signal read failures through runtime.lastError.
+  if (extensionApi.runtime?.lastError) {
+    showStatus('ERROR · No se pudieron cargar los ajustes', false);
+    return;
+  }
   if (values.settingsDefaultVersion !== SETTINGS_DEFAULT_VERSION) {
     values = {...values, settingsDefaultVersion: SETTINGS_DEFAULT_VERSION,
       reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'gpt-6'};
