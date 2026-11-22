@@ -217,7 +217,7 @@ function effects(spy) {
     const [one, two] = await Promise.all([
       make().execute(input, context), make().execute(input, context)
     ]);
-    assert.deepEqual([one.code, two.code].sort(), ['already_handled', 'ok']);
+    assert.deepEqual([one.code, two.code].sort((a, b) => a.localeCompare(b)), ['already_handled', 'ok']);
     assert.equal(effectsCalled.length, 1);
     assert.equal(JSON.parse(store.snapshot()).length, 1);
   }
