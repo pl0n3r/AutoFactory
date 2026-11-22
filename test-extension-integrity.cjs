@@ -147,6 +147,7 @@ const progressOutput = popupMarkup.match(/<output id="local-progress-status"[^>]
 assert.ok(progressOutput, 'local progress output must exist');
 assert.match(progressOutput, /aria-live="polite"/);
 assert.doesNotMatch(progressOutput, /tabindex=/);
+assert.match(popupMarkup, /<a href="#local-progress-status" tabindex="0" class="hint"/);
 assert.doesNotMatch(coreSource, /\(\^\|\\s\)\(alta\|alto\|high\)/);
 
 console.log('Extension preflight: versions, Chrome/Safari parity, declared assets and permissions pass');
