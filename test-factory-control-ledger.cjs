@@ -549,7 +549,7 @@ const memory = () => {
       a.execute(input, async () => { effects += 1; return { ok: true, code: 'ok' }; }),
       b.execute(input, async () => { effects += 1; return { ok: true, code: 'ok' }; })
     ]);
-    assert.deepEqual(result.map(x => x.code).sort(), ['already_handled', 'ok']);
+    assert.deepEqual(result.map(x => x.code).sort((a, b) => a.localeCompare(b)), ['already_handled', 'ok']);
     assert.equal(effects, 1);
   }
   console.log('Factory Control ledger AC-01: shared-adapter parallel claims serialize');
