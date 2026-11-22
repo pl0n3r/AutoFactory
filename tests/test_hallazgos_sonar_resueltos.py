@@ -27,7 +27,7 @@ class HallazgosSonarResueltosTests(unittest.TestCase):
         popup = (ROOT / 'popup.js').read_text(encoding='utf-8')
         # New Code MEDIUM: S8786 must not use nested ambiguous model regex.
         self.assertIn('const tokens = normalize(value)', core)
-        self.assertNotIn(r'gpt\\s*-?\\s*', core)
+        self.assertNotIn(r'gpt\s*-?\s*', core)
         # S9383: the best-effort settings migration must observe Promise rejection.
         self.assertIn('void extensionApi.storage.local.set({settingsDefaultVersion:', popup)
         self.assertIn('})?.catch?.(() => {', popup)
@@ -48,6 +48,34 @@ for (const [input, expected] of samples) {
 }
 assert.equal(core.modelIdFromText('gpt - '.repeat(4000) + 'GPT - 5.6 Sol'),
   'gpt-5.6-sol');
+
+// Exercise the actual popup migration callback with Promise and callback-only APIs.
+const fs = require('node:fs');
+const vm = require('node:vm');
+const popup = fs.readFileSync('popup.js', 'utf8');
+const begin = popup.indexOf('extensionApi.storage.local.get(DEFAULTS, values => {');
+const end = popup.indexOf('  const savedPrompt=', begin);
+assert.ok(begin >= 0 && end > begin, 'migration callback should be discoverable');
+const migration = popup.slice(begin, end) + '});';
+function runMigration(write, messages) {
+  const context = {
+    DEFAULTS: {}, SETTINGS_DEFAULT_VERSION: 2,
+    extensionApi: {storage: {local: {
+      get: (_defaults, callback) => callback({settingsDefaultVersion: 0}),
+      set: write
+    }}},
+    showStatus: message => messages.push(message)
+  };
+  vm.runInNewContext(migration, context);
+}
+const callbackMessages = [];
+runMigration(() => undefined, callbackMessages);
+assert.deepEqual(callbackMessages, []);
+const rejectedMessages = [];
+runMigration(() => Promise.reject(new Error('simulated storage failure')), rejectedMessages);
+queueMicrotask(() => {
+  assert.equal(rejectedMessages.some(x => x.includes('No se guardaron')), true);
+});
 """
         result = subprocess.run(
             ['node', '-e', node_program],
