@@ -977,7 +977,7 @@ function fixture(overrides = {}) {
       // Never forward caller-controlled PATH, secrets or executable overrides.
       // Use only fixed, root-owned system directories on the Ubuntu runner.
       // Never derive PATH from a caller-controlled Node executable location.
-      env: { PATH: '/usr/bin:/bin', FACTORY_PAIRING_PYTHON_CHILD: '1' },
+      env: { PATH: '/usr/local/bin:/usr/bin:/bin', FACTORY_PAIRING_PYTHON_CHILD: '1' },
       encoding: 'utf8',
       timeout: 30000
     });
