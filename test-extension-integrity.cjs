@@ -138,4 +138,15 @@ assert.ok(contentSource.includes("if (message?.type === 'autopilot:heartbeat') v
 assert.ok(contentSource.includes(`mutationTimer = 0;
       void tick();`));
 assert.equal((contentSource.match(/(?<!void )tick\(\);/g) || []).length, 0);
+
+const popupSource = read('popup.js').toString('utf8');
+const popupMarkup = read('popup.html').toString('utf8');
+assert.match(popupSource, /void extensionApi\.storage\.local\.set\(\{settingsDefaultVersion:/);
+assert.doesNotMatch(popupMarkup, /<output\b[^>]*\brole="status"/);
+const progressOutput = popupMarkup.match(/<output id="local-progress-status"[^>]*>/)?.[0];
+assert.ok(progressOutput, 'local progress output must exist');
+assert.match(progressOutput, /aria-live="polite"/);
+assert.doesNotMatch(progressOutput, /tabindex=/);
+assert.doesNotMatch(coreSource, /\(\^\|\\s\)\(alta\|alto\|high\)/);
+
 console.log('Extension preflight: versions, Chrome/Safari parity, declared assets and permissions pass');

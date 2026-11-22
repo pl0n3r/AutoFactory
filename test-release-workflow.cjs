@@ -58,7 +58,7 @@ function verifyWorkflow(source) {
   assert.equal(source.match(/persist-credentials: false/g)?.length, 4);
   assert.equal((source.match(/^          package-manager-cache: false$/gm) || []).length, 3,
     'release preflight, Chrome and Safari must all disable setup-node caching');
-  assert.doesNotMatch(source, /^\s+cache: npm$/m,
+  assert.doesNotMatch(source, /^[ \t]+cache: npm$/m,
     'no release job may restore a PR-writable npm cache');
   assert.equal((source.match(/^      - run: npm ci --ignore-scripts$/gm) || []).length, 2,
     'preflight and Chrome jobs must not execute dependency install lifecycle scripts');

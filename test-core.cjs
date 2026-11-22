@@ -401,3 +401,14 @@ assert.equal(core.modelIdFromText('GPT-6'), 'gpt-6');
 assert.equal(core.modelIdFromText('GPT-5.6 Sol'), 'gpt-5.6-sol');
 assert.equal(core.modelIdFromText('High'), null);
 console.log('Modelo: reconoce GPT-6 sin confundirlo con el nivel de razonamiento');
+
+for (const [label, expected] of [
+  ['', ''], ['alta', 'high'], ['ALTO', 'high'], [' high ', 'high'],
+  ['Razonamiento\tmedia', 'medium'], ['BAJO', 'low'],
+  ['Highland', ''], ['media,', ''], ['prefixhigh', ''],
+  ['alto\nlow', 'high'], ['low\tmedium', 'medium'],
+  ['low\u00a0medio', 'medium'], [null, '']
+]) {
+  assert.equal(core.reasoningLevelFromText(label), expected, 'reasoning token boundary: ' + label);
+}
+console.log('Razonamiento: tokens completos y prioridad alta→media→baja sin backtracking');

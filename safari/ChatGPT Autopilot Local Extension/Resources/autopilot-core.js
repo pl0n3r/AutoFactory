@@ -384,10 +384,10 @@
     return String(value || '').replaceAll('\u00a0', ' ').replaceAll('\r\n', '\n').trim();
   }
   function reasoningLevelFromText(value) {
-    const text = normalize(value).toLowerCase();
-    if (/(^|\s)(alta|alto|high)(\s|$)/.test(text)) return 'high';
-    if (/(^|\s)(media|medio|medium)(\s|$)/.test(text)) return 'medium';
-    if (/(^|\s)(baja|bajo|low)(\s|$)/.test(text)) return 'low';
+    const words = new Set(normalize(value).toLowerCase().split(/\s+/));
+    if (words.has('alta') || words.has('alto') || words.has('high')) return 'high';
+    if (words.has('media') || words.has('medio') || words.has('medium')) return 'medium';
+    if (words.has('baja') || words.has('bajo') || words.has('low')) return 'low';
     return '';
   }
 

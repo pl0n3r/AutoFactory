@@ -130,7 +130,7 @@ async function unknown() {
   }
   const clock = createManualClock(123);
   assert.equal(clock.now(), 123);
-  for (const delta of [null, undefined, NaN, Infinity, -1, 0.5, '60000']) {
+  for (const delta of [null, undefined, Number.NaN, Infinity, -1, 0.5, '60000']) {
     assert.throws(() => clock.advance(delta), RangeError);
   }
   assert.equal(clock.now(), 123);
