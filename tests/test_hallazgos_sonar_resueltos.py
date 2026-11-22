@@ -33,6 +33,7 @@ class HallazgosSonarResueltosTests(unittest.TestCase):
         self.assertIn('})?.catch?.(() => {', popup)
         self.assertIn('void extensionApi.storage.local.get(DEFAULTS, values => {', popup)
         self.assertIn('No se pudieron cargar los ajustes', popup)
+        self.assertIn('refreshLearning();void refresh();', popup)
         node_program = r"""
 const assert = require('node:assert/strict');
 const core = require('./autopilot-core.js');

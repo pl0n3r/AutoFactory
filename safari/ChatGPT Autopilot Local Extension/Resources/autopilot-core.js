@@ -391,21 +391,21 @@
     return '';
   }
 
-  function modelSuffixAfterGap(tokens, next) {
-    const candidate = tokens[next] || '';
-    if (candidate === '-') return { version: tokens[next + 1] || '', next: next + 2 };
-    return {
-      version: candidate.startsWith('-') ? candidate.slice(1) : candidate,
-      next: next + 1
-    };
-  }
   function modelVersionAt(tokens, index) {
-    const word = tokens[index];
+    const word = normalize(tokens[index]);
     if (!word.startsWith('gpt')) return null;
     const inline = word.slice(3);
-    if (inline === '') return modelSuffixAfterGap(tokens, index + 1);
-    if (inline === '-') return { version: tokens[index + 1] || '', next: index + 2 };
-    return { version: inline.startsWith('-') ? inline.slice(1) : inline, next: index + 1 };
+    const next = index + 1;
+    if (inline === '') {
+      const spacedDash = tokens[next] === '-';
+      const value = tokens[next + (spacedDash ? 1 : 0)] || '';
+      return {
+        version: !spacedDash && value.startsWith('-') ? value.slice(1) : value,
+        next: next + (spacedDash ? 2 : 1)
+      };
+    }
+    if (inline === '-') return { version: tokens[next] || '', next: next + 1 };
+    return { version: inline.startsWith('-') ? inline.slice(1) : inline, next };
   }
   function modelIdFromText(value) {
     // Linear token scan: split hyphen/space parsing into small, bounded helpers.

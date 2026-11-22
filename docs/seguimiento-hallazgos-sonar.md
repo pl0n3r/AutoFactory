@@ -36,3 +36,10 @@ Prueba: `tests/test_hallazgos_sonar_resueltos.py::HallazgosSonarResueltosTests::
   - `autopilot-core.js:394` y espejo Safari: complejidad cognitiva 21 (máximo 15), introducida por el nuevo parser. Se reparó separando reconocimiento de tokens en dos funciones puras de complejidad acotada; fuzz de 180 000 combinaciones comparadas con el parser previo, cero divergencias.
   - `popup.js:253` y espejo Safari: `javascript:S9383` de `storage.local.get` externo, no del `set` interno. Se añadió manejo explícito de rechazo también a la lectura, con `void` y `catch` opcional compatible con APIs callback-only.
 - Verificar nuevo análisis Sonar del PR sobre el último HEAD y después comprobar A/A en main fusionado antes de cerrar los Issues.
+
+## Segundo resultado exact-HEAD SonarCloud PR #486 — revisión de causa
+
+[Anotaciones verificadas de check 137125866894](https://github.com/pl0n3r/AutoFactory/pull/486#issuecomment-7075526581) sobre `e2eaa8b5087be35a38a3f049cc1a32f164ced3dd`:
+- `javascript:S7721` (`modelSuffixAfterGap`): mover función sin cierres al ámbito superior. Se eliminó la función adicional: `modelVersionAt` usa el normalizador de la fábrica y mantiene complejidad menor de 15, verificado con 180 000 casos aleatorios comparados con el algoritmo anterior.
+- `javascript:S9383` de `popup.js:253` y espejo Safari: la llamada a `refresh()` (async) al final del callback seguía sin `await`/rechazo explícito, aunque los `get/set` ya estuvieran manejados. `refresh()` contiene `try/catch` interno; marcar intencionalmente `void refresh()` conserva el orden y evita promesa flotante.
+- No cerrar antes de `SonarCloud Code Analysis` `success` exact-HEAD y comprobación Security/Reliability A/A en main posterior al squash.
