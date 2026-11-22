@@ -142,7 +142,7 @@ assert.equal((contentSource.match(/(?<!void )tick\(\);/g) || []).length, 0);
 const popupSource = read('popup.js').toString('utf8');
 const popupMarkup = read('popup.html').toString('utf8');
 assert.match(popupSource, /void extensionApi\.storage\.local\.set\(\{settingsDefaultVersion:/);
-assert.doesNotMatch(popupMarkup, /<output\b[^>]*\brole="status"/);
+assert.match(popupMarkup, /<output id="factory-control-preview-status" role="status"/);
 const progressOutput = popupMarkup.match(/<output id="local-progress-status"[^>]*>/)?.[0];
 assert.ok(progressOutput, 'local progress output must exist');
 assert.match(progressOutput, /aria-live="polite"/);
