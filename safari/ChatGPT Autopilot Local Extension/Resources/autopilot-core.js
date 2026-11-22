@@ -391,11 +391,33 @@
     return '';
   }
 
+  function modelVersionAt(tokens, index) {
+    const word = normalize(tokens[index]);
+    if (!word.startsWith('gpt')) return null;
+    const inline = word.slice(3);
+    const next = index + 1;
+    if (inline === '') {
+      const spacedDash = tokens[next] === '-';
+      const value = tokens[next + (spacedDash ? 1 : 0)] || '';
+      return {
+        version: !spacedDash && value.startsWith('-') ? value.slice(1) : value,
+        next: next + (spacedDash ? 2 : 1)
+      };
+    }
+    if (inline === '-') return { version: tokens[next] || '', next: next + 1 };
+    return { version: inline.startsWith('-') ? inline.slice(1) : inline, next };
+  }
   function modelIdFromText(value) {
-    const text = normalize(value).toLowerCase().replace(/[‐‑‒–—]/g, '-');
-    if (/(^|\s)gpt\s*-?\s*5\.6\s+sol(\s|$)/.test(text)) return 'gpt-5.6-sol';
-    if (/(^|\s)gpt\s*-?\s*6(\s|$)/.test(text)) return 'gpt-6';
-    return null;
+    // Linear token scan: split hyphen/space parsing into small, bounded helpers.
+    const tokens = normalize(value).toLowerCase().replace(/[‐‑‒–—]/g, '-').split(/\s+/);
+    let foundGpt6 = false;
+    for (let index = 0; index < tokens.length; index += 1) {
+      const parsed = modelVersionAt(tokens, index);
+      if (!parsed) continue;
+      if (parsed.version === '5.6' && tokens[parsed.next] === 'sol') return 'gpt-5.6-sol';
+      if (parsed.version === '6') foundGpt6 = true;
+    }
+    return foundGpt6 ? 'gpt-6' : null;
   }
   function reasoningSliderTarget(level, minimum, maximum) {
     const min = Number(minimum);

@@ -1,4 +1,4 @@
-"""Regression guard for three authenticated SonarCloud S2871 findings."""
+"""Regression coverage for authenticated SonarCloud Reliability findings (#428)."""
 from pathlib import Path
 import subprocess
 import unittest
@@ -9,6 +9,10 @@ CASES = (
     ('test-factory-control-executor.cjs', '[one.code, two.code].sort((a, b) => a.localeCompare(b))'),
     ('test-factory-control-ledger.cjs', 'result.map(x => x.code).sort((a, b) => a.localeCompare(b))'),
 )
+MIRRORS = (
+    ('autopilot-core.js', 'safari/ChatGPT Autopilot Local Extension/Resources/autopilot-core.js'),
+    ('popup.js', 'safari/ChatGPT Autopilot Local Extension/Resources/popup.js'),
+)
 
 
 class HallazgosSonarResueltosTests(unittest.TestCase):
@@ -16,10 +20,104 @@ class HallazgosSonarResueltosTests(unittest.TestCase):
         for filename, expected in CASES:
             with self.subTest(filename=filename):
                 self.assertIn(expected, (ROOT / filename).read_text(encoding='utf-8'))
+        for chrome, safari in MIRRORS:
+            with self.subTest(mirror=chrome):
+                self.assertEqual((ROOT / chrome).read_bytes(), (ROOT / safari).read_bytes())
+        core = (ROOT / 'autopilot-core.js').read_text(encoding='utf-8')
+        popup = (ROOT / 'popup.js').read_text(encoding='utf-8')
+        # New Code MEDIUM: S8786 must not use nested ambiguous model regex.
+        self.assertIn('const tokens = normalize(value)', core)
+        self.assertNotIn(r'gpt\s*-?\s*', core)
+        # S9383: the best-effort settings migration must observe Promise rejection.
+        self.assertIn('void extensionApi.storage.local.set({settingsDefaultVersion:', popup)
+        self.assertIn('})?.catch?.(() => {', popup)
+        self.assertIn('void extensionApi.storage.local.get(DEFAULTS, values => {', popup)
+        self.assertIn('No se pudieron cargar los ajustes', popup)
+        self.assertIn('if (extensionApi.runtime?.lastError) {', popup)
+        self.assertIn('refreshLearning();void refresh();', popup)
+        node_program = r"""
+const assert = require('node:assert/strict');
+const core = require('./autopilot-core.js');
+assert.deepEqual(['z', 'a', 'b'].sort((x, y) => x.localeCompare(y)), ['a', 'b', 'z']);
+const samples = [
+  ['GPT-6', 'gpt-6'], ['GPT6', 'gpt-6'], ['GPT - 6', 'gpt-6'],
+  ['GPT-5.6 Sol', 'gpt-5.6-sol'], ['GPT 5.6 Sol', 'gpt-5.6-sol'],
+  ['GPT - 5.6 Sol', 'gpt-5.6-sol'], ['GPT5.6 Sol', 'gpt-5.6-sol'],
+  ['GPT-6 GPT 5.6 Sol', 'gpt-5.6-sol'],
+  ['GPT-7', null], ['High', null], ['xGPT6', null],
+  ['GPT---6', null], ['GPT- -6', null], ['GPT - -6', null], ['GPT-5.6', null]
+];
+for (const [input, expected] of samples) {
+  assert.equal(core.modelIdFromText(input), expected, input);
+}
+assert.equal(core.modelIdFromText('gpt - '.repeat(4000) + 'GPT - 5.6 Sol'),
+  'gpt-5.6-sol');
+
+// Exercise the actual popup migration callback with Promise and callback-only APIs.
+const fs = require('node:fs');
+const vm = require('node:vm');
+const popup = fs.readFileSync('popup.js', 'utf8');
+const begin = popup.indexOf('extensionApi.storage.local.get(DEFAULTS, values => {');
+const end = popup.indexOf('  const savedPrompt=', begin);
+assert.ok(begin >= 0 && end > begin, 'migration callback should be discoverable');
+const migration = popup.slice(begin, end) + '});';
+function runMigration(write, messages) {
+  const context = {
+    DEFAULTS: {}, SETTINGS_DEFAULT_VERSION: 2,
+    extensionApi: {storage: {local: {
+      get: (_defaults, callback) => callback({settingsDefaultVersion: 0}),
+      set: write
+    }}},
+    showStatus: message => messages.push(message)
+  };
+  vm.runInNewContext(migration, context);
+}
+const callbackMessages = [];
+runMigration(() => undefined, callbackMessages);
+assert.deepEqual(callbackMessages, []);
+const rejectedMessages = [];
+runMigration(() => Promise.reject(new Error('simulated storage failure')), rejectedMessages);
+queueMicrotask(() => {
+  assert.equal(rejectedMessages.some(x => x.includes('No se guardaron')), true);
+});
+
+// Exercise the complete read-error flow, including the outer Promise catch.
+const readEnd = popup.indexOf('extensionApi.storage.onChanged.addListener', begin);
+assert.ok(readEnd > end, 'complete settings read should be discoverable');
+const readFlow = popup.slice(begin, readEnd).trim();
+function runReadFailure(get, lastError) {
+  const state = {statuses: [], writes: 0, hydrations: 0};
+  const context = {
+    DEFAULTS: {}, SETTINGS_DEFAULT_VERSION: 2,
+    extensionApi: {
+      runtime: {lastError},
+      storage: {local: {
+        get,
+        set: () => { state.writes += 1; }
+      }}
+    },
+    fields: new Proxy({}, {
+      get: () => { state.hydrations += 1; throw new Error('unexpected hydration'); }
+    }),
+    showStatus: message => state.statuses.push(message)
+  };
+  vm.runInNewContext(readFlow, context);
+  return state;
+}
+const callbackError = runReadFailure((_defaults, cb) => cb(undefined),
+  {message: 'simulated runtime read failure'});
+assert.equal(callbackError.statuses.some(x => x.includes('No se pudieron cargar')), true);
+assert.equal(callbackError.writes, 0);
+assert.equal(callbackError.hydrations, 0);
+const promiseError = runReadFailure(() => Promise.reject(new Error('read failed')), null);
+setImmediate(() => {
+  assert.equal(promiseError.statuses.some(x => x.includes('No se pudieron cargar')), true);
+  assert.equal(promiseError.writes, 0);
+  assert.equal(promiseError.hydrations, 0);
+});
+"""
         result = subprocess.run(
-            ['node', '-e', "const a = require('node:assert/strict'); "
-             "const values = ['z', 'a', 'b']; "
-             "a.deepEqual(values.sort((x,y)=>x.localeCompare(y)), ['a','b','z']);"],
+            ['node', '-e', node_program],
             cwd=ROOT, capture_output=True, text=True, timeout=20, check=False,
         )
-        self.assertEqual(result.returncode, 0, result.stderr[:300])
+        self.assertEqual(result.returncode, 0, result.stderr[:500])

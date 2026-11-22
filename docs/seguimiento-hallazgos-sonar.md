@@ -21,3 +21,31 @@ Prueba: `tests/test_hallazgos_sonar_resueltos.py::HallazgosSonarResueltosTests::
 - `AaEw6y3m1qRQXrU8TCHG` — `javascript:S4036`, `test-factory-control-pairing.cjs:972`, SECURITY LOW: se corrige en el PR padre [#481](https://github.com/pl0n3r/AutoFactory/pull/481), sin editar esa ruta en #428.
 - Hallazgos menores de Reliability/Maintainability, incluidos `javascript:S8786` en `autopilot-core.js` y su espejo Safari, no se declaran corregidos. Cualquier cambio en el espejo exige claims separados y mantener paridad.
 - El Quality Gate del PR aislado no acredita automáticamente Security/ Reliability A/A de `main`. Las dos ramas se concilian mediante PRs protegidos y nuevo análisis exact-main antes de declarar resuelto #219 o habilitar release.
+
+## Segunda intervención: Reliability C residual en main (22-nov-2026)
+
+- Después de [PR #485](https://github.com/pl0n3r/AutoFactory/pull/485), `main@a34e8864413cb38cde739d775cf9b9e8e89ed6a9` conserva `new_reliability_rating=3` (C), objetivo 1 (A); `new_security_rating=1` (A).
+- [Diagnóstico Sonar autenticado read-only, job 137122778660](https://github.com/pl0n3r/AutoFactory/actions/runs/44845234798/job/137122778660): 394 issues OPEN/New Code en el período vigente y exactamente **seis impactos RELIABILITY:MEDIUM**. Los hallazgos anteriores S2871 HIGH están resueltos; no se infiere estado final A/A sin nuevo check exact-main.
+- `javascript:S8786`: `AaEjC-ZL7PojUimwOX0c`, `AaEjC-ZL7PojUimwOX0d` en `autopilot-core.js:396-397`; `AaEjC-Kd7PojUimwOX0Y`, `AaEjC-Kd7PojUimwOX0Z` en espejo Safari. Causa: regex con repeticiones de espacios y delimitadores ambiguos que permiten backtracking superlineal. Reparación: reconocimiento de tokens en un paso, priorizando GPT-5.6 Sol, manteniendo la compatibilidad de guiones y espacios.
+- `javascript:S9383`: `AaDv-3FnbODfAelYAbdi` en `popup.js:243` y `AaDv-2wdbODfAelYAbdS` en espejo Safari. Causa: migración de valores predeterminados mediante escritura asíncrona sin handler de rechazo. Reparación: `catch` opcional en APIs que devuelven Promise, manteniendo compatibilidad con implementaciones callback-only y señal visible de error.
+- Prueba de aceptación: `tests/test_hallazgos_sonar_resueltos.py::HallazgosSonarResueltosTests::test_criterio_principal` verifica regresiones S2871, paridad byte a byte Safari/Chrome, reconocimiento de modelos y handler de error. El `SonarCloud Code Analysis` del PR solo acredita su delta; **AC-03 se cierra únicamente si Security/ Reliability A/A en main exacto**.
+
+## Informe real de anotaciones del PR #486, ronda de CI
+
+- SonarCloud exact-HEAD `5aa3ac9c4c257b3d9e7f7a26c8e0e97afb0dc71b`: Quality Gate PR Reliability C, `Validate` y `CodeQL` `success`. El [reporte automático autenticado](https://github.com/pl0n3r/AutoFactory/pull/486#issuecomment-7075526581) devolvió cuatro anotaciones:
+  - `autopilot-core.js:394` y espejo Safari: complejidad cognitiva 21 (máximo 15), introducida por el nuevo parser. Se reparó separando reconocimiento de tokens en dos funciones puras de complejidad acotada; fuzz de 180 000 combinaciones comparadas con el parser previo, cero divergencias.
+  - `popup.js:253` y espejo Safari: `javascript:S9383` de `storage.local.get` externo, no del `set` interno. Se añadió manejo explícito de rechazo también a la lectura, con `void` y `catch` opcional compatible con APIs callback-only.
+- Verificar nuevo análisis Sonar del PR sobre el último HEAD y después comprobar A/A en main fusionado antes de cerrar los Issues.
+
+## Segundo resultado exact-HEAD SonarCloud PR #486 — revisión de causa
+
+[Anotaciones verificadas de check 137125866894](https://github.com/pl0n3r/AutoFactory/pull/486#issuecomment-7075526581) sobre `e2eaa8b5087be35a38a3f049cc1a32f164ced3dd`:
+- `javascript:S7721` (`modelSuffixAfterGap`): mover función sin cierres al ámbito superior. Se eliminó la función adicional: `modelVersionAt` usa el normalizador de la fábrica y mantiene complejidad menor de 15, verificado con 180 000 casos aleatorios comparados con el algoritmo anterior.
+- `javascript:S9383` de `popup.js:253` y espejo Safari: la llamada a `refresh()` (async) al final del callback seguía sin `await`/rechazo explícito, aunque los `get/set` ya estuvieran manejados. `refresh()` contiene `try/catch` interno; marcar intencionalmente `void refresh()` conserva el orden y evita promesa flotante.
+- No cerrar antes de `SonarCloud Code Analysis` `success` exact-HEAD y comprobación Security/Reliability A/A en main posterior al squash.
+
+## Cierre de comentarios de CodeRabbit FINAL
+
+- La [revisión final única en PR #486](https://github.com/pl0n3r/AutoFactory/pull/486) se solicitó **una vez** tras `SonarCloud`, `Validate` y `CodeQL` `success` exact-HEAD `363c10b`. CodeRabbit publicó un comentario **Minor / Functional Correctness** sobre `popup.js:243`: cuando `storage.local.get` usa callback en Chrome, el error se comunica por `runtime.lastError` y no como Promise rechazada. También sugirió probar ambas formas.
+- La reparación revisa `extensionApi.runtime?.lastError` antes de utilizar `values`, publica el estado de error sin exponer contenido y retorna antes de migración/hidratación; se aplica exactamente en Chrome y Safari. El test reproduce `lastError` en callback con lectura sin valores y `Promise.reject`, exige estado visible y cero escrituras/hidrataciones. **Sin otra solicitud CodeRabbit**.
+- Como toda modificación después de la revisión, la suite nativa, SonarCloud y CodeQL deben volver a `success` sobre el nuevo HEAD antes del squash; verificar que no aparecen nuevos bugs graves.
