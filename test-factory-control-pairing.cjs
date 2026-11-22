@@ -664,7 +664,7 @@ function fixture(overrides = {}) {
     const pairing = createPairingContract({
       now: () => {
         reads++;
-        return mode === 'clock' && reads === 2 ? NaN : NOW;
+        return mode === 'clock' && reads === 2 ? Number.NaN : NOW;
       },
       loadVerifiedChallenge: async ({ profileAlias }) => ({
         challengeId: 'challenge-001', profileAlias, expiresAt: NOW + 60_000,
