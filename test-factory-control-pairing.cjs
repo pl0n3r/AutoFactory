@@ -969,7 +969,7 @@ function fixture(overrides = {}) {
   // The child guard prevents recursively launching the same Python suite.
   if (process.env.FACTORY_PAIRING_PYTHON_CHILD !== '1') {
     const { spawnSync } = require('node:child_process');
-    const run = spawnSync('python3', [
+    const run = spawnSync('/usr/bin/python3', [
       '-m', 'unittest', 'discover',
       '-s', 'tests', '-p', 'test_factory_control_pairing_*.py'
     ], {
