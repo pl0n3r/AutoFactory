@@ -3,6 +3,7 @@ name: Validate
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,6 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Rechazar dispatch no-main o SHA desfasado
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_REF_TYPE" = "branch"
+          test "${GITHUB_REPOSITORY,,}" = "pl0n3r/autofactory"
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          read -r REMOTE_SHA REMOTE_REF <<< "$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main)"
+          test "$REMOTE_REF" = "refs/heads/main"
+          test "$REMOTE_SHA" = "$GITHUB_SHA" || {
+            echo "::error::Dispatch con drift entre evento y main"
+            exit 1
+          }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
@@ -116,3 +132,15 @@ jobs:
             tests.test_local_progress_presentation.LocalProgressPresentationTests.test_popup_source_mirrors_safari
       - run: node test-workflow-hardening.cjs
       - run: node test-release-evidence.cjs
+      - name: Exigir SHA main sin drift tras smoke de dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          read -r REMOTE_SHA REMOTE_REF <<< "$(git ls-remote origin refs/heads/main)"
+          test "$REMOTE_REF" = "refs/heads/main"
+          test "$REMOTE_SHA" = "$GITHUB_SHA" || {
+            echo "::error::main avanzó durante el dispatch"
+            exit 1
+          }
