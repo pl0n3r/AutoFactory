@@ -70,7 +70,9 @@ assert.match(content, /selected-after-thinking/);
 assert.match(content, /reasoningSelectorButton\(\) \|\| modelSelectorButton\(\)/);
 console.log('Razonamiento: Alto se busca antes del selector general y admite Thinking como paso intermedio');
 
-assert.match(popupHtml, /id="model-target"[\s\S]*value="gpt-6"[\s\S]*value="gpt-5\.6-sol"[\s\S]*value="keep"/);
-assert.match(popup, /modelTarget:\s*'gpt-6'/);
+// #490: the highest available model is the default; GPT-6.2 and 5.6 Sol stay selectable.
+assert.match(popupHtml, /id="model-target"[\s\S]*value="latest"[\s\S]*value="gpt-6\.2"[\s\S]*value="gpt-5\.6-sol"[\s\S]*value="keep"/);
+assert.match(popup, /modelTarget:\s*'latest'/);
+assert.match(content, /values\.modelTarget === 'gpt-6' \? 'latest'/);
 assert.match(content, /await ensureModel\(currentConfig\.modelTarget\)[\s\S]*await ensureReasoningLevel/);
-console.log('Modelo: GPT-6 es configurable y se verifica antes de aplicar High');
+console.log('Modelo: el más alto disponible es el predeterminado y se verifica antes de aplicar High');
