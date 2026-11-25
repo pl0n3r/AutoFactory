@@ -33,6 +33,118 @@ class ValidateRequiredCheckTests(unittest.TestCase):
                 "Un test/smoke requerido no puede omitirse ni ignorar errores",
             )
 
+
+    def test_dispatch_exact_main_preserves_required_check(self):
+        """Dispatch cannot escalate privileges and fails closed on ref/SHA drift."""
+        import os
+        import subprocess
+        import tempfile
+
+        workflow = (ROOT / ".github/workflows/validate.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("on:\n  push:\n  pull_request:\n  workflow_dispatch:\n", workflow)
+        self.assertEqual(workflow.count("  workflow_dispatch:\n"), 1)
+        self.assertEqual(workflow.count("    name: " + CHECK + "\n"), 1)
+        self.assertIn("permissions:\n  contents: read\n", workflow)
+        self.assertNotIn("pull_request_target:", workflow)
+        self.assertNotIn("continue-on-error", workflow)
+        self.assertNotIn("inputs:", workflow)
+        self.assertNotIn("secrets:", workflow)
+        self.assertIn("ref: $" + "{{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        self.assertIn("if: github.event_name == 'pull_request'", workflow)
+        self.assertIn("git worktree add --detach .ci-merge-acceptance", workflow)
+
+        def extract(name):
+            prefix = "      - name: " + name + "\n"
+            self.assertEqual(workflow.count(prefix), 1)
+            block = workflow.split(prefix, 1)[1].split("\n      - ", 1)[0]
+            self.assertIn("        if: github.event_name == 'workflow_dispatch'\n", block)
+            self.assertIn("        run: |\n", block)
+            source = block.split("        run: |\n", 1)[1]
+            self.assertNotIn("continue-on-error", source)
+            return "\n".join(
+                line[10:] for line in source.splitlines() if line.strip()
+            ) + "\n"
+
+        before = extract("Rechazar dispatch no-main o SHA desfasado")
+        after = extract("Exigir SHA main sin drift tras smoke de dispatch")
+        self.assertLess(workflow.index("Rechazar dispatch no-main"),
+                        workflow.index("actions/checkout@"))
+        self.assertGreater(workflow.index("Exigir SHA main sin drift"),
+                           workflow.index("node test-release-evidence.cjs"))
+        for expected in ('test "$GITHUB_EVENT_NAME" = "workflow_dispatch"',
+                         'test "$GITHUB_REF" = "refs/heads/main"',
+                         'test "$GITHUB_REF_TYPE" = "branch"',
+                         '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+                         "git ls-remote",
+                         'test "$REMOTE_SHA" = "$GITHUB_SHA"'):
+            self.assertIn(expected, before)
+        for expected in ('git rev-parse HEAD', "git ls-remote origin refs/heads/main",
+                         'test "$REMOTE_SHA" = "$GITHUB_SHA"'):
+            self.assertIn(expected, after)
+        self.assertNotIn("git push", before + after)
+        self.assertNotIn("gh api", before + after)
+
+        sha = "1" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            # Exercise shell checks without network or a GitHub token.
+            fake_git = Path(tmp) / "git"
+            fake_git.write_text(
+                "#!/bin/sh\n"
+                "case \"$1\" in\n"
+                "  ls-remote) printf '%s\\t%s\\n' \"$FAKE_MAIN_SHA\" \"refs/heads/main\" ;;\n"
+                "  rev-parse) printf '%s\\n' \"$FAKE_CHECKOUT_SHA\" ;;\n"
+                "  *) exit 1 ;;\n"
+                "esac\n",
+                encoding="utf-8",
+            )
+            fake_git.chmod(0o755)
+            env = dict(
+                os.environ,
+                PATH=f"{tmp}:{os.environ.get('PATH', '')}",
+                GITHUB_EVENT_NAME="workflow_dispatch",
+                GITHUB_REF="refs/heads/main",
+                GITHUB_REF_TYPE="branch",
+                GITHUB_REPOSITORY="pl0n3r/AutoFactory",
+                GITHUB_SHA=sha,
+                FAKE_MAIN_SHA=sha,
+                FAKE_CHECKOUT_SHA=sha,
+            )
+
+            def verify(script, overrides=None):
+                variables = dict(env, **(overrides or {}))
+                result = subprocess.run(
+                    ["/bin/bash", "-e", "-c", script],
+                    env=variables,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                return result.returncode == 0
+
+            self.assertTrue(verify(before))
+            self.assertTrue(verify(after))
+            for overrides in (
+                {"GITHUB_EVENT_NAME": "pull_request"},
+                {"GITHUB_REF": "refs/heads/feature"},
+                {"GITHUB_REF": "refs/tags/v1"},
+                {"GITHUB_REF_TYPE": "tag"},
+                {"GITHUB_REPOSITORY": "outsider/AutoFactory"},
+                {"GITHUB_SHA": "not-a-sha"},
+                {"FAKE_MAIN_SHA": "2" * 40},
+                {"FAKE_MAIN_SHA": ""},
+            ):
+                with self.subTest(bad=overrides):
+                    self.assertFalse(verify(before, overrides))
+            for overrides in (
+                {"GITHUB_REF": "refs/heads/other"},
+                {"FAKE_MAIN_SHA": "2" * 40},
+                {"FAKE_CHECKOUT_SHA": "2" * 40},
+            ):
+                with self.subTest(postcheck=overrides):
+                    self.assertFalse(verify(after, overrides))
+
     def test_unique_validate_context_preserves_real_tests(self):
         """Valida identidad, permisos y pasos bloqueantes del job."""
         workflow = (ROOT / ".github/workflows/validate.yml").read_text(
