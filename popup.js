@@ -1,7 +1,7 @@
 const DEFAULT_PROMPT = 'Continúa autónomamente el desarrollo del proyecto desde el estado real más reciente. Antes de modificar nada: inspecciona el estado actual del repo, rama, issues, PRs, CI y revisiones. No te detengas después de cada paso; avanza mientras sea seguro, sin duplicar trabajo, y reporta solo hitos grandes.';
 const PROMPT_SCHEMA_VERSION = 2;
 const SETTINGS_DEFAULT_VERSION = 2;
-const DEFAULTS = { prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION, settingsDefaultVersion: 0, delaySeconds: 15, masterEnabled: false, followScroll: true, scrollStepMin: 90, scrollStepMax: 320, scrollPollMs: 220, scrollStableChecks: 8, scrollMaxSeconds: 45, manualScrollPauseSeconds: 20, autoReload: true, reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'gpt-6', reasoningLevel: 'high', conversationMode: 'chat' };
+const DEFAULTS = { prompt: DEFAULT_PROMPT, promptSchemaVersion: PROMPT_SCHEMA_VERSION, settingsDefaultVersion: 0, delaySeconds: 15, masterEnabled: false, followScroll: true, scrollStepMin: 90, scrollStepMax: 320, scrollPollMs: 220, scrollStableChecks: 8, scrollMaxSeconds: 45, manualScrollPauseSeconds: 20, autoReload: true, reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'latest', reasoningLevel: 'high', conversationMode: 'chat' };
 const extensionApi = globalThis.chrome || globalThis.browser;
 const $ = id => document.getElementById(id);
 // LOCAL_PROGRESS_VIEW_START
@@ -248,14 +248,14 @@ void extensionApi.storage.local.get(DEFAULTS, values => {
   }
   if (values.settingsDefaultVersion !== SETTINGS_DEFAULT_VERSION) {
     values = {...values, settingsDefaultVersion: SETTINGS_DEFAULT_VERSION,
-      reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'gpt-6'};
+      reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'latest'};
     // The extension may expose either callback-only storage or a Promise.
     // Handle a rejected Promise; never leave a floating migration write.
     void extensionApi.storage.local.set({settingsDefaultVersion:SETTINGS_DEFAULT_VERSION,
-      reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'gpt-6'
+      reloadCooldownMinutes: 1, periodicReload: true, periodicReloadMinutes: 15, modelTarget: 'latest'
     })?.catch?.(() => { showStatus('ERROR · No se guardaron los ajustes iniciales', false); });
   }
-  const savedPrompt=String(values.prompt||'').trim();const valid=values.promptSchemaVersion===PROMPT_SCHEMA_VERSION&&savedPrompt.length>0;fields.prompt.value=valid?savedPrompt:DEFAULT_PROMPT;fields.delaySeconds.value=values.delaySeconds;fields.modelTarget.value=values.modelTarget||'gpt-6';fields.reasoningLevel.value=values.reasoningLevel||'high';renderConversationMode(values.conversationMode);fields.followScroll.checked=values.followScroll!==false;fields.scrollStepMin.value=values.scrollStepMin;fields.scrollStepMax.value=values.scrollStepMax;fields.scrollPollMs.value=values.scrollPollMs;fields.scrollStableChecks.value=values.scrollStableChecks;fields.scrollMaxSeconds.value=values.scrollMaxSeconds;fields.manualScrollPauseSeconds.value=values.manualScrollPauseSeconds;fields.autoReload.checked=values.autoReload!==false;fields.reloadCooldownMinutes.value=values.reloadCooldownMinutes;fields.periodicReload.checked=values.periodicReload===true;fields.periodicReloadMinutes.value=values.periodicReloadMinutes;showStatus(values.masterEnabled?'ACTIVO · todas las pestañas':'PAUSADO · todas las pestañas',values.masterEnabled);refreshLearning();void refresh();
+  const savedPrompt=String(values.prompt||'').trim();const valid=values.promptSchemaVersion===PROMPT_SCHEMA_VERSION&&savedPrompt.length>0;fields.prompt.value=valid?savedPrompt:DEFAULT_PROMPT;fields.delaySeconds.value=values.delaySeconds;fields.modelTarget.value=(!values.modelTarget||values.modelTarget==='gpt-6')?'latest':values.modelTarget;fields.reasoningLevel.value=values.reasoningLevel||'high';renderConversationMode(values.conversationMode);fields.followScroll.checked=values.followScroll!==false;fields.scrollStepMin.value=values.scrollStepMin;fields.scrollStepMax.value=values.scrollStepMax;fields.scrollPollMs.value=values.scrollPollMs;fields.scrollStableChecks.value=values.scrollStableChecks;fields.scrollMaxSeconds.value=values.scrollMaxSeconds;fields.manualScrollPauseSeconds.value=values.manualScrollPauseSeconds;fields.autoReload.checked=values.autoReload!==false;fields.reloadCooldownMinutes.value=values.reloadCooldownMinutes;fields.periodicReload.checked=values.periodicReload===true;fields.periodicReloadMinutes.value=values.periodicReloadMinutes;showStatus(values.masterEnabled?'ACTIVO · todas las pestañas':'PAUSADO · todas las pestañas',values.masterEnabled);refreshLearning();void refresh();
 })?.catch?.(() => { showStatus('ERROR · No se pudieron cargar los ajustes', false); });
 extensionApi.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.learning) {

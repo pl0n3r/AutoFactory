@@ -410,14 +410,30 @@
   function modelIdFromText(value) {
     // Linear token scan: split hyphen/space parsing into small, bounded helpers.
     const tokens = normalize(value).toLowerCase().replace(/[‐‑‒–—]/g, '-').split(/\s+/);
-    let foundGpt6 = false;
+    // #490: any numeric GPT version (gpt-6, gpt-6.2, gpt-7…); 5.6 Sol keeps its id.
+    let found = null;
     for (let index = 0; index < tokens.length; index += 1) {
       const parsed = modelVersionAt(tokens, index);
       if (!parsed) continue;
       if (parsed.version === '5.6' && tokens[parsed.next] === 'sol') return 'gpt-5.6-sol';
-      if (parsed.version === '6') foundGpt6 = true;
+      if (!found && /^\d+(\.\d+)?$/.test(parsed.version)) found = 'gpt-' + parsed.version;
     }
-    return foundGpt6 ? 'gpt-6' : null;
+    return found;
+  }
+  function modelRank(id) {
+    const match = /^gpt-(\d+)(?:\.(\d+))?/.exec(String(id || ''));
+    return match ? Number(match[1]) * 1000 + Number(match[2] || 0) : -1;
+  }
+  // #490: among visible model options, the highest numeric version that is
+  // not announced for retirement. Entries: { text, id }.
+  function pickHighestModel(entries) {
+    let best = null;
+    for (const entry of entries || []) {
+      const id = entry?.id || modelIdFromText(entry?.text);
+      if (!id || /retir|retire|deprecat/i.test(String(entry?.text || ''))) continue;
+      if (!best || modelRank(id) > modelRank(best.id)) best = { ...entry, id };
+    }
+    return best;
   }
   function reasoningSliderTarget(level, minimum, maximum) {
     const min = Number(minimum);
@@ -507,6 +523,8 @@
     providerAccountSignal,
     normalize,
     reasoningLevelFromText,
+    modelRank,
+    pickHighestModel,
     modelIdFromText,
     reasoningSliderTarget,
     reasoningSliderControl,

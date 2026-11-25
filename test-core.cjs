@@ -400,6 +400,19 @@ console.log('Razonamiento: dirige las teclas al control interactivo del slider')
 assert.equal(core.modelIdFromText('GPT-6'), 'gpt-6');
 assert.equal(core.modelIdFromText('GPT-5.6 Sol'), 'gpt-5.6-sol');
 assert.equal(core.modelIdFromText('High'), null);
+// #490: any numeric version is recognized and the highest non-retiring one wins.
+assert.equal(core.modelIdFromText('GPT-6.2'), 'gpt-6.2');
+assert.equal(core.modelIdFromText('GPT‑6.2'), 'gpt-6.2');
+assert.equal(core.modelIdFromText('GPT-7'), 'gpt-7');
+assert.ok(core.modelRank('gpt-6.2') > core.modelRank('gpt-6'));
+assert.ok(core.modelRank('gpt-6') > core.modelRank('gpt-5.6-sol'));
+assert.equal(core.pickHighestModel([
+  { text: 'GPT-6' }, { text: 'GPT-6.2' }, { text: 'GPT-5.6 Sol Se retirará el 23 de diciembre' }
+]).id, 'gpt-6.2');
+assert.equal(core.pickHighestModel([
+  { text: 'GPT-6' }, { text: 'GPT-7 Se retirará pronto' }
+]).id, 'gpt-6');
+assert.equal(core.pickHighestModel([{ text: 'Pensando' }]), null);
 console.log('Modelo: reconoce GPT-6 sin confundirlo con el nivel de razonamiento');
 
 for (const [label, expected] of [

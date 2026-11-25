@@ -21,7 +21,7 @@
     reloadCooldownMinutes: 1,
     periodicReload: true,
     periodicReloadMinutes: 15,
-    modelTarget: 'gpt-6',
+    modelTarget: 'latest',
     reasoningLevel: 'high',
     conversationMode: 'chat',
     directedComposerClearAfterMs: 120000
@@ -294,8 +294,10 @@
         periodicReload: values.periodicReload === true,
         periodicReloadMinutes: Math.max(5, Math.min(1440,
           Number(values.periodicReloadMinutes) || SCROLL_DEFAULTS.periodicReloadMinutes)),
-        modelTarget: ['keep', 'gpt-6', 'gpt-5.6-sol'].includes(values.modelTarget)
-          ? values.modelTarget : SCROLL_DEFAULTS.modelTarget,
+        // #490: 'gpt-6' was the old fixed default; it now means the highest available model.
+        modelTarget: values.modelTarget === 'gpt-6' ? 'latest'
+          : (['keep', 'latest', 'gpt-6.2', 'gpt-5.6-sol'].includes(values.modelTarget)
+            ? values.modelTarget : SCROLL_DEFAULTS.modelTarget),
         reasoningLevel: ['keep', 'high'].includes(values.reasoningLevel)
           ? values.reasoningLevel : SCROLL_DEFAULTS.reasoningLevel,
         conversationMode: ['chat', 'work'].includes(values.conversationMode)
@@ -696,10 +698,17 @@
   }
 
   function modelOption(target) {
-    return [...document.querySelectorAll('[role="menuitem"],[role="menuitemradio"],[role="option"],button')]
-      .find(element => core.modelIdFromText(
-        element.textContent || element.getAttribute('aria-label') || ''
-      ) === target) || null;
+    const options = [...document.querySelectorAll('[role="menuitem"],[role="menuitemradio"],[role="option"],button')];
+    if (target === 'latest') {
+      // #490: highest available version; options announced for retirement are skipped.
+      const best = core.pickHighestModel(options.map(element => ({
+        element, text: core.normalize(element.textContent || element.getAttribute('aria-label') || '')
+      })).filter(entry => entry.text.length < 120));
+      return best?.element || null;
+    }
+    return options.find(element => core.modelIdFromText(
+      element.textContent || element.getAttribute('aria-label') || ''
+    ) === target) || null;
   }
 
   async function ensureModel(target) {
@@ -719,7 +728,7 @@
       }
       return 'unavailable';
     }
-    if (core.modelIdFromText(controlText(selector)) === target) return 'confirmed';
+    if (target !== 'latest' && core.modelIdFromText(controlText(selector)) === target) return 'confirmed';
     selector.click();
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await wait(100);
