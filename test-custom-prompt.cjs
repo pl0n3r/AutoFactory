@@ -76,3 +76,14 @@ assert.match(popup, /modelTarget:\s*'latest'/);
 assert.match(content, /values\.modelTarget === 'gpt-6' \? 'latest'/);
 assert.match(content, /await ensureModel\(currentConfig\.modelTarget\)[\s\S]*await ensureReasoningLevel/);
 console.log('Modelo: el más alto disponible es el predeterminado y se verifica antes de aplicar High');
+
+// #493: the directed order makes the agent wait for every CI check and report once at the end.
+const directedLine = content.split('\n').find(line => line.includes('Tu issue asignado es #'));
+assert.ok(directedLine, 'falta la orden dirigida con issue asignado');
+assert.match(directedLine, /ESPERA a que terminen TODOS los checks del CI/);
+assert.match(directedLine, /Informa UNA sola vez, al final/);
+assert.match(directedLine, /ORQ_ENDING_PROMPT/);
+assert.doesNotMatch(directedLine, /DOS líneas|Siguiente: </);
+const safariContent = fs.readFileSync('safari/ChatGPT Autopilot Local Extension/Resources/content.js', 'utf8');
+assert.ok(safariContent.includes(directedLine.trim()), 'el espejo Safari debe tener la misma orden dirigida');
+console.log('Orden dirigida: espera todo el CI y reporta una sola vez al final');
